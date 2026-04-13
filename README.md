@@ -1,10 +1,18 @@
-# rkvoice-stream
+<p align="center">
+  <img src="media/logo.png" alt="rkvoice-stream" width="200">
+</p>
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://python.org)
-[![Platform](https://img.shields.io/badge/Platform-RK3576%20%7C%20RK3588-orange.svg)](https://www.rock-chips.com)
+<h1 align="center">rkvoice-stream</h1>
 
-Deploy streaming ASR + TTS on RK3576/RK3588 — **120ms TTS latency, 52-language ASR, one Docker command.**
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
+  <img src="https://img.shields.io/badge/Python-3.10+-green.svg" alt="Python">
+  <img src="https://img.shields.io/badge/Platform-RK3576%20%7C%20RK3588-orange.svg" alt="Platform">
+</p>
+
+<p align="center">
+  Deploy streaming ASR + TTS on RK3576/RK3588 — <strong>120ms TTS latency, 52-language ASR, one Docker command.</strong>
+</p>
 
 <!-- TODO: Add demo GIF here — record a terminal session showing:
      1. docker-compose up (service starts)
