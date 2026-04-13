@@ -1,10 +1,10 @@
-# RK3576 Speech Service Docker Container (TTS + ASR)
+# rkvoice-stream Docker Container (TTS + ASR)
 #
 # TTS: Matcha-icefall-zh-en (RKNN NPU) + Vocos vocoder (RKNN NPU)
 # ASR: Qwen3-ASR encoder (RKNN NPU) + matmul decoder (rknn-matmul-parallel)
 #
 # Build on cat-remote (aarch64):
-#   docker build --network=host -t rk3576-speech -f Dockerfile .
+#   docker build --network=host -t rkvoice-stream -f Dockerfile .
 #
 # Prereqs on host:
 #   cd ~/project/rknn-matmul-parallel && make python   # builds matmul_decoder .so
@@ -17,7 +17,7 @@
 #     -v /home/cat/rknn-matmul-parallel:/opt/rknn-matmul-parallel:ro \
 #     -e TTS_BACKEND=matcha_rknn -e ASR_BACKEND=qwen3_asr_rk \
 #     -e ASR_DECODER_TYPE=matmul -e PYTHONPATH=/opt/rknn-matmul-parallel \
-#     rk3576-speech
+#     rkvoice-stream
 
 FROM debian:12-slim
 
@@ -59,9 +59,6 @@ RUN pip install --no-cache-dir sherpa-onnx onnxruntime
 RUN pip install --no-cache-dir \
     rknn-toolkit-lite2
 
-# RKLLM + RKNN runtime libraries (copied from host /usr/lib/)
-COPY librkllmrt.so /usr/lib/librkllmrt.so
-COPY librknnrt.so /usr/lib/librknnrt.so
 RUN ldconfig
 
 RUN mkdir -p /opt/tts/models /opt/asr/models
@@ -69,11 +66,10 @@ RUN mkdir -p /opt/tts/models /opt/asr/models
 # matmul_decoder C extension: pre-built on host from ~/project/rknn-matmul-parallel
 # and mounted via docker-compose volume. See: make python in that repo.
 
-# Scripts (extract_codec_embed_table.py etc.)
-COPY scripts/ /opt/app/scripts/
-
-# Application code
-COPY app/ /opt/tts/app/
+# Application package
+COPY pyproject.toml /opt/rkvoice-stream/
+COPY rkvoice_stream/ /opt/rkvoice-stream/rkvoice_stream/
+RUN pip install --no-cache-dir /opt/rkvoice-stream/
 
 ENV MODEL_DIR=/opt/tts/models
 ENV TTS_BACKEND=matcha_rknn
@@ -82,7 +78,7 @@ ENV ASR_MODEL_DIR=/opt/asr/models
 # ASR_BACKEND is intentionally unset here — enable at runtime via env var
 # e.g. -e ASR_BACKEND=qwen3_asr_rk
 ENV LD_LIBRARY_PATH=/usr/lib
-WORKDIR /opt/tts/app
+WORKDIR /opt/rkvoice-stream
 EXPOSE 8621
 
-CMD ["python3", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8621"]
+CMD ["python3", "-m", "uvicorn", "rkvoice_stream.app.server:app", "--host", "0.0.0.0", "--port", "8621"]

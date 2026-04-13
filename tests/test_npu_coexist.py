@@ -6,7 +6,6 @@ Direct-mode only (needs actual NPU hardware). Skips in HTTP mode.
 from __future__ import annotations
 
 import os
-import sys
 import time
 
 import pytest
@@ -21,13 +20,8 @@ def _require_direct_mode():
 
 def _load_backends():
     """Load TTS and ASR backends directly. Skip if unavailable."""
-    app_dir = os.path.join(os.path.dirname(__file__), "..", "app")
-    app_dir = os.path.abspath(app_dir)
-    if app_dir not in sys.path:
-        sys.path.insert(0, app_dir)
-
     try:
-        from tts_backend import create_backend
+        from rkvoice_stream.engine.tts import create_backend
         tts = create_backend()
         tts.preload()
     except Exception as exc:
@@ -35,7 +29,7 @@ def _load_backends():
         return None, None
 
     try:
-        from asr_backend import create_asr_backend
+        from rkvoice_stream.engine.asr import create_asr_backend
         asr = create_asr_backend()
         asr.preload()
     except Exception as exc:
@@ -87,15 +81,8 @@ def test_repeated_cycles():
 
 def _main():
     """Run NPU coexistence tests directly (no pytest needed)."""
-    import sys
-
-    app_dir = os.path.join(os.path.dirname(__file__), "..", "app")
-    app_dir = os.path.abspath(app_dir)
-    if app_dir not in sys.path:
-        sys.path.insert(0, app_dir)
-
-    from tts_backend import create_backend
-    from asr_backend import create_asr_backend
+    from rkvoice_stream.engine.tts import create_backend
+    from rkvoice_stream.engine.asr import create_asr_backend
 
     print("Loading TTS backend...")
     tts = create_backend()

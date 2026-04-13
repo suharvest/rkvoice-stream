@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import io
 import os
-import sys
 import time
 
 import pytest
@@ -46,14 +45,6 @@ def _is_http_mode() -> bool:
     return _get_service_url() is not None
 
 
-def _ensure_app_on_path():
-    """Add rk3576/app to sys.path so backend imports work."""
-    app_dir = os.path.join(os.path.dirname(__file__), "..", "app")
-    app_dir = os.path.abspath(app_dir)
-    if app_dir not in sys.path:
-        sys.path.insert(0, app_dir)
-
-
 # ---------------------------------------------------------------------------
 # HTTP-mode fixtures
 # ---------------------------------------------------------------------------
@@ -88,10 +79,8 @@ def tts_backend():
     if _is_http_mode():
         pytest.skip("HTTP mode -- skipping direct backend load")
 
-    _ensure_app_on_path()
-
     try:
-        from tts_backend import create_backend
+        from rkvoice_stream.engine.tts import create_backend
         backend = create_backend()
         backend.preload()
     except Exception as exc:
@@ -106,10 +95,8 @@ def asr_engine():
     if _is_http_mode():
         pytest.skip("HTTP mode -- skipping direct backend load")
 
-    _ensure_app_on_path()
-
     try:
-        from asr_backend import create_asr_backend
+        from rkvoice_stream.engine.asr import create_asr_backend
         backend = create_asr_backend()
         backend.preload()
     except Exception as exc:

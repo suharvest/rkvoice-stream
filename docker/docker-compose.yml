@@ -1,11 +1,11 @@
 services:
   speech:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
       network: host
-    image: rk3576-speech:latest
-    container_name: rk3576-speech
+    image: rkvoice-stream:latest
+    container_name: rkvoice-stream
     privileged: true
     init: true
     network_mode: host
