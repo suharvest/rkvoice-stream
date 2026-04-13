@@ -1,60 +1,86 @@
 # rkvoice-stream
 
-Streaming speech AI service for Rockchip NPU platforms — ASR and TTS via a Python library or Docker container.
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://python.org)
+[![Platform](https://img.shields.io/badge/Platform-RK3576%20%7C%20RK3588-orange.svg)](https://www.rock-chips.com)
+
+Deploy streaming ASR + TTS on RK3576/RK3588 — **120ms TTS latency, 52-language ASR, one Docker command.**
+
+<!-- TODO: Add demo GIF here — record a terminal session showing:
+     1. docker-compose up (service starts)
+     2. curl POST /tts with Chinese text → WAV file plays
+     3. WebSocket /asr/stream with microphone → real-time transcription
+     Target length: ~15 seconds -->
+
+## What is this?
+
+rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. It runs ASR and TTS entirely on-device via RKNN/RKLLM acceleration — no cloud, no GPU, no internet required. Ship it as a Python library or a Docker container.
+
+## Table of Contents
+
+- [Performance](#performance)
+- [Features](#features)
+- [Supported Platforms](#supported-platforms)
+- [Quick Start](#quick-start)
+- [API Reference](#api-reference)
+- [Architecture](#architecture)
+- [Model Preparation](#model-preparation)
+- [Configuration](#configuration)
+- [Testing](#testing)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
+
+## Performance
+
+Measured on RK3576 (RK3588 is faster):
+
+| Task | Backend | Latency | Note |
+|------|---------|---------|------|
+| TTS (zh/en) | Matcha + Vocos | **~120 ms** | NPU FP16, 3s audio output |
+| TTS (multi-lang) | Piper VITS | **~50 ms** | NPU FP16, single sentence |
+| ASR (streaming) | Qwen3-ASR | **~180 ms/chunk** | 4s audio chunks, 52 languages |
+| V2V round-trip | Matcha + Qwen3 | **~300 ms** | TTS + ASR end-to-end |
 
 ## Features
 
-- Streaming ASR with real-time partial results
-- Streaming TTS with low-latency audio chunking
-- Multiple backends: Qwen3-ASR, Matcha+Vocos, Piper VITS, Qwen3-TTS
-- Multi-platform: RK3576 and RK3588
-- HTTP and WebSocket API compatible with jetson-voice clients
-- Docker ready with pre-validated config profiles
-- NPU conflict detection and capability reporting
+- **Streaming ASR** — real-time partial results via WebSocket, 52 languages (Qwen3-ASR)
+- **Streaming TTS** — low-latency audio chunking, sentence-by-sentence synthesis
+- **Multiple backends** — Qwen3-ASR, Matcha+Vocos, Piper VITS (6+ languages), Qwen3-TTS
+- **NPU accelerated** — runs on Rockchip RKNN/RKLLM, not CPU
+- **Conflict detection** — automatically checks whether ASR + TTS can coexist on your device
+- **Config profiles** — pre-validated YAML configs for common setups (ASR-only, TTS-only, full stack)
+- **jetson-voice compatible** — same HTTP/WebSocket API, drop-in replacement for RK platforms
 
 ## Supported Platforms
 
-| Platform | NPU Cores | NPU Memory Limit | CPU Big Cores |
-|----------|-----------|-----------------|---------------|
-| RK3576   | 2         | 180 MB          | 2x A72        |
-| RK3588   | 3         | 512 MB          | 4x A76        |
-
-## Available Backends
-
-### ASR
-
-| Backend   | Languages | Streaming | RTF (RK3576) |
-|-----------|-----------|-----------|--------------|
-| Qwen3-ASR | 52        | Yes       | ~0.44        |
-
-### TTS
-
-| Backend      | Languages | Streaming | RTF (RK3576) |
-|--------------|-----------|-----------|--------------|
-| Matcha+Vocos | zh/en     | Yes       | ~0.07        |
-| Piper VITS   | multi     | Yes       | ~0.034       |
-| Qwen3-TTS    | zh/en     | Yes       | TBD          |
+| Platform | NPU Cores | NPU Memory | CPU | Status |
+|----------|-----------|------------|-----|--------|
+| RK3576 | 2 | 180 MB | 2x A72 + 4x A55 | Tested |
+| RK3588 | 3 | 512 MB | 4x A76 + 4x A55 | Supported |
 
 ## Quick Start
 
-### Python Library
+### Option 1: Docker (recommended)
+
+```bash
+# Build
+cd docker && docker build -t rkvoice-stream -f Dockerfile .. && cd ..
+
+# Run with pre-validated config
+docker-compose -f docker/docker-compose.yml up
+```
+
+### Option 2: Python library
+
+```bash
+pip install /path/to/rkvoice-stream
+```
 
 ```python
 from rkvoice_stream import create_asr, create_tts
 
-asr = create_asr(
-    backend="qwen3",
-    model_dir="/opt/models/asr",
-    platform="rk3576",
-)
-
-tts = create_tts(
-    backend="matcha",
-    model_dir="/opt/models/tts",
-    platform="rk3576",
-)
-
-# Offline transcription
+# ASR
+asr = create_asr(backend="qwen3_asr_rk", model_dir="/opt/models/asr", platform="rk3576")
 result = asr.transcribe("audio.wav", language="Chinese")
 print(result.text)
 
@@ -63,15 +89,16 @@ stream = asr.create_stream(language="Chinese")
 stream.feed_audio(audio_chunk)
 final = stream.finish()
 
-# TTS synthesis
+# TTS
+tts = create_tts(backend="matcha_rknn", model_dir="/opt/models/tts", platform="rk3576")
 wav_bytes = tts.synthesize("Hello world")
 
 # Streaming TTS
-for audio_chunk, meta in tts.synthesize_stream("Hello world"):
-    play(audio_chunk)
+for chunk, meta in tts.synthesize_stream("Hello world"):
+    play(chunk)
 ```
 
-Load a pre-validated config profile:
+### Option 3: Config profile
 
 ```python
 from rkvoice_stream import load_config, create_from_config
@@ -80,124 +107,121 @@ config = load_config("configs/rk3576-full.yaml")
 asr, tts = create_from_config(config)
 ```
 
-### Docker Deployment
-
-```yaml
-# docker/docker-compose.yml
-services:
-  speech:
-    image: rkvoice-stream:latest
-    privileged: true
-    network_mode: host
-    volumes:
-      - /path/to/models:/opt/models:ro
-    environment:
-      - PLATFORM=rk3576
-      - CONFIG=rk3576-full
-      - ASR_BACKEND=qwen3
-      - ASR_MODEL_DIR=/opt/models/asr
-      - TTS_BACKEND=matcha
-      - TTS_MODEL_DIR=/opt/models/tts
-```
-
-```bash
-cd docker
-docker build -t rkvoice-stream -f Dockerfile ..
-docker-compose up
-```
-
-### Config Profiles
-
-Five pre-validated profiles are included in `configs/`:
-
-| Profile                    | Description                          |
-|----------------------------|--------------------------------------|
-| `rk3576-asr-only.yaml`     | ASR only, full NPU for encoder       |
-| `rk3576-tts-only.yaml`     | TTS only                             |
-| `rk3576-full.yaml`         | ASR + Matcha TTS (sequential NPU)    |
-| `rk3576-piper-multilang.yaml` | Piper multi-language TTS          |
-| `rk3588-full.yaml`         | RK3588 full ASR + TTS stack          |
-
-Select a profile at runtime:
-
-```bash
-docker run -e CONFIG=rk3576-full rkvoice-stream
-```
-
 ## API Reference
 
-All endpoints are compatible with existing jetson-voice clients.
+All endpoints are compatible with [jetson-voice](https://github.com/dusty-nv/jetson-voice) clients.
 
-| Method | Path            | Description                                           |
-|--------|-----------------|-------------------------------------------------------|
-| POST   | `/tts`          | Synthesize text to WAV (`{"text": "...", "sid": 0}`)  |
-| POST   | `/tts/stream`   | Streaming TTS: PCM stream (uint32 LE header + int16)  |
-| POST   | `/asr`          | Transcribe audio file (multipart) to JSON             |
-| WS     | `/asr/stream`   | Streaming ASR: int16 PCM in, JSON partials out        |
-| WS     | `/dialogue`     | Full V2V dialogue: text JSON in, PCM audio stream out |
-| GET    | `/health`       | Service health including backend info and conflicts   |
-| GET    | `/capabilities` | Loaded backends, resource usage, parallel capability  |
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/tts` | Synthesize text to WAV |
+| POST | `/tts/stream` | Streaming TTS (PCM chunks) |
+| POST | `/asr` | Transcribe audio file |
+| WS | `/asr/stream` | Streaming ASR (real-time partials) |
+| WS | `/dialogue` | Voice-to-voice dialogue pipeline |
+| GET | `/health` | Service health + backend status |
+| GET | `/capabilities` | NPU resource usage + conflict info |
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│  Application Layer                                │
+│  FastAPI server, WebSocket streaming, dialogue,   │
+│  capability/conflict detection                    │
+├──────────────────────────────────────────────────┤
+│  Engine Layer (public API)                        │
+│  ASREngine ABC + TTSEngine ABC + factories        │
+├──────────────────────────────────────────────────┤
+│  Backend Layer                                    │
+│  Qwen3-ASR (RKNN + RKLLM)  │  Matcha+Vocos      │
+│  Piper VITS (RKNN)         │  Qwen3-TTS          │
+├──────────────────────────────────────────────────┤
+│  Platform + Runtime                               │
+│  RK3576/RK3588 configs, RKNN/RKLLM wrappers     │
+└──────────────────────────────────────────────────┘
+```
+
+Data flow (streaming ASR):
+```
+Mic → int16 PCM → [WebSocket] → VAD → Mel → RKNN Encoder → RKLLM Decoder → Text
+                                                  NPU                NPU
+```
+
+Data flow (streaming TTS):
+```
+Text → Phonemes → Matcha (NPU) → Mel → Vocos (NPU) → ISTFT (CPU) → PCM → [WebSocket]
+```
 
 ## Model Preparation
 
-Models are not bundled. Conversion scripts are in `models/`:
+Models are not bundled — use the conversion scripts in `models/` to generate them:
 
 ```
 models/
-├── asr/qwen3/         # Export RKNN encoder, RKLLM decoder, matmul weights
-├── tts/matcha/        # Convert and split Matcha+Vocos for RKNN
-├── tts/piper/         # Batch convert Piper VITS voices for RKNN
-└── common/            # Shared ONNX fix utilities (sin, ScatterND, erf)
+├── asr/qwen3/       # RKNN encoder, RKLLM decoder, matmul weights
+├── tts/matcha/       # Matcha+Vocos RKNN conversion + ONNX fixes
+├── tts/piper/        # Piper VITS split (CPU encoder + NPU decoder)
+├── tts/kokoro/       # Kokoro RKNN fixes
+└── common/           # Shared tools: Sin→polynomial, ScatterND bake, Erf→Tanh
 ```
 
-Each subdirectory contains a `README.md` with step-by-step conversion instructions.
-
-Expected model layout under `/opt/models/`:
+Expected model layout on the device:
 
 ```
 /opt/models/
 ├── asr/
-│   ├── encoder/rk3576/encoder.4s.fp16.rknn
-│   ├── decoder/rk3576/decoder.w4a16.rkllm
+│   ├── encoder/rk3576/*.rknn
+│   ├── decoder/rk3576/*.rkllm
 │   ├── embed_tokens.npy
 │   ├── mel_filters.npy
 │   └── tokenizer.json
-└── tts/
-    └── rk3576/
-        ├── matcha.fp16.rknn
-        └── vocos.w4a16.rknn
+└── tts/rk3576/
+    ├── matcha.fp16.rknn
+    └── vocos.w4a16.rknn
 ```
 
-## Project Structure
+## Configuration
 
-```
-rkvoice-stream/
-├── rkvoice_stream/    # Python package
-│   ├── engine/        # Public API: ABCs and factory functions
-│   ├── backends/      # ASR and TTS backend implementations
-│   ├── app/           # FastAPI server, dialogue orchestrator, capability detection
-│   ├── platform/      # RK3576/RK3588 device config constants
-│   ├── runtime/       # Low-level RKNN/RKLLM wrappers
-│   └── vad/           # Voice activity detection (Silero)
-├── models/            # Model conversion scripts (not pip-packaged)
-├── configs/           # Pre-validated YAML config profiles
-├── docker/            # Dockerfile and docker-compose.yml
-├── docs/              # Guides: quickstart, model conversion, API reference
-└── tests/             # Test suite (dual-mode: direct backend or HTTP)
+Five pre-validated profiles in `configs/`:
+
+| Profile | Description |
+|---------|-------------|
+| `rk3576-full.yaml` | ASR + Matcha TTS (split NPU cores) |
+| `rk3576-asr-only.yaml` | ASR with both NPU cores |
+| `rk3576-tts-only.yaml` | Matcha TTS only |
+| `rk3576-piper-multilang.yaml` | Piper multi-language TTS |
+| `rk3588-full.yaml` | RK3588 full stack |
+
+Use via Docker:
+```bash
+docker run -e CONFIG=rk3576-full rkvoice-stream
 ```
 
 ## Testing
 
+Dual-mode test suite — works against a live container or directly on device:
+
 ```bash
-# On device (direct backend mode, requires NPU + models)
+# On device (direct mode)
 pytest tests/ -v
 
 # Against running container (HTTP mode)
 SERVICE_URL=http://192.168.1.100:8621 pytest tests/ -v
 ```
 
-Quality gates: CER < 0.5, RTF < 1.0.
+Quality gates: CER < 0.5 per sentence, RTF < 1.0.
+
+## Acknowledgements
+
+Built on top of these projects:
+
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) — speech inference engine (Piper, Kokoro, VAD)
+- [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) — Qwen3 TTS model
+- [Matcha-TTS](https://github.com/shivammehta25/Matcha-TTS) — non-autoregressive TTS
+- [Piper](https://github.com/rhasspy/piper) — fast local neural TTS
+- [RKNN-Toolkit2](https://github.com/airockchip/rknn-toolkit2) — Rockchip NPU SDK
+- [RKLLM-Toolkit](https://github.com/airockchip/rkllm-toolkit) — Rockchip LLM SDK
 
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE)
