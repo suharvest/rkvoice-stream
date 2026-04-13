@@ -1,0 +1,19 @@
+# RK3588 Full Stack: ASR + TTS
+# More NPU cores and memory than RK3576
+name: "RK3588 Full (ASR + TTS)"
+platform: rk3588
+
+asr:
+  backend: qwen3_asr_rk
+  model_dir: /opt/asr/models
+  decoder_type: rkllm
+  npu_core_mask: NPU_CORE_1_2     # Reserve CORE_0 for TTS
+  enabled_cpus: 4                  # A76 big cores
+  max_context_len: 1024
+  max_new_tokens: 128
+  repeat_penalty: 1.15
+  compact_suffix: true
+
+tts:
+  backend: matcha_rknn
+  model_dir: /opt/tts/models

@@ -1,0 +1,7 @@
+# RK3576 TTS Only: Matcha+Vocos
+name: "RK3576 TTS Only (Matcha)"
+platform: rk3576
+
+tts:
+  backend: matcha_rknn
+  model_dir: /opt/tts/models

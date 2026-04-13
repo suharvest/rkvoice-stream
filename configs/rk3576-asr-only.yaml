@@ -1,0 +1,14 @@
+# RK3576 ASR Only: Qwen3-ASR with full NPU
+name: "RK3576 ASR Only"
+platform: rk3576
+
+asr:
+  backend: qwen3_asr_rk
+  model_dir: /opt/asr/models
+  decoder_type: rkllm
+  npu_core_mask: NPU_CORE_0_1     # Both cores for ASR
+  enabled_cpus: 2
+  max_context_len: 1024
+  max_new_tokens: 128
+  repeat_penalty: 1.15
+  compact_suffix: true

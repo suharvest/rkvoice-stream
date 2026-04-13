@@ -1,0 +1,11 @@
+# RK3576 Piper Multi-Language TTS
+# Supports: en_US, zh_CN, de_DE, fr_FR, ja_JP (Kokoro CPU fallback)
+name: "RK3576 Piper Multi-Language TTS"
+platform: rk3576
+
+tts:
+  backend: piper_rknn
+  model_dir: /opt/piper-models
+  languages: "en_US,zh_CN,de_DE,fr_FR,ja_JP"
+  default_lang: en_US
+  kokoro_voice: jf_alpha     # Japanese voice (CPU fallback)

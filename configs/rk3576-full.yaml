@@ -1,0 +1,20 @@
+# RK3576 Full Stack: ASR (Qwen3) + TTS (Matcha)
+# Tested on cat-remote (RK3576 4GB)
+name: "RK3576 Full (ASR + Matcha TTS)"
+platform: rk3576
+
+asr:
+  backend: qwen3_asr_rk
+  model_dir: /opt/asr/models
+  decoder_type: rkllm
+  npu_core_mask: NPU_CORE_1       # Reserve CORE_0 for TTS
+  enabled_cpus: 2                  # A72 big cores
+  max_context_len: 512
+  max_new_tokens: 128
+  repeat_penalty: 1.15
+  compact_suffix: true
+
+tts:
+  backend: matcha_rknn
+  model_dir: /opt/tts/models
+  # Matcha uses NPU_CORE_0 (split cores with ASR)

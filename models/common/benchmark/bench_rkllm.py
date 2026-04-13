@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Benchmark a single RKLLM talker model."""
+import ctypes, time, sys, os, json
+import numpy as np
+
+RKLLM_Handle_t = ctypes.c_void_p
+
+class LLMCallState:
+    RKLLM_RUN_NORMAL = 0
+    RKLLM_RUN_FINISH = 2
+    RKLLM_RUN_ERROR = 3
+
+class RKLLMExtendParam(ctypes.Structure):
+    _fields_ = [
+        ("base_domain_id", ctypes.c_int32),
+        ("embed_flash", ctypes.c_int8),
+        ("enabled_cpus_num", ctypes.c_int8),
+        ("enabled_cpus_mask", ctypes.c_uint32),
+        ("n_batch", ctypes.c_uint8),
+        ("use_cross_attn", ctypes.c_int8),
+        ("reserved", ctypes.c_uint8 * 104)
+    ]
+
+class RKLLMParam(ctypes.Structure):
+    _fields_ = [
+        ("model_path", ctypes.c_char_p),
+        ("max_context_len", ctypes.c_int32),
+        ("max_new_tokens", ctypes.c_int32),
+        ("top_k", ctypes.c_int32),
+        ("n_keep", ctypes.c_int32),
+        ("top_p", ctypes.c_float),
+        ("temperature", ctypes.c_float),
+        ("repeat_penalty", ctypes.c_float),
+        ("frequency_penalty", ctypes.c_float),
+        ("presence_penalty", ctypes.c_float),
+        ("mirostat", ctypes.c_int32),
+        ("mirostat_tau", ctypes.c_float),
+        ("mirostat_eta", ctypes.c_float),
+        ("skip_special_token", ctypes.c_bool),
+        ("is_async", ctypes.c_bool),
+        ("img_start", ctypes.c_char_p),
+        ("img_end", ctypes.c_char_p),
+        ("img_content", ctypes.c_char_p),
+        ("extend_param", RKLLMExtendParam),
+    ]
+
+class RKLLMEmbedInput(ctypes.Structure):
+    _fields_ = [
+        ("embed", ctypes.POINTER(ctypes.c_float)),
+        ("n_tokens", ctypes.c_size_t),
+    ]
+
+class RKLLMInputUnion(ctypes.Union):
+    _fields_ = [
+        ("prompt_input", ctypes.c_char_p),
+        ("embed_input", RKLLMEmbedInput),
+    ]
+
+class RKLLMInput(ctypes.Structure):
+    _fields_ = [
+        ("role", ctypes.c_char_p),
+        ("enable_thinking", ctypes.c_bool),
+        ("input_type", ctypes.c_int),
+        ("input_data", RKLLMInputUnion)
+    ]
+
+class RKLLMInferParam(ctypes.Structure):
+    _fields_ = [
+        ("mode", ctypes.c_int),
+        ("lora_params", ctypes.c_void_p),
+        ("prompt_cache_params", ctypes.c_void_p),
+        ("keep_history", ctypes.c_int)
+    ]
+
+class RKLLMResult(ctypes.Structure):
+    _fields_ = [
+        ("text", ctypes.c_char_p),
+        ("token_id", ctypes.c_int),
+    ]
+
+RKLLM_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.POINTER(RKLLMResult), ctypes.c_void_p, ctypes.c_int)
+
+token_count = 0
+first_token_time = 0
+
+def callback(result, userdata, state):
+    global token_count, first_token_time
+    if state == LLMCallState.RKLLM_RUN_NORMAL:
+        token_count += 1
+        if token_count == 1:
+            first_token_time = time.perf_counter()
+
+cb = RKLLM_CALLBACK(callback)
+
+def main():
+    global token_count, first_token_time
+
+    if len(sys.argv) < 2:
+        print("Usage: bench_single.py <model_path>")
+        sys.exit(1)
+
+    model_path = sys.argv[1]
+    size_mb = os.path.getsize(model_path) / (1024 * 1024)
+    print("Model: {} ({:.1f} MB)".format(os.path.basename(model_path), size_mb))
+
+    ctypes.CDLL("librknnrt.so", mode=ctypes.RTLD_GLOBAL)
+    rkllm = ctypes.CDLL("/usr/lib/librkllmrt.so")
+    rkllm.rkllm_createDefaultParam.restype = RKLLMParam
+    rkllm.rkllm_init.argtypes = [ctypes.POINTER(RKLLM_Handle_t), ctypes.POINTER(RKLLMParam), RKLLM_CALLBACK]
+    rkllm.rkllm_init.restype = ctypes.c_int
+    rkllm.rkllm_run.argtypes = [RKLLM_Handle_t, ctypes.POINTER(RKLLMInput), ctypes.POINTER(RKLLMInferParam), ctypes.c_void_p]
+    rkllm.rkllm_run.restype = ctypes.c_int
+    rkllm.rkllm_destroy.argtypes = [RKLLM_Handle_t]
+
+    param = rkllm.rkllm_createDefaultParam()
+    param.model_path = model_path.encode()
+    param.max_context_len = 1024
+    param.max_new_tokens = 256
+    param.top_k = 1
+    param.temperature = 1.0
+    param.repeat_penalty = 1.0
+    param.skip_special_token = False
+    param.is_async = False
+    param.extend_param.embed_flash = 0
+
+    handle = RKLLM_Handle_t()
+    init_start = time.perf_counter()
+    ret = rkllm.rkllm_init(ctypes.byref(handle), ctypes.byref(param), cb)
+    init_time = time.perf_counter() - init_start
+
+    if ret != 0:
+        print("Init FAILED (ret={})".format(ret))
+        sys.exit(1)
+    print("Init: {:.1f}s".format(init_time))
+
+    HIDDEN_SIZE = 1024
+    N_PREFILL = 50
+    np.random.seed(42)
+    embeddings = np.random.randn(N_PREFILL, HIDDEN_SIZE).astype(np.float32) * 0.1
+    embed_flat = embeddings.flatten()
+    embed_array = (ctypes.c_float * len(embed_flat))(*embed_flat)
+
+    rkllm_input = RKLLMInput()
+    rkllm_input.input_type = 2  # RKLLM_INPUT_EMBED
+    rkllm_input.input_data.embed_input.embed = embed_array
+    rkllm_input.input_data.embed_input.n_tokens = N_PREFILL
+
+    infer_param = RKLLMInferParam()
+    infer_param.mode = 0
+    infer_param.keep_history = 0
+
+    results = []
+    for run in range(3):
+        token_count = 0
+        first_token_time = 0
+
+        start = time.perf_counter()
+        rkllm.rkllm_run(handle, ctypes.byref(rkllm_input), ctypes.byref(infer_param), None)
+        end = time.perf_counter()
+
+        prefill_ms = (first_token_time - start) * 1000 if first_token_time > 0 else 0
+        decode_tokens = token_count - 1 if token_count > 1 else 0
+        decode_time = end - first_token_time if first_token_time > 0 else 0
+        tok_per_sec = decode_tokens / decode_time if decode_time > 0 else 0
+        ms_per_tok = decode_time / decode_tokens * 1000 if decode_tokens > 0 else 0
+
+        print("Run {}: {} tokens, prefill={:.1f}ms, decode={} @ {:.1f}tok/s ({:.1f}ms/tok)".format(
+            run + 1, token_count, prefill_ms, decode_tokens, tok_per_sec, ms_per_tok))
+
+        results.append({
+            "tokens": token_count, "prefill_ms": prefill_ms,
+            "decode_tokens": decode_tokens, "tok_per_sec": tok_per_sec,
+            "ms_per_tok": ms_per_tok
+        })
+
+    rkllm.rkllm_destroy(handle)
+
+    # Average of last 2 runs
+    avg = results[1:]
+    avg_tok = sum(r["tok_per_sec"] for r in avg) / len(avg)
+    avg_ms = sum(r["ms_per_tok"] for r in avg) / len(avg)
+    avg_prefill = sum(r["prefill_ms"] for r in avg) / len(avg)
+
+    print("\nJSON_RESULT:{}".format(json.dumps({
+        "size_mb": round(size_mb, 1),
+        "init_s": round(init_time, 1),
+        "prefill_ms": round(avg_prefill, 1),
+        "decode_tok_s": round(avg_tok, 1),
+        "decode_ms_tok": round(avg_ms, 1),
+    })))
+
+
+if __name__ == "__main__":
+    main()

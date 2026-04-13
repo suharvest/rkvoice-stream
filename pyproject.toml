@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rkvoice-stream"
+version = "0.1.0"
+description = "Streaming speech AI on Rockchip NPU platforms (ASR + TTS)"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = [
+    "numpy<2",
+    "soundfile",
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+    "pydantic",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "requests"]
+
+[tool.setuptools.packages.find]
+include = ["rkvoice_stream*"]

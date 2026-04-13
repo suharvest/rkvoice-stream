@@ -1,0 +1,52 @@
+services:
+  speech:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    image: rk3576-speech:latest
+    container_name: rk3576-speech
+    privileged: true
+    init: true
+    network_mode: host
+    mem_limit: 7500m
+    memswap_limit: 7500m
+    volumes:
+      - /dev:/dev
+      - /home/cat/models/matcha-icefall-zh-en:/opt/tts/models/matcha-icefall-zh-en:ro
+      - /home/cat/models/matcha-s64.rknn:/opt/tts/models/matcha-s64.rknn:ro
+      - /home/cat/models/vocos-16khz-600.rknn:/opt/tts/models/vocos-16khz-600.rknn:ro
+      - /home/cat/models/matcha-split:/opt/tts/models/matcha-split:ro
+      - /home/cat/matcha-data:/home/cat/matcha-data:ro
+      - /home/cat/qwen3-asr-models:/opt/asr/models:ro
+      - /home/cat/rk3576-build/librkllmrt.so:/opt/asr/lib/librkllmrt.so:ro
+      - /home/cat/project/rknn-matmul-parallel:/opt/rknn-matmul-parallel:ro
+      - /home/cat/piper-models:/opt/piper-models:ro
+    restart: unless-stopped
+    environment:
+      - MODEL_DIR=/opt/tts/models
+      - TTS_BACKEND=matcha_rknn
+      - TTS_MODEL_DIR=/opt/tts/models
+      - ASR_BACKEND=qwen3_asr_rk
+      - ASR_DECODER_TYPE=rkllm
+      - RKLLM_LIB_PATH=/opt/asr/lib/librkllmrt.so
+      - ASR_MODEL_DIR=/opt/asr/models
+      - PYTHONPATH=/opt/rknn-matmul-parallel
+      - MATCHA_MAX_PHONEMES=64
+      - MATCHA_MODEL_SEQ_LEN=80
+      # Matcha acoustic model: ORT CPU FP32 recommended for best quality (9/10).
+      # RKNN split mode (7/10, faster for long sentences) auto-activates if
+      # matcha-split/ models exist and MATCHA_USE_ORT is not set.
+      - MATCHA_USE_ORT=1
+      - MATCHA_MODEL=matcha-s64.rknn
+      - VOCOS_MODEL=vocos-16khz-600.rknn
+      - VOCOS_FRAMES=600
+      # Note: vocos-16khz-600.rknn compiled for 600 mel frames
+      # Old vocos-16khz-univ-w4a16.rknn uses 256 frames
+      - MATCHA_ONNX_PATH=/home/cat/matcha-data/model-steps-3.onnx
+      # Piper RKNN backend (activate by setting TTS_BACKEND=piper_rknn)
+      - PIPER_MODEL_DIR=/opt/piper-models
+      - PIPER_LANGUAGES=en_US,zh_CN,de_DE,fr_FR,ja_JP
+      - PIPER_DEFAULT_LANG=en_US
+      # Japanese CPU fallback (sherpa-onnx Kokoro v1.0); voices: jf_alpha jf_gongitsune jf_nezumi jf_tebukuro jm_kumo
+      - KOKORO_VOICE=jf_alpha
