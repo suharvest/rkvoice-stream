@@ -13,6 +13,7 @@ services:
     memswap_limit: 7500m
     volumes:
       - /dev:/dev
+      - /usr/lib/librknnrt.so:/usr/lib/librknnrt.so:ro
       - /home/cat/models/matcha-icefall-zh-en:/opt/tts/models/matcha-icefall-zh-en:ro
       - /home/cat/models/matcha-s64.rknn:/opt/tts/models/matcha-s64.rknn:ro
       - /home/cat/models/vocos-16khz-600.rknn:/opt/tts/models/vocos-16khz-600.rknn:ro
