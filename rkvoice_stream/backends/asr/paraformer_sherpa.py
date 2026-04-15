@@ -105,8 +105,10 @@ class ParaformerSherpaBackend(ASRBackend):
         while self._recognizer.is_ready(stream):
             self._recognizer.decode_stream(stream)
 
-        text = self._recognizer.get_result(stream).text.strip()
-        return TranscriptionResult(text=text)
+        text = self._recognizer.get_result(stream)
+        if hasattr(text, "text"):
+            text = text.text
+        return TranscriptionResult(text=text.strip())
 
     def create_stream(self, language: str = "auto") -> ASRStream:
         if not self.is_ready():
@@ -140,9 +142,10 @@ class ParaformerSherpaStream(ASRStream):
 
     def get_partial(self) -> tuple[str, bool]:
         """Return (partial_text, is_endpoint)."""
-        text = self._recognizer.get_result(self._stream).text.strip()
+        result = self._recognizer.get_result(self._stream)
+        text = result.text if hasattr(result, "text") else result
         is_endpoint = self._recognizer.is_endpoint(self._stream)
-        return text, is_endpoint
+        return text.strip(), is_endpoint
 
     def finalize(self) -> str:
         """Feed tail silence, flush decoder, return final text."""
@@ -153,7 +156,9 @@ class ParaformerSherpaStream(ASRStream):
         while self._recognizer.is_ready(self._stream):
             self._recognizer.decode_stream(self._stream)
 
-        return self._recognizer.get_result(self._stream).text.strip()
+        result = self._recognizer.get_result(self._stream)
+        text = result.text if hasattr(result, "text") else result
+        return text.strip()
 
 
 # ---------------------------------------------------------------------------

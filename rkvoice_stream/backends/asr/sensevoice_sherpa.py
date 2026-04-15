@@ -173,10 +173,14 @@ class SenseVoiceSherpaBackend(ASRBackend):
     # ------------------------------------------------------------------
 
     def _transcribe_array(self, audio: np.ndarray, language: str = "auto") -> TranscriptionResult:
-        """Run offline recognizer on a float32 numpy array."""
-        sv_lang = _map_language(language)
+        """Run offline recognizer on a float32 numpy array.
 
-        stream = self._recognizer.create_stream(lang=sv_lang)
+        Note: sherpa-onnx OfflineRecognizer.create_stream() does not accept a
+        language argument — language is fixed at recognizer creation time (set
+        to "auto" in preload()).  The per-call language parameter is ignored by
+        the recognizer but the detected language is read back from stream.result.
+        """
+        stream = self._recognizer.create_stream()
         stream.accept_waveform(self.sample_rate, audio)
         self._recognizer.decode_stream(stream)
         text = stream.result.text.strip()
@@ -185,7 +189,7 @@ class SenseVoiceSherpaBackend(ASRBackend):
 
         return TranscriptionResult(
             text=text,
-            language=detected_lang or (sv_lang if sv_lang != "auto" else None),
+            language=detected_lang,
         )
 
     @staticmethod
@@ -347,7 +351,7 @@ class SenseVoiceSherpaStream(ASRStream):
 
     def _transcribe_samples(self, samples: np.ndarray) -> str:
         """Run the offline recognizer on a float32 sample array."""
-        stream = self._recognizer.create_stream(lang=self._sv_lang)
+        stream = self._recognizer.create_stream()
         stream.accept_waveform(16000, samples)
         self._recognizer.decode_stream(stream)
         return stream.result.text.strip()
