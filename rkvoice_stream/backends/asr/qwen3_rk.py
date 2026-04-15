@@ -75,12 +75,12 @@ class Qwen3ASRRKBackend(ASRBackend):
             decoder_exec_mode=os.environ.get("MATMUL_EXEC_MODE", "dual_core"),
             decoder_quant=os.environ.get("ASR_DECODER_QUANT", "w8a8"),  # decoder model quantization
             encoder_sizes=[2, 4],       # 2s for short audio (faster), 4s for longer
-            enabled_cpus=2,
+            enabled_cpus=int(os.environ.get("ASR_ENABLED_CPUS", "2")),
             max_context_len=int(os.environ.get("RKLLM_MAX_CONTEXT_LEN", "512")),
             repeat_penalty=1.15,
             compact_suffix=True,
             verbose=True,
-            npu_core_mask="NPU_CORE_1",  # Reserve NPU_CORE_0 for TTS vocoder
+            npu_core_mask=os.environ.get("ASR_NPU_CORE_MASK", "NPU_CORE_1"),
         )
         if lib_path:
             engine_kwargs["lib_path"] = lib_path

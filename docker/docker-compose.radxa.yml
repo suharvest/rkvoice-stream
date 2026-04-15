@@ -28,7 +28,9 @@ services:
       - ASR_BACKEND=qwen3_asr_rk
       - ASR_PLATFORM=rk3588
       - ASR_DECODER_TYPE=rkllm
-      - ASR_DECODER_QUANT=w8a8
+      - ASR_DECODER_QUANT=fp16
+      - ASR_ENABLED_CPUS=4
+      - ASR_NPU_CORE_MASK=NPU_CORE_AUTO
       - RKLLM_LIB_PATH=/opt/asr/lib/librkllmrt.so
       - ASR_MODEL_DIR=/opt/asr/models
       - MATCHA_MAX_PHONEMES=64
@@ -39,7 +41,7 @@ services:
       - MATCHA_USE_ORT=1
       - MATCHA_MODEL=matcha-s64.rknn
       - VOCOS_MODEL=vocos-16khz-600.rknn
-      - VOCOS_FRAMES=600
+      - VOCOS_FRAMES=256
       # Note: vocos-16khz-600.rknn compiled for 600 mel frames
       # Old vocos-16khz-univ-w4a16.rknn uses 256 frames
       - MATCHA_ONNX_PATH=/home/radxa/matcha-data/model-steps-3.onnx
