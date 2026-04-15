@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "requests"]
+dev = ["pytest", "requests", "websocket-client"]
 
 [tool.setuptools.packages.find]
 include = ["rkvoice_stream*"]
