@@ -40,31 +40,50 @@ rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. 
 
 ## Performance
 
-Measured on RK3576 (RK3588 is faster):
+### ASR — Qwen3-ASR (52 languages)
 
-| Task | Backend | Latency | Note |
-|------|---------|---------|------|
-| TTS (zh/en) | Matcha + Vocos | **~120 ms** | NPU FP16, 3s audio output |
-| TTS (multi-lang) | Piper VITS | **~50 ms** | NPU FP16, single sentence |
-| ASR (streaming) | Qwen3-ASR | **~180 ms/chunk** | 4s audio chunks, 52 languages |
-| V2V round-trip | Matcha + Qwen3 | **~300 ms** | TTS + ASR end-to-end |
+| Metric | RK3576 (8GB) | RK3588 (16GB) |
+|--------|:------------:|:-------------:|
+| Encoder | 136 ms | 162 ms |
+| Decoder | 700 ms | 365 ms |
+| **ASR RTF** | **0.44** | **0.34** |
+| CER (avg, zh) | 15.6% | 13.2% |
+
+### TTS — two backends
+
+| Backend | Languages | RK3576 RTF | RK3588 RTF |
+|---------|-----------|:----------:|:----------:|
+| **Matcha + Vocos** | zh, en | 0.28 | 0.22 |
+| **Piper VITS** | en, zh, de, fr, ja, … | ~0.05 | ~0.03 |
+
+### Voice-to-Voice (EOS → First Audio)
+
+Streaming V2V latency: time from user stops speaking to first TTS audio chunk.
+
+| Sentence | RK3576 | RK3588 |
+|----------|:------:|:------:|
+| 你好世界 (1.5s) | 1128 ms | **696 ms** |
+| 语音识别测试 (3.1s) | 2391 ms | **1416 ms** |
+| Hello world (1.7s) | 1102 ms | **569 ms** |
+| **Average** | **1703 ms** | **957 ms** |
 
 ## Features
 
-- **Streaming ASR** — real-time partial results via WebSocket, 52 languages (Qwen3-ASR)
-- **Streaming TTS** — low-latency audio chunking, sentence-by-sentence synthesis
-- **Multiple backends** — Qwen3-ASR, Matcha+Vocos, Piper VITS (6+ languages), Qwen3-TTS
+- **ASR: Qwen3-ASR** — streaming + offline, 52 languages, RKNN encoder + RKLLM decoder on NPU
+- **TTS: Matcha + Vocos** — high-quality Chinese/English synthesis, NPU-accelerated vocoder
+- **TTS: Piper VITS** — lightweight multi-language TTS (en, zh, de, fr, ja, …), hybrid CPU+NPU
+- **Streaming everywhere** — WebSocket ASR (real-time partials), streaming TTS (sentence-by-sentence PCM)
+- **Voice-to-voice pipeline** — ASR → LLM → TTS dialogue orchestrator with sub-second first-audio latency
 - **NPU accelerated** — runs on Rockchip RKNN/RKLLM, not CPU
-- **Conflict detection** — automatically checks whether ASR + TTS can coexist on your device
 - **Config profiles** — pre-validated YAML configs for common setups (ASR-only, TTS-only, full stack)
 - **jetson-voice compatible** — same HTTP/WebSocket API, drop-in replacement for RK platforms
 
 ## Supported Platforms
 
-| Platform | NPU Cores | NPU Memory | CPU | Status |
-|----------|-----------|------------|-----|--------|
-| RK3576 | 2 | 180 MB | 2x A72 + 4x A55 | Tested |
-| RK3588 | 3 | 512 MB | 4x A76 + 4x A55 | Supported |
+| Platform | NPU | CPU | RKLLM Quant | V2V Latency | Status |
+|----------|-----|-----|-------------|:-----------:|--------|
+| RK3576 | 2 cores, 6 TOPS | 2x A72 + 4x A55 | W4A16 | ~1.1s | Tested |
+| RK3588 | 3 cores, 6 TOPS | 4x A76 + 4x A55 | FP16 | **~0.7s** | Tested |
 
 ## Quick Start
 
