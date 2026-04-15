@@ -70,10 +70,10 @@ class Qwen3ASRRKBackend(ASRBackend):
 
         engine_kwargs = dict(
             model_dir=model_dir,
-            platform="rk3576",
+            platform=os.environ.get("ASR_PLATFORM", "rk3576"),
             decoder_type=decoder_type,
             decoder_exec_mode=os.environ.get("MATMUL_EXEC_MODE", "dual_core"),
-            decoder_quant="w4a16",      # decoder_hf.w4a16.rk3576.rkllm / matmul weights
+            decoder_quant=os.environ.get("ASR_DECODER_QUANT", "w8a8"),  # decoder model quantization
             encoder_sizes=[2, 4],       # 2s for short audio (faster), 4s for longer
             enabled_cpus=2,
             max_context_len=int(os.environ.get("RKLLM_MAX_CONTEXT_LEN", "512")),
