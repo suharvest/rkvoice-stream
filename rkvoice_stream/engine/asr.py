@@ -43,6 +43,13 @@ class ASRStream(ABC):
         """Signal end-of-audio and return final transcription text."""
         ...
 
+    def prepare_finalize(self) -> None:
+        """Pre-encode remaining audio so finalize() only runs the decoder.
+
+        Optional optimization — finalize() works without calling this first.
+        """
+        pass
+
     def get_partial(self) -> tuple[str, bool]:
         """Return (partial_text, is_endpoint). Default: no partial results."""
         return "", False

@@ -283,6 +283,8 @@ async def asr_stream(
 
     finally:
         try:
+            # Pre-encode tail audio (encoder only) so finalize just runs decoder
+            await loop.run_in_executor(None, stream.prepare_finalize)
             final_text = await loop.run_in_executor(None, stream.finalize)
             await ws.send_json({"text": final_text, "is_final": True})
         except Exception:

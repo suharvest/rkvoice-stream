@@ -133,6 +133,31 @@ class StreamSession:
             "is_speech": self._vad_speech_active if self.vad else True,
         }
 
+    def prepare_finalize(self) -> None:
+        """Pre-encode the tail buffer so finish() only needs to run the decoder.
+
+        Call this once after the last feed_audio() and before finish().
+        Safe to skip — finish() will encode if needed.
+        """
+        buf = self.buffer if self.vad is None else self._speech_buf
+        if len(buf) == 0:
+            return
+        if self._spec_embd is not None and self._spec_audio_len == len(buf):
+            return  # already encoded
+
+        audio = buf
+        min_samples = int(0.5 * SAMPLE_RATE)
+        if len(audio) < min_samples:
+            audio = np.pad(audio, (0, min_samples - len(audio)))
+
+        t0 = time.perf_counter()
+        embd = self.engine.encoder.encode(audio)
+        if isinstance(embd, tuple):
+            embd = embd[0]
+        self._total_enc_ms += (time.perf_counter() - t0) * 1000
+        self._spec_embd = embd
+        self._spec_audio_len = len(buf)
+
     def finish(self, apply_itn_flag: bool = True) -> dict:
         """
         Finish streaming: process remaining buffer and return final result.
@@ -149,11 +174,21 @@ class StreamSession:
 
         # Process remaining raw buffer (non-VAD)
         if len(self.buffer) > 0:
-            buf = self.buffer
-            if len(buf) < int(0.5 * SAMPLE_RATE):
-                buf = np.pad(buf, (0, int(0.5 * SAMPLE_RATE) - len(buf)))
-            self._process_chunk(buf)
+            if (self._spec_embd is not None
+                    and self._spec_audio_len == len(self.buffer)):
+                # Reuse pre-encoded embedding — only run decoder
+                self._decode_with_window(
+                    self._spec_embd,
+                    len(self.buffer) / SAMPLE_RATE,
+                    enc_ms=0, spec_tag=True)
+                self._total_audio_s += len(self.buffer) / SAMPLE_RATE
+            else:
+                buf = self.buffer
+                if len(buf) < int(0.5 * SAMPLE_RATE):
+                    buf = np.pad(buf, (0, int(0.5 * SAMPLE_RATE) - len(buf)))
+                self._process_chunk(buf)
             self.buffer = np.zeros(0, dtype=np.float32)
+            self._spec_embd = None
 
         text = self._current_text
         if apply_itn_flag:
@@ -193,6 +228,8 @@ class StreamSession:
             self.buffer = self.buffer[self.chunk_samples:]
             self._process_chunk(chunk)
             chunks_processed += 1
+            self._spec_embd = None  # invalidate after full chunk
+
 
         return {
             "language": self._current_language,

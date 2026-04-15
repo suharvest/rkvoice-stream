@@ -74,7 +74,7 @@ class Qwen3ASRRKBackend(ASRBackend):
             decoder_type=decoder_type,
             decoder_exec_mode=os.environ.get("MATMUL_EXEC_MODE", "dual_core"),
             decoder_quant="w4a16",      # decoder_hf.w4a16.rk3576.rkllm / matmul weights
-            encoder_sizes=[4],          # 4s encoder only — saves NPU memory
+            encoder_sizes=[2, 4],       # 2s for short audio (faster), 4s for longer
             enabled_cpus=2,
             max_context_len=int(os.environ.get("RKLLM_MAX_CONTEXT_LEN", "512")),
             repeat_penalty=1.15,
@@ -110,7 +110,7 @@ class Qwen3ASRRKBackend(ASRBackend):
                 result = self._engine.transcribe(
                     audio=audio,
                     language=lang_hint,
-                    chunk_size=4.0,
+                    chunk_size=2.0,
                     memory_num=2,
                     rollback_tokens=2,
                     max_new_tokens=max_new_tokens,
@@ -120,7 +120,7 @@ class Qwen3ASRRKBackend(ASRBackend):
             result = self._engine.transcribe(
                 audio=audio,
                 language=lang_hint,
-                chunk_size=4.0,
+                chunk_size=2.0,
                 memory_num=2,
                 rollback_tokens=2,
                 max_new_tokens=max_new_tokens,
@@ -141,7 +141,7 @@ class Qwen3ASRRKBackend(ASRBackend):
         lang_hint = None if language == "auto" else language
         stream_session = self._engine.create_stream(
             language=lang_hint,
-            chunk_size=4.0,
+            chunk_size=2.0,
             memory_num=2,
             rollback_tokens=2,
         )
@@ -192,6 +192,9 @@ class Qwen3ASRRKStream(ASRStream):
             audio = _resample(audio, sample_rate, 16000)
 
         self._stream.feed_audio(audio)
+
+    def prepare_finalize(self) -> None:
+        self._stream.prepare_finalize()
 
     def finalize(self) -> str:
         if self._use_npu_lock:
