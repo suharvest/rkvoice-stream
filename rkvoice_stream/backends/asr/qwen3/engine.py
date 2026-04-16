@@ -250,10 +250,11 @@ class Qwen3ASREngine:
                 callback_fn=decoder_callback,
             )
 
-        # KV cache reuse disabled — RKLLM EMBED mode assigns RoPE positions
-        # starting from 0 for new tokens, but cached KV has positions 0..n_keep.
-        # This causes position collision and garbage output.
-        # Would need RKLLM API to support position offset for EMBED inputs.
+        # Prefix KV cache disabled — two RKLLM limitations block this:
+        # 1. clear_kv_cache(keep=n) + EMBED: RoPE positions reset to 0 (mismatch)
+        # 2. save_prompt_cache: only works with TEXT input, not EMBED mode
+        # Impact: ~80ms extra prefill per decode (15 prefix tokens)
+        # Fix requires: RKLLM API support for position offset in EMBED mode
         self._prefix_kv_cached = False
 
         load_time = time.time() - t_start

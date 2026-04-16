@@ -378,51 +378,71 @@ class RKLLMDecoder:
         print(f"[Decoder] Loaded. cpus={enabled_cpus} max_ctx={max_context_len} "
               f"max_new_tokens={max_new_tokens} top_k={top_k} n_keep={n_keep}")
 
-    def precompute_prefix_kv(self, prefix_embed: np.ndarray) -> float:
+    def precompute_prefix_kv(self, prefix_embed: np.ndarray,
+                             cache_path: str = "/tmp/rkllm_prefix_cache.bin") -> float:
         """
-        Pre-compute KV cache for fixed prefix tokens using GET_LOGITS mode.
-        
-        Call once during init. Subsequent run_embed calls with
-        keep_prefix=True will skip these tokens.
-        
+        Pre-compute KV cache for fixed prefix tokens and save to disk.
+
+        Uses rkllm_load_prompt_cache to restore the cache before each
+        inference, which correctly preserves RoPE positions (unlike
+        clear_kv_cache + keep_history which resets positions to 0).
+
         Args:
             prefix_embed: (n_prefix, embed_dim) float32 embedding
-            
+            cache_path: Path to save the prompt cache file
+
         Returns:
             Computation time in ms
         """
         import time
         t0 = time.perf_counter()
-        
+
         self.lib.rkllm_clear_kv_cache(self.handle, 0, None, None)
-        
+
         embed = np.ascontiguousarray(prefix_embed, dtype=np.float32)
         ptr = embed.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
         n_tokens = embed.shape[0]
-        
+
         rkllm_input = RKLLMInput()
         rkllm_input.role = b""
         rkllm_input.enable_thinking = ctypes.c_bool(False)
         rkllm_input.input_type = RKLLM_INPUT_EMBED
         rkllm_input.input_data.embed_input = RKLLMEmbedInput(ptr, n_tokens)
-        
+
+        # Run GENERATE mode to populate KV cache with prefix, then save it.
+        # GET_LOGITS mode does not support save_prompt_cache.
+        self._cache_path_bytes = cache_path.encode()
+        cache_param = RKLLMPromptCacheParam()
+        cache_param.save_prompt_cache = 1
+        cache_param.prompt_cache_path = self._cache_path_bytes
+
         infer_param = RKLLMInferParam()
-        infer_param.mode = RKLLM_INFER_GET_LOGITS
+        infer_param.mode = RKLLM_INFER_GENERATE
         infer_param.lora_params = None
-        infer_param.prompt_cache_params = None
+        infer_param.prompt_cache_params = ctypes.pointer(cache_param)
         infer_param.keep_history = 0
-        
+
         ret = self.lib.rkllm_run(
             self.handle, ctypes.byref(rkllm_input),
             ctypes.byref(infer_param), None
         )
-        
+        # Abort after first token to minimize prefix generation waste
+        if ret == 0:
+            self.lib.rkllm_abort(self.handle)
+
         ms = (time.perf_counter() - t0) * 1000
         if ret == 0:
-            self._prefix_kv_ready = True
+            import os
+            if os.path.exists(cache_path):
+                self._prefix_cache_path = cache_path
+                self._prefix_kv_ready = True
+                size_mb = os.path.getsize(cache_path) / (1024 * 1024)
+                print(f"[Decoder] Prefix cache saved: {cache_path} ({size_mb:.1f} MB)")
+            else:
+                print(f"[Decoder] WARNING: prompt cache file not created")
         else:
             print(f"[Decoder] WARNING: prefix KV pre-compute failed (ret={ret})")
-        
+
         return ms
 
     def run_embed(self, embed_array: np.ndarray, n_tokens: int,
@@ -446,9 +466,12 @@ class RKLLMDecoder:
 
             # Clear KV cache
             if keep_prefix and self._prefix_kv_ready:
-                # Keep prefix KV (first n_keep positions), clear the rest
-                self.lib.rkllm_clear_kv_cache(self.handle, 1, None, None)
-                keep_history = 1  # Must use keep_history to append to cached KV
+                # Restore prefix KV from saved prompt cache file.
+                # This correctly preserves RoPE positions (unlike
+                # clear_kv_cache(keep=n) which causes position mismatch).
+                self.lib.rkllm_load_prompt_cache(
+                    self.handle, self._prefix_cache_path.encode())
+                keep_history = 1  # Append new tokens after cached prefix
             elif not keep_history:
                 self.lib.rkllm_clear_kv_cache(self.handle, 0, None, None)
 
