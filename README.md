@@ -40,36 +40,39 @@ rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. 
 
 ## Performance
 
-### ASR — Qwen3-ASR (52 languages)
+### ASR — three backends
 
-| Metric | RK3576 (8GB) | RK3588 (16GB) |
-|--------|:------------:|:-------------:|
-| Encoder | 136 ms | 162 ms |
-| Decoder | 700 ms | 365 ms |
-| **ASR RTF** | **0.44** | **0.34** |
-| CER (avg, zh) | 15.6% | 13.2% |
+| Backend | Languages | Type | RK3576 RTF | RK3588 RTF |
+|---------|:---------:|------|:----------:|:----------:|
+| **Qwen3-ASR** (NPU) | 52 | RKNN + RKLLM | 0.44 | 0.34 |
+| **SenseVoice** (CPU) | 50+ | sherpa-onnx | 0.36 | 0.11 |
+| **Paraformer** (CPU) | 4 | sherpa-onnx streaming | 0.50 | 0.24 |
 
 ### TTS — two backends
 
 | Backend | Languages | RK3576 RTF | RK3588 RTF |
 |---------|-----------|:----------:|:----------:|
-| **Matcha + Vocos** | zh, en | 0.28 | 0.22 |
+| **Matcha + Vocos** | zh, en | 0.19 | 0.10 |
 | **Piper VITS** | en, zh, de, fr, ja, … | ~0.05 | ~0.03 |
 
 ### Voice-to-Voice (EOS → First Audio)
 
 Streaming V2V latency: time from user stops speaking to first TTS audio chunk.
+Measured with Qwen3-ASR (NPU) + Matcha TTS.
 
 | Sentence | RK3576 | RK3588 |
 |----------|:------:|:------:|
-| 你好世界 (1.5s) | 1128 ms | **696 ms** |
-| 语音识别测试 (3.1s) | 2391 ms | **1416 ms** |
-| Hello world (1.7s) | 1102 ms | **569 ms** |
-| **Average** | **1703 ms** | **957 ms** |
+| 你好世界 (1.5s) | 1631 ms | **1184 ms** |
+| 今天天气真不错 (2.0s) | 2531 ms | **1937 ms** |
+| 语音识别测试 (3.1s) | 3330 ms | **2217 ms** |
+| Hello world (1.7s) | 2689 ms | **933 ms** |
+| **Average** | **2545 ms** | **1568 ms** |
 
 ## Features
 
 - **ASR: Qwen3-ASR** — streaming + offline, 52 languages, RKNN encoder + RKLLM decoder on NPU
+- **ASR: SenseVoice** — offline + VAD streaming, 50+ languages, CPU (sherpa-onnx)
+- **ASR: Paraformer** — native streaming, zh/en/ja/ko, CPU (sherpa-onnx)
 - **TTS: Matcha + Vocos** — high-quality Chinese/English synthesis, NPU-accelerated vocoder
 - **TTS: Piper VITS** — lightweight multi-language TTS (en, zh, de, fr, ja, …), hybrid CPU+NPU
 - **Streaming everywhere** — WebSocket ASR (real-time partials), streaming TTS (sentence-by-sentence PCM)
