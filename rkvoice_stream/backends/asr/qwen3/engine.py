@@ -250,7 +250,10 @@ class Qwen3ASREngine:
                 callback_fn=decoder_callback,
             )
 
-        # KV cache reuse disabled — EMBED mode has RoPE position mismatch.
+        # KV cache reuse disabled — RKLLM EMBED mode assigns RoPE positions
+        # starting from 0 for new tokens, but cached KV has positions 0..n_keep.
+        # This causes position collision and garbage output.
+        # Would need RKLLM API to support position offset for EMBED inputs.
         self._prefix_kv_cached = False
 
         load_time = time.time() - t_start
