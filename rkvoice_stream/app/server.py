@@ -71,19 +71,16 @@ async def startup():
 
     if speech_mode and not tts_backend_name and not asr_backend_name:
         from rkvoice_stream.app.resource_planner import ResourcePlanner
-        planner = ResourcePlanner()
-        platform = os.environ.get("ASR_PLATFORM", "rk3576")
-        _resource_plan = planner.plan(mode=speech_mode, platform=platform)
+        planner = ResourcePlanner(speech_mode)
+        _resource_plan = planner.plan()
         _speech_mode = speech_mode
         logger.info("ResourcePlanner: mode=%s", speech_mode)
         if _resource_plan.get("asr"):
-            asr_backend_name = _resource_plan["asr"]["ASR_BACKEND"]
-            logger.info("  ASR: %s", asr_backend_name)
+            asr_backend_name = _resource_plan["asr"]["backend"]
+            logger.info("  ASR: %s (%s)", asr_backend_name, _resource_plan["asr"]["provider"])
         if _resource_plan.get("tts"):
-            tts_backend_name = _resource_plan["tts"]["TTS_BACKEND"]
-            logger.info("  TTS: %s", tts_backend_name)
-        for w in _resource_plan.get("warnings", []):
-            logger.warning("  %s", w)
+            tts_backend_name = _resource_plan["tts"]["backend"]
+            logger.info("  TTS: %s (%s)", tts_backend_name, _resource_plan["tts"]["provider"])
     else:
         _speech_mode = "custom" if (tts_backend_name or asr_backend_name) else None
 
@@ -381,11 +378,3 @@ async def dialogue_ws(ws: WebSocket):
             await ws.close()
         except Exception:
             pass
-
-
-@app.get("/mode")
-async def get_mode():
-    """Return current speech mode and resource plan."""
-    if _resource_plan:
-        return _resource_plan
-    return {"mode": "unknown", "error": "Resource plan not initialized"}
