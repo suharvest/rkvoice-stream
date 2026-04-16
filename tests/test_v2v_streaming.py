@@ -82,11 +82,14 @@ def _run_v2v_streaming(
 
     t_stream_start = time.monotonic()
 
-    # Send all PCM at once — we measure EOS→first-audio, not streaming pace.
-    # Sending fast ensures spec encoding happens once on the full buffer,
-    # not repeatedly as buffer grows.
+    # Send PCM at real-time pace — this is how a real microphone works.
+    # During sending, the server processes chunks as they arrive (streaming ASR).
+    # By the time we send EOS, most audio is already encoded.
     for chunk in pcm_chunks:
         ws.send_binary(chunk)
+        # Real-time: 100ms chunk = 3200 bytes (16kHz, int16)
+        chunk_duration = len(chunk) / 2 / 16000  # bytes → samples → seconds
+        time.sleep(chunk_duration)
 
     # Signal end of speech
     t_eos = time.monotonic()

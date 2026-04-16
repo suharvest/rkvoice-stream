@@ -58,15 +58,15 @@ rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. 
 ### Voice-to-Voice (EOS → First Audio)
 
 Streaming V2V latency: time from user stops speaking to first TTS audio chunk.
-Measured with Qwen3-ASR (NPU) + Matcha TTS.
+Audio streamed at real-time pace (simulating live microphone). Qwen3-ASR (NPU) + Matcha TTS.
 
 | Sentence | RK3576 | RK3588 |
 |----------|:------:|:------:|
-| 你好世界 (1.5s) | 1631 ms | **1184 ms** |
-| 今天天气真不错 (2.0s) | 2531 ms | **1937 ms** |
-| 语音识别测试 (3.1s) | 3330 ms | **2217 ms** |
-| Hello world (1.7s) | 2689 ms | **933 ms** |
-| **Average** | **2545 ms** | **1568 ms** |
+| 你好世界 (1.5s) | 949 ms | **685 ms** |
+| 今天天气真不错 (2.0s) | 1604 ms | **1429 ms** |
+| 语音识别测试 (3.1s) | 1700 ms | **1408 ms** |
+| Hello world (1.7s) | 1289 ms | **644 ms** |
+| **Average** | **1385 ms** | **1042 ms** |
 
 ## Features
 
