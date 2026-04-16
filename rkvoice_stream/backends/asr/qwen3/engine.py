@@ -250,11 +250,20 @@ class Qwen3ASREngine:
                 callback_fn=decoder_callback,
             )
 
-        # Prefix KV cache disabled — two RKLLM limitations block this:
+        # Prefix KV cache disabled — RKLLM v1.2.3 limitations block this:
         # 1. clear_kv_cache(keep=n) + EMBED: RoPE positions reset to 0 (mismatch)
-        # 2. save_prompt_cache: only works with TEXT input, not EMBED mode
-        # Impact: ~80ms extra prefill per decode (15 prefix tokens)
-        # Fix requires: RKLLM API support for position offset in EMBED mode
+        # 2. save_prompt_cache with EMBED input: cache file never created
+        # 3. save_prompt_cache with TEXT input: cache IS created (2.3 MB, 14-token state),
+        #    BUT loading it and running EMBED with keep_history=1 produces wrong output
+        #    (model continues TEXT context "You are a helpful." instead of processing audio)
+        #    → Root cause: TEXT-mode KV cache has different internal state than EMBED-mode
+        #      KV cache; RoPE positions are incompatible across input modalities.
+        # 4. load_prompt_cache + EMBED with keep_history=0: cache is silently discarded
+        #    (model processes full embed from scratch, no speedup)
+        # Impact: ~90-130ms extra prefill per decode (15 prefix tokens)
+        # Fix requires: either RKLLM API fix for cross-modality cache, or a future
+        #   rkllm_load_prompt_cache variant that accepts EMBED format caches.
+        # Tested on: RKLLM v1.2.3, RK3588, 2025-04-16
         self._prefix_kv_cached = False
 
         load_time = time.time() - t_start
