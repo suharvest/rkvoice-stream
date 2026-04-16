@@ -431,6 +431,8 @@ class StreamSession:
             full_embd, n_tokens, keep_prefix=use_kv)
         llm_ms = (time.perf_counter() - t1) * 1000
 
+        # Remember if this was an early-stop abort (vs repetition abort)
+        was_early_stopped = self.engine.decoder._early_stop_tokens > 0
         # Reset early stop
         self.engine.decoder._early_stop_tokens = 0
         self._total_llm_ms += llm_ms
@@ -447,8 +449,10 @@ class StreamSession:
         # Strip trailing garbage tokens (weak EOS → extra 1-3 chars after punct)
         new_text = self._strip_trailing_garbage(new_text)
 
-        if was_aborted:
+        if was_aborted and not was_early_stopped:
+            # Repetition-abort: text is garbage, discard
             new_text = ""
+        # Early-abort: keep partial text — rollback will refine it next chunk
         if self._chunk_id < self.unfixed_chunks:
             new_text = ""
 
