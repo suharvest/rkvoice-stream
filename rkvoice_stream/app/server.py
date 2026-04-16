@@ -1,14 +1,15 @@
 """FastAPI TTS+ASR service for RK3576 with pluggable backends.
 
-Select backend via TTS_BACKEND / ASR_BACKEND env vars.
+Select backend via TTS_BACKEND / ASR_BACKEND env vars, or use SPEECH_MODE for auto-selection.
 
 API-compatible with jetson-voice:
-  POST /tts         — JSON {"text": "...", "sid": 0, "speed": 1.0} -> WAV
-  POST /tts/stream  — streaming TTS (PCM chunks)
-  POST /asr         — multipart upload -> {"text": ..., "language": ...}
-  WS   /asr/stream  — streaming ASR (int16 PCM frames -> JSON)
-  WS   /dialogue    — streaming dialogue (text in -> PCM audio chunks out)
-  GET  /health      — health check
+   POST /tts         — JSON {"text": "...", "sid": 0, "speed": 1.0} -> WAV
+   POST /tts/stream  — streaming TTS (PCM chunks)
+   POST /asr         — multipart upload -> {"text": ..., "language": ...}
+   WS   /asr/stream  — streaming ASR (int16 PCM frames -> JSON)
+   WS   /dialogue    — streaming dialogue (text in -> PCM audio chunks out)
+   GET  /health      — health check
+   GET  /mode        — current speech mode and plan
 """
 
 from __future__ import annotations
@@ -47,6 +48,8 @@ app = FastAPI(title="RK3576 Speech Service", version="3.0.0")
 _backend = None
 _asr_backend = None
 _dialogue = None
+_resource_plan = None
+_speech_mode = None
 
 
 class TTSRequest(BaseModel):
@@ -59,10 +62,32 @@ class TTSRequest(BaseModel):
 
 @app.on_event("startup")
 async def startup():
-    global _backend, _asr_backend, _dialogue
+    global _backend, _asr_backend, _dialogue, _resource_plan, _speech_mode
+
+    # --- ResourcePlanner: auto-select backends if SPEECH_MODE is set ---
+    speech_mode = os.environ.get("SPEECH_MODE", "")
+    tts_backend_name = os.environ.get("TTS_BACKEND", "")
+    asr_backend_name = os.environ.get("ASR_BACKEND", "")
+
+    if speech_mode and not tts_backend_name and not asr_backend_name:
+        from rkvoice_stream.app.resource_planner import ResourcePlanner
+        planner = ResourcePlanner()
+        platform = os.environ.get("ASR_PLATFORM", "rk3576")
+        _resource_plan = planner.plan(mode=speech_mode, platform=platform)
+        _speech_mode = speech_mode
+        logger.info("ResourcePlanner: mode=%s", speech_mode)
+        if _resource_plan.get("asr"):
+            asr_backend_name = _resource_plan["asr"]["ASR_BACKEND"]
+            logger.info("  ASR: %s", asr_backend_name)
+        if _resource_plan.get("tts"):
+            tts_backend_name = _resource_plan["tts"]["TTS_BACKEND"]
+            logger.info("  TTS: %s", tts_backend_name)
+        for w in _resource_plan.get("warnings", []):
+            logger.warning("  %s", w)
+    else:
+        _speech_mode = "custom" if (tts_backend_name or asr_backend_name) else None
 
     # --- TTS (optional) ---
-    tts_backend_name = os.environ.get("TTS_BACKEND", "")
     if tts_backend_name and tts_backend_name != "disabled":
         logger.info("Loading TTS backend: %s", tts_backend_name)
         try:
@@ -123,12 +148,25 @@ async def shutdown():
 async def health():
     from rkvoice_stream.engine.asr import ASRCapability
     asr_ready = _asr_backend.is_ready() if _asr_backend else False
-    return {
+    result = {
         "tts": _backend.is_ready() if _backend else False,
         "tts_backend": _backend.name if _backend and _backend.is_ready() else None,
         "asr": asr_ready,
         "asr_backend": _asr_backend.name if asr_ready else None,
         "streaming_asr": asr_ready and _asr_backend.has_capability(ASRCapability.STREAMING),
+    }
+    if _speech_mode:
+        result["mode"] = _speech_mode
+    return result
+
+
+@app.get("/mode")
+async def mode():
+    """Current speech mode and resource plan."""
+    return {
+        "mode": _speech_mode,
+        "plan": _resource_plan,
+        "available_modes": ["dialogue", "interpret", "asr_only", "tts_only"],
     }
 
 
@@ -343,3 +381,11 @@ async def dialogue_ws(ws: WebSocket):
             await ws.close()
         except Exception:
             pass
+
+
+@app.get("/mode")
+async def get_mode():
+    """Return current speech mode and resource plan."""
+    if _resource_plan:
+        return _resource_plan
+    return {"mode": "unknown", "error": "Resource plan not initialized"}
