@@ -172,7 +172,7 @@ class StreamSession:
             self._speech_buf = np.zeros(0, dtype=np.float32)
             self._vad_speech_active = False
 
-        # Process remaining raw buffer (non-VAD)
+        # Process remaining raw buffer (non-VAD) — this is the final chunk
         if len(self.buffer) > 0:
             if (self._spec_embd is not None
                     and self._spec_audio_len == len(self.buffer)):
@@ -180,13 +180,13 @@ class StreamSession:
                 self._decode_with_window(
                     self._spec_embd,
                     len(self.buffer) / SAMPLE_RATE,
-                    enc_ms=0, spec_tag=True)
+                    enc_ms=0, spec_tag=True, is_final=True)
                 self._total_audio_s += len(self.buffer) / SAMPLE_RATE
             else:
                 buf = self.buffer
                 if len(buf) < int(0.5 * SAMPLE_RATE):
                     buf = np.pad(buf, (0, int(0.5 * SAMPLE_RATE) - len(buf)))
-                self._process_chunk(buf)
+                self._process_chunk(buf, is_final=True)
             self.buffer = np.zeros(0, dtype=np.float32)
             self._spec_embd = None
 
@@ -305,13 +305,14 @@ class StreamSession:
                     self._spec_embd = None
 
                 # Tail audio: reuse speculative embedding if possible
+                # This is the final chunk of the utterance
                 if len(self._speech_buf) > 0:
                     if (self._spec_embd is not None
                             and self._spec_audio_len == len(self._speech_buf)):
                         self._decode_with_window(
                             self._spec_embd,
                             len(self._speech_buf) / SAMPLE_RATE,
-                            enc_ms=0, spec_tag=True)
+                            enc_ms=0, spec_tag=True, is_final=True)
                         self._total_audio_s += (
                             len(self._speech_buf) / SAMPLE_RATE)
                     else:
@@ -320,7 +321,7 @@ class StreamSession:
                         if len(tail) < min_samples:
                             tail = np.pad(
                                 tail, (0, min_samples - len(tail)))
-                        self._process_chunk(tail)
+                        self._process_chunk(tail, is_final=True)
                     chunks_processed += 1
                     self._speech_buf = np.zeros(0, dtype=np.float32)
                     self._spec_embd = None
@@ -363,7 +364,7 @@ class StreamSession:
     # Core processing pipeline                                        #
     # -------------------------------------------------------------- #
 
-    def _process_chunk(self, audio_chunk: np.ndarray):
+    def _process_chunk(self, audio_chunk: np.ndarray, is_final: bool = False):
         """Encode audio chunk, then decode with sliding window."""
         chunk_sec = len(audio_chunk) / SAMPLE_RATE
         self._total_audio_s += chunk_sec
@@ -377,16 +378,25 @@ class StreamSession:
         enc_ms = (time.perf_counter() - t0) * 1000
         self._total_enc_ms += enc_ms
 
-        self._decode_with_window(audio_embd, chunk_sec, enc_ms)
+        self._decode_with_window(audio_embd, chunk_sec, enc_ms, is_final=is_final)
+
+    # Default token limit for intermediate (non-final) chunks.
+    # Set to 0 to disable early stopping.
+    INTERMEDIATE_MAX_TOKENS = 6
 
     def _decode_with_window(self, audio_embd: np.ndarray,
                             chunk_sec: float, enc_ms: float,
-                            spec_tag: bool = False):
+                            spec_tag: bool = False,
+                            is_final: bool = False):
         """
         Shared decode core: sliding window → rollback → decode → commit.
 
         Called by ``_process_chunk`` (after encoding) and directly by the
         speculative-encoding path (with enc_ms=0, spec_tag=True).
+
+        For intermediate chunks (is_final=False), the decoder is aborted
+        after INTERMEDIATE_MAX_TOKENS to reduce latency.  The text will
+        be refined by rollback + re-decode in the next chunk anyway.
         """
         # 1. Update sliding window
         if len(self._segments) >= self.memory_num:
@@ -410,10 +420,19 @@ class StreamSession:
             all_audio, prefix_str, self.language, self.context,
             skip_prefix=use_kv)
 
+        # Set early stop for intermediate chunks
+        if not is_final and self.INTERMEDIATE_MAX_TOKENS > 0:
+            self.engine.decoder._early_stop_tokens = self.INTERMEDIATE_MAX_TOKENS
+        else:
+            self.engine.decoder._early_stop_tokens = 0
+
         t1 = time.perf_counter()
         result = self.engine.decoder.run_embed(
             full_embd, n_tokens, keep_prefix=use_kv)
         llm_ms = (time.perf_counter() - t1) * 1000
+
+        # Reset early stop
+        self.engine.decoder._early_stop_tokens = 0
         self._total_llm_ms += llm_ms
 
         # 6. Parse output

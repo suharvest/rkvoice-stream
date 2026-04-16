@@ -230,6 +230,7 @@ class RKLLMDecoder:
         self._repeat_buf = []
         self._max_repeat = 6  # Abort after 6 repeated patterns
         self._aborted = False
+        self._early_stop_tokens = 0  # 0 = disabled; >0 = abort after N generated tokens
 
         # Setup callback
         @RKLLM_CALLBACK
@@ -256,6 +257,11 @@ class RKLLMDecoder:
                                        for i in range(0, need, n)):
                                     should_abort = True
                                     break
+                        # Early stop: abort after N tokens for intermediate chunks
+                        if (not should_abort
+                                and self._early_stop_tokens > 0
+                                and len(self._output_chunks) >= self._early_stop_tokens):
+                            should_abort = True
                         if should_abort:
                             self._aborted = True
                             self.lib.rkllm_abort(self.handle)
