@@ -110,8 +110,8 @@ class Qwen3ASRRKBackend(ASRBackend):
                 result = self._engine.transcribe(
                     audio=audio,
                     language=lang_hint,
-                    chunk_size=2.0,
-                    memory_num=2,
+                    chunk_size=4.0,
+                    memory_num=4,
                     rollback_tokens=2,
                     max_new_tokens=max_new_tokens,
                 )
@@ -120,8 +120,8 @@ class Qwen3ASRRKBackend(ASRBackend):
             result = self._engine.transcribe(
                 audio=audio,
                 language=lang_hint,
-                chunk_size=2.0,
-                memory_num=2,
+                chunk_size=4.0,
+                memory_num=4,
                 rollback_tokens=2,
                 max_new_tokens=max_new_tokens,
             )
@@ -139,13 +139,85 @@ class Qwen3ASRRKBackend(ASRBackend):
             raise RuntimeError("ASR backend not ready")
 
         lang_hint = None if language == "auto" else language
+
+        # ── True streaming mode (port of Jetson Qwen3StreamingASRStream) ──
+        # 400ms chunks + left-context encoder + VAD endpoint → emits early
+        # final on VAD silence, so the WebSocket stop→final latency is near
+        # zero when the user pauses naturally.
+        true_streaming = os.environ.get(
+            "QWEN3_ASR_STREAM_TRUE", "0") in ("1", "true", "yes")
+        if true_streaming:
+            from rkvoice_stream.backends.asr.qwen3.streaming import (
+                Qwen3TrueStreamingASRStream,
+            )
+            vad = self._build_vad()
+            npu_lock = get_npu_lock() if self._use_npu_lock else None
+            stream = Qwen3TrueStreamingASRStream(
+                engine=self._engine,
+                language=lang_hint,
+                context="",
+                vad=vad,
+                use_npu_lock=self._use_npu_lock,
+                npu_lock=npu_lock,
+            )
+            return Qwen3ASRRKStream(stream, use_npu_lock=self._use_npu_lock)
+
+        final_mode = os.environ.get("QWEN3_ASR_STREAM_FINAL_MODE", "offline")
+        reuse_min_audio_ms = int(os.environ.get(
+            "QWEN3_ASR_STREAM_REUSE_MIN_AUDIO_MS", "500"))
+        # KV streaming: encode-only during speech, single decode at finalize.
+        # Optimal stop-to-final-text latency for V2V. Off by default to keep
+        # backwards-compatible behaviour for existing partial-text consumers.
+        kv_streaming = os.environ.get(
+            "QWEN3_ASR_STREAM_KV", "0") in ("1", "true", "yes")
         stream_session = self._engine.create_stream(
             language=lang_hint,
-            chunk_size=2.0,
-            memory_num=2,
+            chunk_size=4.0,
+            memory_num=4,
             rollback_tokens=2,
+            final_mode=final_mode,
+            reuse_min_audio_ms=reuse_min_audio_ms,
+            kv_streaming=kv_streaming,
         )
         return Qwen3ASRRKStream(stream_session, use_npu_lock=self._use_npu_lock)
+
+    def _build_vad(self):
+        """Construct a SileroVAD instance for true-streaming endpoint
+        detection.  Returns ``None`` if the model isn't available — the
+        true-streaming class then falls back to "always-speech" mode (no
+        early endpoint, finalize only on stop signal).
+        """
+        try:
+            from rkvoice_stream.vad.silero import SileroVAD
+        except Exception as exc:  # pragma: no cover
+            logger.warning("SileroVAD import failed (%s); endpoint disabled", exc)
+            return None
+
+        model_path = os.environ.get(
+            "VAD_MODEL_PATH",
+            os.path.join(
+                os.environ.get("ASR_MODEL_DIR", "/opt/asr/models"),
+                "vad", "silero_vad.onnx"),
+        )
+        if not os.path.exists(model_path):
+            logger.warning(
+                "Silero VAD model not found at %s; endpoint disabled", model_path)
+            return None
+
+        min_silence_s = float(os.environ.get(
+            "VAD_ENDPOINT_SILENCE_MS", "400")) / 1000.0
+        try:
+            return SileroVAD(
+                model_path=model_path,
+                threshold=float(os.environ.get("VAD_THRESHOLD", "0.5")),
+                # Use a short internal min_silence so is_speech flips quickly
+                # — we apply our own endpoint debounce on top.
+                min_silence_duration=max(0.1, min_silence_s * 0.5),
+                min_speech_duration=0.1,
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning("SileroVAD init failed: %s", exc)
+            return None
 
     # ------------------------------------------------------------------
     # Helpers
@@ -196,13 +268,39 @@ class Qwen3ASRRKStream(ASRStream):
     def prepare_finalize(self) -> None:
         self._stream.prepare_finalize()
 
-    def finalize(self) -> str:
-        if self._use_npu_lock:
+    def cancel_and_finalize(self) -> None:
+        """Hard-cancel pending partials and skip residual tail encode.
+
+        Only implemented by the true-streaming session; legacy sessions fall
+        back to a no-op (the subsequent ``finalize()`` will do the right
+        thing — they don't have a pending-encode problem).
+        """
+        cancel = getattr(self._stream, "cancel_and_finalize", None)
+        if callable(cancel):
+            cancel()
+
+    def finalize(self) -> dict:
+        # The true-streaming class does its own NPU locking inside
+        # _run_decoder. Acquiring the (non-reentrant) NPU lock here would
+        # deadlock on the VAD-triggered early-final path or whenever the
+        # final decode is invoked from within an already-locked context.
+        own_lock = getattr(self._stream, "_npu_lock", None) is not None
+        if self._use_npu_lock and not own_lock:
             with get_npu_lock():
                 result = self._stream.finish()
         else:
             result = self._stream.finish()
-        return result["text"]
+
+        final_mode = result.get("final_mode", "offline")
+        fallback = result.get("fallback")
+        finalize_ms = result.get("finalize_ms", 0)
+        if fallback:
+            logger.info("ASR finalize: mode=%s fallback=%s ms=%.0f",
+                        final_mode, fallback, finalize_ms)
+        else:
+            logger.info("ASR finalize: mode=%s (no fallback) ms=%.0f",
+                        final_mode, finalize_ms)
+        return result
 
     def get_partial(self) -> tuple[str, bool]:
         result = self._stream.get_result()

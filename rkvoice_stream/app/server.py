@@ -15,6 +15,7 @@ API-compatible with jetson-voice:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import queue
@@ -285,7 +286,17 @@ async def asr_stream(
 
     Client sends raw int16 PCM frames (at `sample_rate`).
     Server sends JSON objects: {"text": "...", "is_final": bool}.
-    Send an empty frame (0 bytes) or close the connection to finalize.
+
+    To finalize, the client may either:
+      * Send an empty binary frame (legacy protocol). Server runs
+        ``prepare_finalize`` (encodes any residual tail audio) then
+        ``finalize``.
+      * Send a JSON text message ``{"type": "eou"}``. Server calls
+        ``cancel_and_finalize`` (drops residual sub-chunk audio, aborts
+        any in-flight partial decode) then ``finalize`` — used to hit
+        sub-500 ms stop→final when the dialogue manager already has its
+        own upstream VAD and can declare end-of-utterance authoritatively.
+      * Close the connection.
     """
     await ws.accept()
 
@@ -296,32 +307,122 @@ async def asr_stream(
 
     loop = asyncio.get_event_loop()
     stream = _asr_backend.create_stream(language=language)
+    eou_fast_path = False  # True ⇒ skip prepare_finalize (already cancelled)
+
+    # ── Worker thread + queue ───────────────────────────────────────────
+    # Audio frames are pushed to an asyncio.Queue and consumed by a single
+    # worker task that runs accept_waveform in the default executor.  This
+    # decouples WS receive from the per-chunk processing latency so the
+    # client's end-of-utterance control message (text frame) is read
+    # immediately, even when the worker is mid-way through a VAD-triggered
+    # 1.3-s final decode in the executor.
+    audio_q: asyncio.Queue = asyncio.Queue()
+    eou_state = {"pending": False}
+
+    async def _send_partial_if_any():
+        try:
+            partial, _ = stream.get_partial()
+            if partial:
+                await ws.send_json({"text": partial, "is_final": False})
+        except Exception:
+            pass
+
+    async def worker():
+        while True:
+            item = await audio_q.get()
+            if item is None:
+                break
+            sr, samples = item
+            try:
+                await loop.run_in_executor(
+                    None, stream.accept_waveform, sr, samples)
+            except Exception as exc:
+                logger.debug("ASR worker accept_waveform error: %s", exc)
+                continue
+            # Skip sending partials once EOU is signalled (saves a ws.send
+            # round-trip per remaining chunk) but still process them so the
+            # stream's internal buffer reflects the full client audio.
+            if not eou_state["pending"]:
+                await _send_partial_if_any()
+
+    worker_task = asyncio.create_task(worker())
 
     try:
         while True:
-            data = await ws.receive_bytes()
-            if not data:
-                # Empty frame signals end of audio
+            msg = await ws.receive()
+            # Disconnect / close frame
+            if msg.get("type") == "websocket.disconnect":
                 break
+            data = msg.get("bytes")
+            if data is not None:
+                if not data:
+                    # Empty binary frame signals end of audio (legacy).
+                    break
+                samples = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                audio_q.put_nowait((sample_rate, samples))
+                continue
 
-            samples = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-            await loop.run_in_executor(
-                None, stream.accept_waveform, sample_rate, samples
-            )
-
-            partial, is_endpoint = stream.get_partial()
-            if partial:
-                await ws.send_json({"text": partial, "is_final": False})
+            text = msg.get("text")
+            if text is None:
+                continue
+            # JSON control message.
+            try:
+                ctl = json.loads(text)
+            except Exception:
+                logger.debug("ASR stream: bad control msg %r", text[:80])
+                continue
+            mtype = (ctl.get("type") or "").lower()
+            if mtype == "eou":
+                # Mark EOU so worker stops sending partials, then break to
+                # finalize.  All audio queued so far will still be processed
+                # by the worker (drained in `finally`).
+                # We deliberately do NOT abort the decoder here — that
+                # would truncate any in-flight VAD-triggered final decode.
+                eou_state["pending"] = True
+                eou_fast_path = True
+                break
+            if mtype == "stop":
+                break
+            logger.debug("ASR stream: unknown control type %r", mtype)
 
     except Exception as exc:
         logger.debug("ASR stream error: %s", exc)
 
     finally:
+        # Signal worker to stop and wait for it to drain.
         try:
-            # Pre-encode tail audio (encoder only) so finalize just runs decoder
+            audio_q.put_nowait(None)
+        except Exception:
+            pass
+        # For b"" legacy path we want the worker to fully drain any queued
+        # audio (so the trailing silence chunks are seen by the VAD).
+        # For EOU fast path the worker will skip remaining items anyway.
+        try:
+            await asyncio.wait_for(worker_task, timeout=15.0)
+        except Exception:
+            worker_task.cancel()
+        try:
+            # Both legacy (b"") and EOU paths run prepare_finalize so the
+            # last sub-chunk audio is encoded.  With the worker-queue model
+            # all queued audio is processed before we reach this point, so
+            # there's no need for cancel_and_finalize's drop-tail behavior.
             await loop.run_in_executor(None, stream.prepare_finalize)
-            final_text = await loop.run_in_executor(None, stream.finalize)
-            await ws.send_json({"text": final_text, "is_final": True})
+            final_result = await loop.run_in_executor(None, stream.finalize)
+            if isinstance(final_result, dict):
+                final_text = final_result.get("text", "")
+                final_meta = {
+                    "final_mode": final_result.get("final_mode"),
+                    "fallback": final_result.get("fallback"),
+                    "finalize_ms": final_result.get("finalize_ms"),
+                }
+            else:
+                final_text = final_result
+                final_meta = {}
+            await ws.send_json({
+                "text": final_text,
+                "is_final": True,
+                **final_meta,
+            })
         except Exception:
             pass
         try:

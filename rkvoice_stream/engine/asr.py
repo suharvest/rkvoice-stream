@@ -50,6 +50,15 @@ class ASRStream(ABC):
         """
         pass
 
+    def cancel_and_finalize(self) -> None:
+        """Hard-cancel pending partial decodes and skip any residual tail
+        encoding, so the subsequent ``finalize()`` returns as fast as
+        possible.  Used by the WebSocket EOU control message.
+
+        Default: no-op (legacy backends just run finalize directly).
+        """
+        pass
+
     def get_partial(self) -> tuple[str, bool]:
         """Return (partial_text, is_endpoint). Default: no partial results."""
         return "", False
