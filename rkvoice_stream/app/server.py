@@ -318,6 +318,10 @@ async def asr_stream(
     # 1.3-s final decode in the executor.
     audio_q: asyncio.Queue = asyncio.Queue()
     eou_state = {"pending": False}
+    # Tracks the most recent archive_text we've already streamed as a final.
+    # Used so VAD-triggered utterance finals get pushed to the client mid-session
+    # without being re-emitted by the session-end final block.
+    streamed_state = {"last_archive": ""}
 
     async def _send_partial_if_any():
         try:
@@ -326,6 +330,29 @@ async def asr_stream(
                 await ws.send_json({"text": partial, "is_final": False})
         except Exception:
             pass
+
+    async def _maybe_emit_utterance_final() -> bool:
+        """If the streaming class just produced a new VAD-triggered final,
+        push it to the client right away. Returns True if anything was sent."""
+        sess = getattr(stream, "_stream", None)
+        if sess is None:
+            return False
+        archive = getattr(sess, "_archive_text", "") or ""
+        ep_final = getattr(sess, "_episode_final", False)
+        if not (ep_final and archive):
+            return False
+        if archive == streamed_state["last_archive"]:
+            return False
+        streamed_state["last_archive"] = archive
+        try:
+            await ws.send_json({
+                "text": archive,
+                "is_final": True,
+                "session_complete": False,
+            })
+        except Exception:
+            pass
+        return True
 
     async def worker():
         while True:
@@ -339,11 +366,14 @@ async def asr_stream(
             except Exception as exc:
                 logger.debug("ASR worker accept_waveform error: %s", exc)
                 continue
-            # Skip sending partials once EOU is signalled (saves a ws.send
-            # round-trip per remaining chunk) but still process them so the
-            # stream's internal buffer reflects the full client audio.
-            if not eou_state["pending"]:
-                await _send_partial_if_any()
+            # Always check for VAD-triggered utterance finals, even after
+            # EOU — multi-utterance clients need to see them.  Partials,
+            # on the other hand, are skipped post-EOU (saves ws.send).
+            if await _maybe_emit_utterance_final():
+                continue
+            if eou_state["pending"]:
+                continue
+            await _send_partial_if_any()
 
     worker_task = asyncio.create_task(worker())
 
@@ -418,9 +448,16 @@ async def asr_stream(
             else:
                 final_text = final_result
                 final_meta = {}
+            # Mark this as the session-end final.  Multi-utterance clients
+            # use session_complete=False frames for VAD-triggered utterance
+            # finals and session_complete=True to know the WS will close.
+            already_streamed = (
+                final_text and final_text == streamed_state["last_archive"])
             await ws.send_json({
                 "text": final_text,
                 "is_final": True,
+                "session_complete": True,
+                "duplicate_of_streamed": already_streamed,
                 **final_meta,
             })
         except Exception:
