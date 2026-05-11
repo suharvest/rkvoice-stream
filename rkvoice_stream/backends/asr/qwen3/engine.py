@@ -475,10 +475,13 @@ class Qwen3ASREngine:
                       rollback_tokens: int = 2,
                       max_new_tokens: int = 128,
                       on_text: Callable = None,
-                      vad = None) -> StreamSession:
+                      vad = None,
+                      final_mode: str = "offline",
+                      reuse_min_audio_ms: int = 500,
+                      kv_streaming: bool = False) -> StreamSession:
         """
         Create a streaming ASR session.
-        
+
         Args:
             language: Language hint
             context: Context string
@@ -489,7 +492,9 @@ class Qwen3ASREngine:
             max_new_tokens: Max tokens per decode
             on_text: Callback called with current full text
             vad: Optional SileroVAD instance for speech gating
-            
+            final_mode: "offline" or "reuse"
+            reuse_min_audio_ms: Min tail audio ms for reuse
+
         Returns:
             StreamSession instance
         """
@@ -504,6 +509,9 @@ class Qwen3ASREngine:
             max_new_tokens=max_new_tokens,
             on_text=on_text,
             vad=vad,
+            final_mode=final_mode,
+            reuse_min_audio_ms=reuse_min_audio_ms,
+            kv_streaming=kv_streaming,
         )
 
     def close(self):

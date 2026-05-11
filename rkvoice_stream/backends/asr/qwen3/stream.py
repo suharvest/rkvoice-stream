@@ -47,19 +47,24 @@ class StreamSession:
                  rollback_tokens: int = 5,
                  max_new_tokens: int = 128,
                  on_text: Callable = None,
-                 vad=None):
+                 vad=None,
+                 final_mode: str = "offline",
+                 reuse_min_audio_ms: int = 500,
+                 kv_streaming: bool = False):
         """
         Args:
-            engine:           Parent Qwen3ASREngine instance
-            language:         Language hint (None = auto-detect)
-            context:          Context description
-            chunk_size:       Seconds per audio chunk (capped by encoder)
-            memory_num:       Sliding-window width (≥ 2)
-            unfixed_chunks:   First N chunks don't commit text
-            rollback_tokens:  Remove last N tokens from prefix for stability
-            max_new_tokens:   Max tokens to generate per chunk
-            on_text:          Callback(text: str) on each new text
-            vad:              Optional SileroVAD for speech gating
+            engine:             Parent Qwen3ASREngine instance
+            language:           Language hint (None = auto-detect)
+            context:            Context description
+            chunk_size:         Seconds per audio chunk (capped by encoder)
+            memory_num:         Sliding-window width (≥ 2)
+            unfixed_chunks:     First N chunks don't commit text
+            rollback_tokens:    Remove last N tokens from prefix for stability
+            max_new_tokens:     Max tokens to generate per chunk
+            on_text:            Callback(text: str) on each new text
+            vad:                Optional SileroVAD for speech gating
+            final_mode:         "offline" (re-encode tail) or "reuse" (skip re-encode)
+            reuse_min_audio_ms: Min tail audio ms for reuse mode (shorter → offline)
         """
         self.engine = engine
         self.language = language
@@ -93,6 +98,19 @@ class StreamSession:
         # Speculative encoding cache
         self._spec_embd = None
         self._spec_audio_len = 0
+
+        # Finalize mode
+        self._final_mode = final_mode
+        self._reuse_min_audio_ms = reuse_min_audio_ms
+        self._was_aborted = False
+
+        # KV streaming: encoder runs incrementally during speech, decoder
+        # only runs once at finalize. Best stop-to-final-text latency for V2V.
+        # No partial transcript per chunk (intentional — saves NPU and avoids
+        # RKLLM keep_history quirks).
+        self._kv_streaming = kv_streaming
+        self._stream_audio_embds: list = []
+        self._stream_audio_seconds = 0.0
 
         # Stats
         self._total_enc_ms = 0.0
@@ -162,9 +180,51 @@ class StreamSession:
         """
         Finish streaming: process remaining buffer and return final result.
 
+        Dispatches to ``_finish_reuse()`` or ``_finish_offline()`` based on
+        ``final_mode`` and pre-conditions.
+
         Returns:
-            dict with keys: language, text, is_final, stats
+            dict with keys: language, text, is_final, stats,
+            final_mode, fallback (str|None), finalize_ms
         """
+        t0 = time.perf_counter()
+        effective_mode = self._final_mode
+        fallback_reason = None
+
+        # KV streaming mode: single-pass decode of all accumulated embeddings
+        if self._kv_streaming:
+            self._kv_finalize()
+            finalize_ms = (time.perf_counter() - t0) * 1000
+            text = self._current_text
+            if apply_itn_flag:
+                text = apply_itn(text)
+            return {
+                "language": self._current_language,
+                "text": text,
+                "is_final": True,
+                "final_mode": "kv_streaming",
+                "fallback": None,
+                "finalize_ms": finalize_ms,
+                "stats": {
+                    "total_enc_ms": self._total_enc_ms,
+                    "total_llm_ms": self._total_llm_ms,
+                    "total_audio_s": self._total_audio_s,
+                    "total_vad_ms": self._total_vad_ms,
+                    "total_chunks": self._total_chunks,
+                    "rtf": ((self._total_enc_ms + self._total_llm_ms) / 1000.0
+                            / max(self._total_audio_s, 0.1)),
+                },
+            }
+
+        # Check pre-conditions for reuse mode
+        if effective_mode == "reuse":
+            if len(self._segments) == 0:
+                fallback_reason = "empty_segments"
+                effective_mode = "offline"
+            elif self._was_aborted:
+                fallback_reason = "was_aborted"
+                effective_mode = "offline"
+
         # Flush VAD speech buffer
         if self.vad and len(self._speech_buf) > 0:
             if len(self._speech_buf) >= int(0.5 * SAMPLE_RATE):
@@ -172,23 +232,17 @@ class StreamSession:
             self._speech_buf = np.zeros(0, dtype=np.float32)
             self._vad_speech_active = False
 
-        # Process remaining raw buffer (non-VAD) — this is the final chunk
+        # Process remaining raw buffer — this is the final chunk
         if len(self.buffer) > 0:
-            if (self._spec_embd is not None
-                    and self._spec_audio_len == len(self.buffer)):
-                # Reuse pre-encoded embedding — only run decoder
-                self._decode_with_window(
-                    self._spec_embd,
-                    len(self.buffer) / SAMPLE_RATE,
-                    enc_ms=0, spec_tag=True, is_final=True)
-                self._total_audio_s += len(self.buffer) / SAMPLE_RATE
+            if effective_mode == "reuse":
+                reuse_fb = self._finish_reuse()
+                if reuse_fb is not None:
+                    fallback_reason = fallback_reason or reuse_fb
+                    self._finish_offline()
             else:
-                buf = self.buffer
-                if len(buf) < int(0.5 * SAMPLE_RATE):
-                    buf = np.pad(buf, (0, int(0.5 * SAMPLE_RATE) - len(buf)))
-                self._process_chunk(buf, is_final=True)
-            self.buffer = np.zeros(0, dtype=np.float32)
-            self._spec_embd = None
+                self._finish_offline()
+
+        finalize_ms = (time.perf_counter() - t0) * 1000
 
         text = self._current_text
         if apply_itn_flag:
@@ -198,6 +252,9 @@ class StreamSession:
             "language": self._current_language,
             "text": text,
             "is_final": True,
+            "final_mode": self._final_mode,
+            "fallback": fallback_reason,
+            "finalize_ms": finalize_ms,
             "stats": {
                 "total_enc_ms": self._total_enc_ms,
                 "total_llm_ms": self._total_llm_ms,
@@ -215,6 +272,43 @@ class StreamSession:
             },
         }
 
+    def _finish_reuse(self) -> str | None:
+        """
+        Finalize by reusing pre-encoded tail embedding — skip re-encode.
+
+        Returns:
+            None on success (text is in ``self._current_text``).
+            Fallback reason string if reuse is not possible.
+        """
+        buf = self.buffer
+        min_samples = max(
+            int(0.5 * SAMPLE_RATE),
+            int(self._reuse_min_audio_ms / 1000 * SAMPLE_RATE))
+
+        if len(buf) < min_samples:
+            return f"audio_too_short_{len(buf)/SAMPLE_RATE*1000:.0f}ms"
+
+        if self._spec_embd is None or self._spec_audio_len != len(buf):
+            return "spec_embd_mismatch"
+
+        self._decode_with_window(
+            self._spec_embd,
+            len(buf) / SAMPLE_RATE,
+            enc_ms=0, spec_tag=True, is_final=True)
+        self._total_audio_s += len(buf) / SAMPLE_RATE
+        self.buffer = np.zeros(0, dtype=np.float32)
+        self._spec_embd = None
+        return None
+
+    def _finish_offline(self):
+        """Finalize by re-encoding the tail buffer (conservative, full pipeline)."""
+        buf = self.buffer
+        if len(buf) < int(0.5 * SAMPLE_RATE):
+            buf = np.pad(buf, (0, int(0.5 * SAMPLE_RATE) - len(buf)))
+        self._process_chunk(buf, is_final=True)
+        self.buffer = np.zeros(0, dtype=np.float32)
+        self._spec_embd = None
+
     # -------------------------------------------------------------- #
     # Feed modes                                                      #
     # -------------------------------------------------------------- #
@@ -223,6 +317,20 @@ class StreamSession:
         """Fixed-chunking mode (no VAD)."""
         self.buffer = np.concatenate([self.buffer, x])
         chunks_processed = 0
+        if self._kv_streaming:
+            # Encode chunks as they fill; cache embeddings; no decode yet.
+            while len(self.buffer) >= self.chunk_samples:
+                chunk = self.buffer[:self.chunk_samples]
+                self.buffer = self.buffer[self.chunk_samples:]
+                self._stream_encode_chunk(chunk)
+                chunks_processed += 1
+            return {
+                "language": self._current_language,
+                "text": self._current_text,
+                "is_final": False,
+                "is_speech": True,
+                "chunks_processed": chunks_processed,
+            }
         while len(self.buffer) >= self.chunk_samples:
             chunk = self.buffer[:self.chunk_samples]
             self.buffer = self.buffer[self.chunk_samples:]
@@ -238,6 +346,72 @@ class StreamSession:
             "is_speech": True,
             "chunks_processed": chunks_processed,
         }
+
+    # -------------------------------------------------------------- #
+    # KV streaming helpers (V2V latency mode)                          #
+    # -------------------------------------------------------------- #
+
+    def _stream_encode_chunk(self, audio_chunk: np.ndarray) -> None:
+        """Encode one audio chunk and append to the streaming buffer."""
+        min_samples = int(0.5 * SAMPLE_RATE)
+        a = audio_chunk
+        if len(a) < min_samples:
+            a = np.pad(a, (0, min_samples - len(a)))
+        t0 = time.perf_counter()
+        embd = self.engine.encoder.encode(a)
+        if isinstance(embd, tuple):
+            embd, enc_ms, _ = embd
+        else:
+            enc_ms = (time.perf_counter() - t0) * 1000
+        self._total_enc_ms += enc_ms
+        self._stream_audio_embds.append(embd)
+        self._stream_audio_seconds += len(audio_chunk) / SAMPLE_RATE
+        self._total_audio_s += len(audio_chunk) / SAMPLE_RATE
+        self._total_chunks += 1
+
+    def _kv_finalize(self) -> None:
+        """Drain tail buffer → encode → concat → single decoder call."""
+        if len(self.buffer) > 0:
+            tail = self.buffer
+            self.buffer = np.zeros(0, dtype=np.float32)
+            self._stream_encode_chunk(tail)
+
+        if not self._stream_audio_embds:
+            self._current_text = ""
+            return
+
+        full_audio_embd = np.concatenate(self._stream_audio_embds, axis=0)
+        full_embd, n_tokens = self.engine.build_embed(
+            full_audio_embd, prefix_text="",
+            language=self.language, context=self.context,
+            skip_prefix=False)
+
+        # Use full decoder budget for finalize; no early stop.
+        self.engine.decoder._early_stop_tokens = 0
+        t1 = time.perf_counter()
+        result = self.engine.decoder.run_embed(
+            full_embd, n_tokens, keep_history=0)
+        self._total_llm_ms += (time.perf_counter() - t1) * 1000
+
+        raw_text = result["text"]
+        was_aborted = result.get("aborted", False)
+        self._was_aborted = was_aborted
+
+        if self.language:
+            new_text, lang = raw_text, self.language
+        else:
+            lang, new_text = parse_asr_output(raw_text)
+        new_text = self._strip_trailing_garbage(new_text)
+        if was_aborted:
+            # repetition abort → discard garbage
+            new_text = ""
+
+        self._current_text = new_text
+        self._current_language = lang or self._current_language
+
+        # Reset streaming buffers so the session can be reused if desired
+        self._stream_audio_embds = []
+        self._stream_audio_seconds = 0.0
 
     def _feed_with_vad(self, x: np.ndarray) -> dict:
         """
@@ -440,6 +614,7 @@ class StreamSession:
         # 6. Parse output
         raw_text = result["text"]
         was_aborted = result.get("aborted", False)
+        self._was_aborted = was_aborted
 
         if self.language:
             new_text, lang = raw_text, self.language
