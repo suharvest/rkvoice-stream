@@ -5,6 +5,17 @@ import numpy as np
 from .config import SAMPLE_RATE
 
 
+def _resample(audio: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
+    """Resample 1-D float32 audio using linear interpolation."""
+    if orig_sr == target_sr:
+        return audio
+    duration = len(audio) / orig_sr
+    target_len = int(round(duration * target_sr))
+    x_old = np.linspace(0, 1, len(audio))
+    x_new = np.linspace(0, 1, target_len)
+    return np.interp(x_new, x_old, audio).astype(np.float32)
+
+
 def load_audio(audio_path: str, sample_rate: int = SAMPLE_RATE,
                start_second: float = 0.0,
                duration: float = None) -> np.ndarray:
@@ -38,9 +49,7 @@ def load_audio(audio_path: str, sample_rate: int = SAMPLE_RATE,
             if audio.ndim > 1:
                 audio = audio.mean(axis=1)
             if file_sr != sample_rate:
-                import librosa
-                audio = librosa.resample(audio, orig_sr=file_sr,
-                                         target_sr=sample_rate)
+                audio = _resample(audio, file_sr, sample_rate)
             if duration:
                 max_samples = int(duration * sample_rate)
                 audio = audio[:max_samples]
@@ -63,11 +72,19 @@ def load_audio(audio_path: str, sample_rate: int = SAMPLE_RATE,
     except ImportError:
         pass
 
-    # Last resort: librosa
-    import librosa
-    audio, _ = librosa.load(audio_path, sr=sample_rate, mono=True,
-                            offset=start_second, duration=duration)
-    return audio.astype(np.float32)
+    # Last resort: librosa (only if explicitly enabled)
+    if os.environ.get("QWEN3_ASR_ALLOW_LIBROSA_FALLBACK", "0") == "1":
+        import librosa  # QWEN3_ASR_ALLOW_LIBROSA_FALLBACK
+        audio, _ = librosa.load(audio_path, sr=sample_rate, mono=True,  # QWEN3_ASR_ALLOW_LIBROSA_FALLBACK
+                                offset=start_second, duration=duration)
+        return audio.astype(np.float32)
+
+    raise RuntimeError(
+        f"Cannot load {audio_path}: no decoder available "
+        f"(soundfile failed for wav/flac/ogg, pydub not installed, "
+        f"audio fallback disabled). "
+        f"Set QWEN3_ASR_ALLOW_LIBROSA_FALLBACK=1 to enable librosa fallback."
+    )
 
 
 def detect_and_fix_repetitions(text: str, threshold: int = 20) -> str:

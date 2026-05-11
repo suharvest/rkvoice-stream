@@ -1,4 +1,4 @@
-"""Mel spectrogram feature extractor (pure NumPy, no librosa dependency)."""
+"""Mel spectrogram feature extractor (pure NumPy, zero external deps)."""
 
 import numpy as np
 
@@ -8,8 +8,8 @@ def _stft_numpy(audio: np.ndarray, n_fft: int = 400,
     """
     Short-time Fourier Transform using pure NumPy.
 
-    Equivalent to ``librosa.stft(audio, n_fft=400, hop_length=160,
-    window='hann', center=True)`` but without the librosa dependency.
+    Equivalent to stft(audio, n_fft=400, hop_length=160,
+    window='hann', center=True) — zero external deps.
 
     Returns:
         Complex STFT matrix of shape (n_fft//2 + 1, n_frames).
