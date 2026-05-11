@@ -33,6 +33,10 @@ services:
       - ASR_NPU_CORE_MASK=NPU_CORE_AUTO
       - RKLLM_LIB_PATH=/opt/asr/lib/librkllmrt.so
       - ASR_MODEL_DIR=/opt/asr/models
+      # True streaming with webrtcvad endpoint pre-fire. On RK3588 fp16 this
+      # delivers stop→final 77ms (short) / 670ms (long) / 1.5s (complex long
+      # with internal commas). See baseline/RK3588_TRUE_STREAMING_RESULTS.md.
+      - QWEN3_ASR_STREAM_TRUE=1
       - MATCHA_MAX_PHONEMES=64
       - MATCHA_MODEL_SEQ_LEN=80
       # Matcha acoustic model: ORT CPU FP32 recommended for best quality (9/10).

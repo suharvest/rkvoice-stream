@@ -32,6 +32,11 @@ services:
       - ASR_DECODER_TYPE=rkllm
       - RKLLM_LIB_PATH=/opt/asr/lib/librkllmrt.so
       - ASR_MODEL_DIR=/opt/asr/models
+      # True streaming: encoder runs incrementally during speech; webrtcvad
+      # endpoint pre-fires final decode at natural pauses → near-zero stop→final
+      # when EOU control message arrives. See rkvoice_stream/backends/asr/qwen3/
+      # streaming.py and baseline/STREAMING_FIX_CD_RESULTS.md for details.
+      - QWEN3_ASR_STREAM_TRUE=1
       - PYTHONPATH=/opt/rknn-matmul-parallel
       - MATCHA_MAX_PHONEMES=64
       - MATCHA_MODEL_SEQ_LEN=80
