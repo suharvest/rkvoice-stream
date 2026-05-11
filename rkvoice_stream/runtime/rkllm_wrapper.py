@@ -187,8 +187,19 @@ class RKLLMTalker:
         self._lib.rkllm_run.restype = ctypes.c_int
         self._lib.rkllm_destroy.argtypes = [RKLLM_Handle_t]
         self._lib.rkllm_destroy.restype = ctypes.c_int
-        self._lib.rkllm_clear_kv_cache.argtypes = [RKLLM_Handle_t]
+        # 4-arg ABI matches RKLLM v1.2.3 (handle, keep, start_pos*, end_pos*).
+        # ASR decoder uses this signature; TTS used to use 1-arg which triggered
+        # "start_pos and end_pos are only valid..." stderr warnings and left
+        # garbage values in those slots.
+        self._lib.rkllm_clear_kv_cache.argtypes = [
+            RKLLM_Handle_t, ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+        ]
         self._lib.rkllm_clear_kv_cache.restype = ctypes.c_int
+        self._lib.rkllm_set_chat_template.argtypes = [
+            RKLLM_Handle_t, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p,
+        ]
+        self._lib.rkllm_set_chat_template.restype = ctypes.c_int
 
         # Create callback (prevent GC)
         self._cb = RKLLM_CALLBACK(self._callback_fn)
@@ -203,7 +214,12 @@ class RKLLMTalker:
         param.repeat_penalty = 1.0
         param.skip_special_token = False
         param.is_async = False
-        param.extend_param.embed_flash = 0
+        # base_domain_id=1 lets RKLLM coexist with RKNN models (domain 0). Required on
+        # RK3576/RK3588 — see project_rkllm_domain_coexist memory (2026-04-12).
+        param.extend_param.base_domain_id = 1
+        # embed_flash=1 matches ASR's known-good config; 0 was a TTS quirk that
+        # was probably the embed path divergence vs ASR.
+        param.extend_param.embed_flash = 1
 
         t0 = time.perf_counter()
         ret = self._lib.rkllm_init(
@@ -212,6 +228,11 @@ class RKLLMTalker:
         elapsed = time.perf_counter() - t0
         if ret != 0:
             raise RuntimeError(f"RKLLM init failed: ret={ret}")
+
+        # Note: ASR uses rkllm_set_chat_template(handle, b"", b"", b"") to disable
+        # SDK auto-wrapping. For TTS we skip this — initial tests showed disabling
+        # the template made decode KV-aware but still produced unintelligible audio,
+        # so we leave the default template active for now.
         logger.info("RKLLM talker loaded in %.1fs", elapsed)
 
     def _callback_fn(self, result_ptr, userdata, state):
@@ -249,7 +270,8 @@ class RKLLMTalker:
         self._callback_error = None
 
     def clear_kv_cache(self):
-        self._lib.rkllm_clear_kv_cache(self._handle)
+        # 4-arg call: keep=0 (drop all), start/end=NULL.
+        self._lib.rkllm_clear_kv_cache(self._handle, 0, None, None)
 
     def run_embed(
         self,
@@ -273,6 +295,10 @@ class RKLLMTalker:
         c_arr = (ctypes.c_float * len(flat))(*flat)
 
         inp = RKLLMInput()
+        # Empty role + thinking disabled: stops SDK from inserting a chat-style
+        # role/thinking wrapper around our raw embeddings. Mirrors ASR decoder.
+        inp.role = b""
+        inp.enable_thinking = ctypes.c_bool(False)
         inp.input_type = RKLLM_INPUT_EMBED
         inp.input_data.embed_input.embed = c_arr
         inp.input_data.embed_input.n_tokens = n_tokens

@@ -153,13 +153,9 @@ class TTSService:
         else:
             logger.info("Skipping codec_embed RKNN (numpy table loaded)")
 
-        # code_predictor RKNN is fallback for C engine — load only if cp_weights absent
-        cp_weight_dir = os.path.join(self._model_dir, "cp_weights")
-        if os.path.isdir(cp_weight_dir):
-            logger.info("Skipping code_predictor RKNN (C engine weights found, saving ~180MB)")
-        else:
-            self._code_predictor = load_rknn("code_predictor")
-            self._code_predictor_embed = load_rknn("code_predictor_embed")
+        # Always load code_predictor RKNN as fallback (C engine replaces at runtime if loaded)
+        self._code_predictor = load_rknn("code_predictor")
+        self._code_predictor_embed = load_rknn("code_predictor_embed")
 
         # Vocoder selection: prefer noembed type (decoder_ctx25_fp16/int8)
         # tokenizer12hz_decode_stream model has issues (outputs zeros)
@@ -414,6 +410,10 @@ class TTSService:
         """
         t_start = time.perf_counter()
 
+        # Step 0: Reload talker if destroyed by previous vocoder step
+        if self._talker is None:
+            self._load_rkllm_talker()
+
         # Step 1: Tokenize
         formatted_text = f"<|im_start|>assistant\n{text}<|im_end|>\n<|im_start|>assistant\n"
         input_ids = self._tokenizer.encode(formatted_text)
@@ -426,13 +426,14 @@ class TTSService:
                      (t_prefill_built - t_start) * 1000)
 
         # Step 3: Talker prefill
-        # keep_history=0 on prefill: RKLLM interprets as "new sequence start" — KV cache is
-        # populated by this call. Subsequent decode steps use keep_history=1 to append.
+        # clear_kv_cache wipes everything; keep_history=1 then says "keep the result
+        # of this call in cache" — without it, RKLLM v1.2.3 clears KV after the run
+        # and decode steps see empty context, generating training-data priors.
         self._talker.clear_kv_cache()
         result = self._talker.run_embed(
             prefill_embeds,
             mode=1,  # GET_LAST_HIDDEN_LAYER -> returns hidden states
-            keep_history=0,
+            keep_history=1,
         )
         hidden = result["hidden"]  # [n_prefill, 1024]
         last_hidden = hidden[-1:]  # [1, 1024]
@@ -600,18 +601,9 @@ class TTSService:
             wav_bytes = self._make_wav(np.zeros(SAMPLE_RATE, dtype=np.float32))
             return wav_bytes, {"duration": 1.0, "inference_time": 0, "rtf": 0}
 
-        # Step 5.5: Release RKLLM before vocoder to avoid NPU resource conflict
-        # RK3576 has only 2 NPU cores. Even though vocoder works after RKLLM load,
-        # concurrent access can cause hangs. Release RKLLM to ensure vocoder gets
-        # exclusive NPU access.
-        logger.info("Releasing RKLLM before vocoder...")
-        if self._talker is not None:
-            try:
-                self._talker.destroy()
-                logger.info("RKLLM talker destroyed")
-            except Exception as e:
-                logger.warning("Failed to destroy RKLLM: %s", e)
-            self._talker = None
+        # Step 5.5: Not releasing RKLLM — NPU lock at backend level already
+        # serializes TTS and ASR. The vocoder (RKNN) and talker (RKLLM) share
+        # NPU cores safely as long as they don't run concurrently.
 
         # Step 6: Vocoder (codes -> embeddings -> audio)
         codes_array = np.array(all_codes, dtype=np.int64)  # [T, NUM_CODE_GROUPS]
@@ -981,6 +973,10 @@ class TTSService:
 
         t_start = time.perf_counter()
 
+        # Step 0: Reload talker if destroyed by previous non-streaming call
+        if self._talker is None:
+            self._load_rkllm_talker()
+
         # Step 1: Tokenize
         formatted_text = f"<|im_start|>assistant\n{text}<|im_end|>\n<|im_start|>assistant\n"
         input_ids = self._tokenizer.encode(formatted_text)
@@ -988,9 +984,9 @@ class TTSService:
         # Step 2: Build prefill embeddings (official format)
         prefill_embeds, tts_pad_vec = self._build_prefill(input_ids, language=language)
 
-        # Step 3: Talker prefill
+        # Step 3: Talker prefill (keep_history=1 so KV survives for decode steps)
         self._talker.clear_kv_cache()
-        result = self._talker.run_embed(prefill_embeds, mode=1, keep_history=0)
+        result = self._talker.run_embed(prefill_embeds, mode=1, keep_history=1)
         hidden = result["hidden"]
         last_hidden = hidden[-1:]  # [1, 1024]
 
