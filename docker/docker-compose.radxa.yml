@@ -20,6 +20,7 @@ services:
       - /home/radxa/matcha-data:/home/radxa/matcha-data:ro
       - /home/radxa/models:/opt/asr/models:ro
       - /home/radxa/lib/librkllmrt.so:/opt/asr/lib/librkllmrt.so:ro
+      - /home/radxa/rkvoice-stream/rkvoice_stream/backends/asr/qwen3:/opt/rkvoice-stream/rkvoice_stream/backends/asr/qwen3:ro
     restart: unless-stopped
     environment:
       - MODEL_DIR=/opt/tts/models

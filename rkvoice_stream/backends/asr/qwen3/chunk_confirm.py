@@ -46,6 +46,11 @@ from .utils import apply_itn, parse_asr_output
 
 logger = logging.getLogger(__name__)
 
+# ── Energy-based split (official Qwen3-ASR split_audio_into_chunks) ──────
+# Sliding window size for energy estimation when finding split points.
+ENERGY_SPLIT_WINDOW_MS = float(os.environ.get("QWEN3_ASR_CC_SPLIT_WIN_MS", "100"))
+ENERGY_SPLIT_SEARCH_S = float(os.environ.get("QWEN3_ASR_CC_SPLIT_SEARCH_S", "2.0"))
+
 # ── Hop timing ────────────────────────────────────────────────────────────
 CHUNK_SIZE_SEC = float(os.environ.get("QWEN3_ASR_CC_CHUNK_SEC", "0.5"))
 
@@ -164,14 +169,20 @@ class ChunkConfirmASRStream:
         self._total_enc_ms: float = 0.0
         self._total_dec_ms: float = 0.0
 
-        # Warn if encoder capacity may be insufficient (recipe §4.2).
-        encoder_max = getattr(engine.encoder, 'max_seconds', 4.0)
-        if AUTO_SEGMENT_CAP_SEC > encoder_max * 0.9:
+        # ── Auto-segmentation state ────────────────────────────────────
+        self._segment_cap_samples = int(AUTO_SEGMENT_CAP_SEC * SAMPLE_RATE)
+        self._carryover_samples = int(CARRYOVER_SEC * SAMPLE_RATE)
+        self._encoder_max_samples = int(
+            getattr(engine.encoder, 'max_seconds', 4.0) * SAMPLE_RATE)
+
+        if AUTO_SEGMENT_CAP_SEC > getattr(engine.encoder, 'max_seconds', 4.0) * 0.9:
             logger.warning(
                 "AUTO_SEGMENT_CAP_SEC=%.1fs but encoder max=%.1fs — "
                 "audio beyond %.1fs will be truncated. "
-                "Load larger encoder models (e.g. 30s) for full coverage.",
-                AUTO_SEGMENT_CAP_SEC, encoder_max, encoder_max)
+                "Load larger encoder models (e.g. 15s) for full coverage.",
+                AUTO_SEGMENT_CAP_SEC,
+                getattr(engine.encoder, 'max_seconds', 4.0),
+                getattr(engine.encoder, 'max_seconds', 4.0))
 
     # ── Public API (ASRStream-compatible) ─────────────────────────────────
 
@@ -373,64 +384,48 @@ class ChunkConfirmASRStream:
         if len(self._audio_accum) == 0:
             return
 
+        # Auto-segment: if audio exceeds encoder capacity, split at low-energy
+        # boundary (mirrors official split_audio_into_chunks).  Only split on
+        # non-final hops so the final hop always gets the full remaining tail.
+        if not is_final and len(self._audio_accum) > self._encoder_max_samples:
+            split_at = self._find_energy_split(self._audio_accum)
+            left = self._audio_accum[:split_at]
+            right = self._audio_accum[split_at:]
+            carry = min(self._carryover_samples, len(right))
+            # Finalize left segment.
+            left_embd = self._encode(left)
+            self._decode_and_update(left_embd, prefix=self._compute_prefix(),
+                                     is_final=True)
+            self._finalize_utterance()
+            # Start new segment with carry-over audio.
+            self._audio_accum = right[-carry:] if carry > 0 else right
+            self._chunk_id = 0
+            self._raw_decoded = ""
+            logger.info(
+                "Auto-segment: split at %.1fs, left=%.1fs right=%.1fs carry=%.1fs",
+                split_at / SAMPLE_RATE, len(left) / SAMPLE_RATE,
+                len(right) / SAMPLE_RATE, carry / SAMPLE_RATE)
+            if len(self._audio_accum) == 0:
+                return
+
         # 1. Encode FULL accumulated utterance audio.
         t0 = time.perf_counter()
-        enc_result = self._engine.encoder.encode(self._audio_accum)
-        if isinstance(enc_result, tuple):
-            audio_embd = enc_result[0]
-        else:
-            audio_embd = enc_result
+        audio_embd = self._encode(self._audio_accum)
         enc_ms = (time.perf_counter() - t0) * 1000
         self._total_enc_ms += enc_ms
 
-        # 2. Compute prefix with UTF-8 guarded rollback.
+        # 2-4. Decode and update state.
         prefix = self._compute_prefix()
-
-        # 3. Build embed with prefix + decode.
-        full_embd, n_tokens = self._engine.build_embed(
-            audio_embd, prefix_text=prefix,
-            language=self._language, context=self._context,
-            skip_prefix=False)
-
-        early_stop = 0 if is_final else MAX_DECODE_TOKENS
-        result = self._decode(full_embd, n_tokens, early_stop)
-        self._n_hops += 1
-
-        # 4. Parse output.  Decoder generates continuation only (prefix is
-        #    prefill context, not generated tokens).  Append to prefix for
-        #    the full decoded text.  Mirrors qwen3_asr.py:754-761.
-        raw = result.get("text", "") or ""
-        was_aborted = result.get("aborted", False)
-
-        if self._language:
-            new_text = raw
-        else:
-            lang, new_text = parse_asr_output(raw)
-            if lang:
-                self._current_language = lang
-
-        if was_aborted and not is_final:
-            # Repetition abort on intermediate hop: keep prefix, discard new.
-            new_text = ""
-
-        self._raw_decoded = (prefix + new_text) if prefix else new_text
-
-        # Strip trailing garbage from raw_decoded (same heuristic as
-        # StreamSession._strip_trailing_garbage).
-        self._raw_decoded = self._strip_trailing(self._raw_decoded)
-
-        # Update partial for get_result().
-        self._current_partial = self._raw_decoded
+        self._decode_and_update(audio_embd, prefix, is_final)
         self._chunk_id += 1
 
         if os.environ.get("QWEN3_ASR_DEBUG_CC", "0") == "1":
             logger.info(
-                "  [hop %d] accum=%.1fs enc=%.0fms dec=%.0fms "
-                "prefix=%r new=%r",
+                "  [hop %d] accum=%.1fs enc=%.0fms "
+                "prefix=%r partial=%r",
                 self._chunk_id, len(self._audio_accum) / SAMPLE_RATE,
                 enc_ms,
-                (time.perf_counter() - t0) * 1000 - enc_ms,
-                prefix[:30], new_text[:40])
+                prefix[:30], self._current_partial[:40])
 
     def _compute_prefix(self) -> str:
         """Compute UTF-8-safe prefix from previous decode.
@@ -457,6 +452,75 @@ class ChunkConfirmASRStream:
             if end == 0:
                 return ""
             k += 1
+
+    def _encode(self, audio: np.ndarray) -> np.ndarray:
+        """Encode audio and return embedding array."""
+        enc_result = self._engine.encoder.encode(audio)
+        if isinstance(enc_result, tuple):
+            return enc_result[0]
+        return enc_result
+
+    def _decode_and_update(self, audio_embd: np.ndarray, prefix: str,
+                           is_final: bool) -> None:
+        """Build embed, run decoder, and update raw_decoded + partial text.
+
+        Mirrors official ``qwen3_asr.py:748-761``.
+        """
+        full_embd, n_tokens = self._engine.build_embed(
+            audio_embd, prefix_text=prefix,
+            language=self._language, context=self._context,
+            skip_prefix=False)
+
+        early_stop = 0 if is_final else MAX_DECODE_TOKENS
+        result = self._decode(full_embd, n_tokens, early_stop)
+        self._n_hops += 1
+
+        raw = result.get("text", "") or ""
+        was_aborted = result.get("aborted", False)
+
+        if self._language:
+            new_text = raw
+        else:
+            lang, new_text = parse_asr_output(raw)
+            if lang:
+                self._current_language = lang
+
+        if was_aborted and not is_final:
+            new_text = ""
+
+        self._raw_decoded = (prefix + new_text) if prefix else new_text
+        self._raw_decoded = self._strip_trailing(self._raw_decoded)
+        self._current_partial = self._raw_decoded
+
+    @staticmethod
+    def _find_energy_split(audio: np.ndarray) -> int:
+        """Find a low-energy split point near the encoder capacity boundary.
+
+        Mirrors official ``split_audio_into_chunks`` (Qwen3-ASR utils.py:246).
+        Uses a sliding window of abs(audio) to locate minimum-energy region.
+        Returns sample index for the split.
+        """
+        max_len = len(audio)
+        cut = max_len  # default: split at end
+        expand = int(ENERGY_SPLIT_SEARCH_S * SAMPLE_RATE)
+        win = max(4, int((ENERGY_SPLIT_WINDOW_MS / 1000.0) * SAMPLE_RATE))
+
+        search_start = max(0, max_len - expand)
+        search_end = max_len
+
+        if search_end - search_start <= win:
+            return search_end
+
+        seg = np.abs(audio[search_start:search_end])
+        window_sums = np.convolve(seg, np.ones(win, dtype=np.float32), mode="valid")
+        if len(window_sums) == 0:
+            return search_end
+
+        min_pos = int(np.argmin(window_sums))
+        local = seg[min_pos:min_pos + win]
+        inner = int(np.argmin(local)) if len(local) > 0 else 0
+        boundary = search_start + min_pos + inner
+        return int(max(search_start + 1, min(boundary, search_end)))
 
     def _decode(self, full_embd: np.ndarray, n_tokens: int,
                 early_stop: int) -> dict:
