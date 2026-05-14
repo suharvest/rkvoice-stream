@@ -329,7 +329,7 @@ class Qwen3ASRRKStream(ASRStream):
 
     def get_partial(self) -> tuple[str, bool]:
         result = self._stream.get_result()
-        return result["text"], False
+        return result["text"], result.get("is_final", False)
 
 
 # ------------------------------------------------------------------
