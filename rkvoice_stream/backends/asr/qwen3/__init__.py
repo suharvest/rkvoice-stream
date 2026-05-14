@@ -20,9 +20,10 @@ Usage:
 
 from .engine import Qwen3ASREngine
 from .stream import StreamSession
+from .chunk_confirm import ChunkConfirmASRStream
 from .config import SUPPORTED_LANGUAGES, DEFAULT_CONFIG
 from rkvoice_stream.vad.silero import SileroVAD
 
-__version__ = "1.3.0"
-__all__ = ["Qwen3ASREngine", "StreamSession", "SileroVAD",
-           "SUPPORTED_LANGUAGES", "DEFAULT_CONFIG"]
+__version__ = "1.4.0"
+__all__ = ["Qwen3ASREngine", "StreamSession", "ChunkConfirmASRStream",
+           "SileroVAD", "SUPPORTED_LANGUAGES", "DEFAULT_CONFIG"]

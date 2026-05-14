@@ -26,11 +26,19 @@ DEFAULT_CONFIG = {
     # CPU affinity
     "enabled_cpus": 2,          # Number of CPU cores for RKLLM (2 = big cores only, recommended)
 
-    # Streaming parameters
+    # Streaming parameters (legacy StreamSession)
     "chunk_size": 5.0,          # Audio chunk size in seconds (5s optimal for streaming)
     "memory_num": 2,            # Number of recent chunks to keep in sliding window
     "unfixed_chunks": 0,        # First N chunks without prefix (0 = always use prefix, recommended for sliding window)
     "rollback_tokens": 0,       # Rollback tokens (0 = no rollback, recommended for sliding window)
+
+    # Chunk-and-Confirm streaming parameters (recipe §4.3)
+    "cc_chunk_size_sec": 0.5,       # Hop interval
+    "cc_unfixed_chunk_num": 2,      # First N hops without prefix
+    "cc_unfixed_token_num": 5,      # Rollback last K tokens from prefix
+    "cc_max_decode_tokens": 64,     # Token budget per intermediate hop
+    "cc_auto_segment_cap_sec": 28,  # Auto-segment when audio nears limit
+    "cc_carryover_sec": 0.8,        # Overlap between auto-segments
 
     # VAD parameters
     "vad_threshold": 0.5,       # Speech detection threshold (0-1)

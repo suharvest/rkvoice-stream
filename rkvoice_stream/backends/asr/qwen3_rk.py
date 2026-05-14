@@ -65,16 +65,24 @@ class Qwen3ASRRKBackend(ASRBackend):
         logger.info("Loading Qwen3-ASR engine from %s (decoder_type=%s)", model_dir, decoder_type)
 
         # lib_path: only needed when decoder_type="rkllm"; ignored by matmul decoder.
-        # Still pass it for backward compat if the env var is set.
         lib_path = os.environ.get("RKLLM_LIB_PATH")
+
+        # chunk-confirm mode needs larger encoder models (up to 30s) for
+        # full-buffer re-encode.  Legacy modes only need 2s + 4s to save
+        # NPU memory.  encoder_sizes=None loads all available sizes.
+        cc_mode = os.environ.get("QWEN3_ASR_CHUNK_CONFIRM", "1") in ("1", "true", "yes")
+        default_sizes = None if cc_mode else [2, 4]
+        encoder_sizes_env = os.environ.get("ASR_ENCODER_SIZES", "")
+        if encoder_sizes_env:
+            default_sizes = [int(x.strip()) for x in encoder_sizes_env.split(",")]
 
         engine_kwargs = dict(
             model_dir=model_dir,
             platform=os.environ.get("ASR_PLATFORM", "rk3576"),
             decoder_type=decoder_type,
             decoder_exec_mode=os.environ.get("MATMUL_EXEC_MODE", "dual_core"),
-            decoder_quant=os.environ.get("ASR_DECODER_QUANT", "w8a8"),  # decoder model quantization
-            encoder_sizes=[2, 4],       # 2s for short audio (faster), 4s for longer
+            decoder_quant=os.environ.get("ASR_DECODER_QUANT", "w8a8"),
+            encoder_sizes=default_sizes,
             enabled_cpus=int(os.environ.get("ASR_ENABLED_CPUS", "2")),
             max_context_len=int(os.environ.get("RKLLM_MAX_CONTEXT_LEN", "512")),
             repeat_penalty=1.15,
@@ -140,10 +148,30 @@ class Qwen3ASRRKBackend(ASRBackend):
 
         lang_hint = None if language == "auto" else language
 
+        # ── Chunk-and-Confirm mode (recipe §3, P0 streaming) ─────────
+        # Each hop re-encodes full accumulated audio + uses prefix prompt
+        # so the decoder only generates the uncertain tail.  VAD-aligned
+        # segmentation for multi-utterance sessions.
+        cc_mode = os.environ.get(
+            "QWEN3_ASR_CHUNK_CONFIRM", "1") in ("1", "true", "yes")
+        if cc_mode:
+            from rkvoice_stream.backends.asr.qwen3.chunk_confirm import (
+                ChunkConfirmASRStream,
+            )
+            vad = self._build_vad()
+            npu_lock = get_npu_lock() if self._use_npu_lock else None
+            stream = ChunkConfirmASRStream(
+                engine=self._engine,
+                language=lang_hint,
+                context="",
+                vad=vad,
+                use_npu_lock=self._use_npu_lock,
+                npu_lock=npu_lock,
+            )
+            logger.info("ASR stream mode: chunk_confirm")
+            return Qwen3ASRRKStream(stream, use_npu_lock=self._use_npu_lock)
+
         # ── True streaming mode (port of Jetson Qwen3StreamingASRStream) ──
-        # 400ms chunks + left-context encoder + VAD endpoint → emits early
-        # final on VAD silence, so the WebSocket stop→final latency is near
-        # zero when the user pauses naturally.
         true_streaming = os.environ.get(
             "QWEN3_ASR_STREAM_TRUE", "0") in ("1", "true", "yes")
         if true_streaming:
@@ -165,9 +193,6 @@ class Qwen3ASRRKBackend(ASRBackend):
         final_mode = os.environ.get("QWEN3_ASR_STREAM_FINAL_MODE", "offline")
         reuse_min_audio_ms = int(os.environ.get(
             "QWEN3_ASR_STREAM_REUSE_MIN_AUDIO_MS", "500"))
-        # KV streaming: encode-only during speech, single decode at finalize.
-        # Optimal stop-to-final-text latency for V2V. Off by default to keep
-        # backwards-compatible behaviour for existing partial-text consumers.
         kv_streaming = os.environ.get(
             "QWEN3_ASR_STREAM_KV", "0") in ("1", "true", "yes")
         stream_session = self._engine.create_stream(
