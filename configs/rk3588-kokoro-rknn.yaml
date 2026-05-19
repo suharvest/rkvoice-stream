@@ -1,0 +1,27 @@
+# RK3588 Kokoro RKNN TTS
+name: "RK3588 Kokoro RKNN TTS"
+platform: rk3588
+
+tts:
+  backend: kokoro_rknn
+  model_dir: /opt/kokoro-rknn
+  mode: hybrid
+  prefix_onnx: kokoro-prefix-cpu.onnx
+  front_rknn: rk3588/kokoro-decoder-front.int8.rknn
+  tail_onnx: kokoro-generator-tail-cpu.onnx
+  # seq32 is the current best latency/RTF bucket verified on Radxa RK3588:
+  # "abc." smoke: 5.248s audio, 3.62s wall, RTF ~= 0.69.
+  seq_len: 32
+  sample_rate: 24000
+  voice: default
+  prefix_ort_intra_op: 1
+  prefix_ort_inter_op: 1
+  tail_ort_intra_op: 4
+  tail_ort_inter_op: 1
+  ort_graph_opt: all
+  # Radxa seq16/32/64 tail benchmark: disabling ORT mem pattern saved ~4-5%
+  # on seq32/64 and was close to best on seq16.
+  ort_enable_mem_pattern: false
+
+asr:
+  backend: disabled

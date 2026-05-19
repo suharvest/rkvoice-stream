@@ -1,0 +1,21 @@
+services:
+  speech:
+    volumes:
+      - ${KOKORO_HOST_MODEL_DIR:-/home/radxa/models/tts/kokoro-bucket-32}:/opt/kokoro-rknn:ro
+    environment:
+      - TTS_BACKEND=kokoro_rknn
+      - ASR_BACKEND=disabled
+      - KOKORO_MODEL_DIR=/opt/kokoro-rknn
+      - KOKORO_RKNN_MODE=${KOKORO_RKNN_MODE:-hybrid}
+      - KOKORO_MODEL=${KOKORO_MODEL:-kokoro.rknn}
+      - KOKORO_PREFIX_ONNX=${KOKORO_PREFIX_ONNX:-kokoro-prefix-cpu.onnx}
+      - KOKORO_FRONT_RKNN=${KOKORO_FRONT_RKNN:-rk3588/kokoro-decoder-front.int8.rknn}
+      - KOKORO_TAIL_ONNX=${KOKORO_TAIL_ONNX:-kokoro-generator-tail-cpu.onnx}
+      - KOKORO_SEQ_LEN=${KOKORO_SEQ_LEN:-32}
+      - KOKORO_SAMPLE_RATE=${KOKORO_SAMPLE_RATE:-24000}
+      - KOKORO_VOICE=${KOKORO_VOICE:-default}
+      - KOKORO_PREFIX_ORT_INTRA_OP=${KOKORO_PREFIX_ORT_INTRA_OP:-1}
+      - KOKORO_PREFIX_ORT_INTER_OP=${KOKORO_PREFIX_ORT_INTER_OP:-1}
+      - KOKORO_TAIL_ORT_INTRA_OP=${KOKORO_TAIL_ORT_INTRA_OP:-4}
+      - KOKORO_TAIL_ORT_INTER_OP=${KOKORO_TAIL_ORT_INTER_OP:-1}
+      - KOKORO_ORT_GRAPH_OPT=${KOKORO_ORT_GRAPH_OPT:-all}
