@@ -100,7 +100,6 @@ async def startup():
         logger.info("TTS_BACKEND not set or disabled — TTS disabled.")
 
     # --- ASR (optional) ---
-    asr_backend_name = os.environ.get("ASR_BACKEND", "")
     if asr_backend_name and asr_backend_name != "disabled":
         logger.info("Loading ASR backend: %s", asr_backend_name)
         try:

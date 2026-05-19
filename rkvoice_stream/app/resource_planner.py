@@ -22,6 +22,11 @@ _MODE_PLANS = {
         "tts": {"backend": "matcha_rknn", "provider": "npu"},
         "parallel": True,
     },
+    "zh_en_rknn": {
+        "asr": {"backend": "paraformer_rknn", "provider": "npu"},
+        "tts": {"backend": "matcha_rknn", "provider": "npu"},
+        "parallel": False,
+    },
     "asr_only": {
         "asr": {"backend": "qwen3_asr_rk", "provider": "npu"},
         "tts": None,
