@@ -102,6 +102,9 @@ def create_asr_backend(backend_name: Optional[str] = None) -> ASRBackend:
     if backend_name == "qwen3_asr_rk":
         from rkvoice_stream.backends.asr.qwen3_rk import Qwen3ASRRKBackend
         return Qwen3ASRRKBackend()
+    elif backend_name == "paraformer_rknn":
+        from rkvoice_stream.backends.asr.paraformer_rknn import ParaformerRKNNBackend
+        return ParaformerRKNNBackend()
     elif backend_name == "paraformer_sherpa":
         from rkvoice_stream.backends.asr.paraformer_sherpa import ParaformerSherpaBackend
         return ParaformerSherpaBackend()
