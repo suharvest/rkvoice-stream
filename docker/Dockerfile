@@ -45,7 +45,8 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir \
     fastapi \
     'uvicorn[standard]' \
-    python-multipart
+    python-multipart \
+    pyyaml
 
 RUN pip install --no-cache-dir \
     transformers \
@@ -69,7 +70,6 @@ RUN mkdir -p /opt/tts/models /opt/asr/models
 # Application package
 COPY pyproject.toml /opt/rkvoice-stream/
 COPY rkvoice_stream/ /opt/rkvoice-stream/rkvoice_stream/
-RUN pip install --no-cache-dir /opt/rkvoice-stream/
 
 ENV MODEL_DIR=/opt/tts/models
 ENV TTS_BACKEND=matcha_rknn
