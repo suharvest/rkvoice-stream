@@ -40,11 +40,12 @@ rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. 
 
 ## Performance
 
-### ASR — three backends
+### ASR — four backends
 
 | Backend | Languages | Type | RK3576 RTF | RK3588 RTF |
 |---------|:---------:|------|:----------:|:----------:|
 | **Qwen3-ASR** (NPU) | 52 | RKNN + RKLLM | 0.44 | 0.34 |
+| **Paraformer** (Hybrid) | 4 | RKNN encoder prefix + CPU suffix/decoder | 0.29 | 0.33 |
 | **SenseVoice** (CPU) | 50+ | sherpa-onnx | 0.36 | 0.11 |
 | **Paraformer** (CPU) | 4 | sherpa-onnx streaming | 0.50 | 0.24 |
 
@@ -71,6 +72,7 @@ Audio streamed at real-time pace (simulating live microphone). Qwen3-ASR (NPU) +
 ## Features
 
 - **ASR: Qwen3-ASR** — streaming + offline, 52 languages, RKNN encoder + RKLLM decoder on NPU
+- **ASR: Paraformer RKNN** — experimental hybrid split: FP16 RKNN encoder prefix through block30, CPU ONNX encoder suffix and decoder; boundary parity verified on RK3588 and RK3576
 - **ASR: SenseVoice** — offline + VAD streaming, 50+ languages, CPU (sherpa-onnx)
 - **ASR: Paraformer** — native streaming, zh/en/ja/ko, CPU (sherpa-onnx)
 - **TTS: Matcha + Vocos** — high-quality Chinese/English synthesis, NPU-accelerated vocoder
@@ -212,20 +214,48 @@ Expected model layout on the device:
 
 ## Configuration
 
-Five pre-validated profiles in `configs/`:
+Pre-validated profiles in `configs/`:
 
 | Profile | Description |
 |---------|-------------|
 | `rk3576-full.yaml` | ASR + Matcha TTS (split NPU cores) |
+| `rk3576-paraformer-matcha.yaml` | Paraformer RKNN ASR + Matcha TTS |
 | `rk3576-asr-only.yaml` | ASR with both NPU cores |
 | `rk3576-tts-only.yaml` | Matcha TTS only |
 | `rk3576-piper-multilang.yaml` | Piper multi-language TTS |
 | `rk3588-full.yaml` | RK3588 full stack |
+| `rk3588-paraformer-matcha.yaml` | RK3588 Paraformer RKNN ASR + Matcha TTS |
 
 Use via Docker:
 ```bash
 docker run -e CONFIG=rk3576-full rkvoice-stream
 ```
+
+Enable the experimental Paraformer hybrid ASR container profile with an
+artifact directory mounted at `/opt/asr/paraformer`:
+
+```bash
+PARAFORMER_HOST_MODEL_DIR=/home/cat/models/paraformer-hybrid \
+PARAFORMER_CONTAINER_RKNN_DIR=/opt/asr/paraformer/rknn/rk3576 \
+docker compose -f docker/docker-compose.yml \
+  -f docker/docker-compose.paraformer-hybrid.yml \
+  --profile paraformer-hybrid up -d
+```
+
+This profile uses the published arm64 image
+`sensecraft-missionpack.seeed.cn/solution/seeed-local-voice:rk-v1.5-paraformer-hybrid`.
+Published digest: `sha256:8dec7528ed4e08b919f0b2fd9192b8564d2b713df8552aed3eb98202c0a2c194`.
+For RK3588 set `PARAFORMER_CONTAINER_RKNN_DIR=/opt/asr/paraformer/rknn/rk3588`.
+Export/upload scripts live under `models/asr/paraformer/`; generated artifacts
+are stored in the existing RK artifact repo under
+`harvestsu/seeed-local-voice-rk-artifacts/paraformer-hybrid/`.
+
+Measured hybrid ASR performance uses the same Python pipeline baseline with
+full ONNX Runtime vs RKNN prefix + ONNX suffix/decoder. RK3576 improved from
+0.58 RTF to 0.29 RTF, and RK3588 improved from 0.63 RTF to 0.33 RTF. The
+actual `paraformer_rknn` backend entry measured 0.21 RTF on the 10.05s
+validation sample on RK3576. The container profile has also been rebuilt and
+validated on real RK3576/RK3588 devices with the same validation sample.
 
 ## Testing
 
