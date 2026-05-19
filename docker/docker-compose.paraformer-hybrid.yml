@@ -1,0 +1,19 @@
+services:
+  speech:
+    image: sensecraft-missionpack.seeed.cn/solution/seeed-local-voice:rk-v1.5-paraformer-hybrid
+    profiles:
+      - paraformer-hybrid
+    volumes:
+      - ${PARAFORMER_HOST_MODEL_DIR:-/home/cat/models/paraformer-hybrid}:/opt/asr/paraformer:ro
+    environment:
+      - ASR_BACKEND=paraformer_rknn
+      - PARAFORMER_MODEL_DIR=/opt/asr/paraformer
+      # Set PARAFORMER_CONTAINER_RKNN_DIR to /opt/asr/paraformer/rknn/rk3588
+      # on RK3588, or /opt/asr/paraformer/rknn/rk3576 on RK3576.
+      - PARAFORMER_RKNN_DIR=${PARAFORMER_CONTAINER_RKNN_DIR:-/opt/asr/paraformer/rknn/rk3576}
+      - PARAFORMER_RKNN_ENCODER_MODE=hybrid
+      - PARAFORMER_RKNN_DECODER=cpu
+      - PARAFORMER_RKNN_ENC_PRECISION=fp16
+      - PARAFORMER_ENCODER_SUFFIX_ONNX=/opt/asr/paraformer/encoder_suffix_from_block30.onnx
+      - PARAFORMER_DECODER_ONNX=/opt/asr/paraformer/decoder-rknn.onnx
+      - PARAFORMER_RKNN_ENC_CORE=${PARAFORMER_RKNN_ENC_CORE:-NPU_CORE_1}

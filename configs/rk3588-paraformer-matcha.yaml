@@ -1,0 +1,22 @@
+# RK3588 zh/en Full Stack: Paraformer RKNN ASR + Matcha TTS
+name: "RK3588 Paraformer + Matcha"
+platform: rk3588
+
+asr:
+  backend: paraformer_rknn
+  model_dir: /opt/asr/paraformer
+  rknn_dir: /opt/asr/paraformer/rknn/rk3588
+  # Paraformer uses the validated hybrid split:
+  #   encoder_prefix_to_block30.*.fp16.rknn on NPU,
+  #   encoder_suffix_from_block30.onnx + decoder-rknn.onnx on CPU.
+  encoder_precision: fp16
+  encoder_mode: hybrid
+  decoder_backend: cpu
+  encoder_suffix_onnx: /opt/asr/paraformer/encoder_suffix_from_block30.onnx
+  decoder_onnx: /opt/asr/paraformer/decoder-rknn.onnx
+  encoder_core: NPU_CORE_1_2
+
+tts:
+  backend: matcha_rknn
+  model_dir: /opt/tts/models
+  # Matcha/Vocos can stay on NPU_CORE_0 while Paraformer uses CORE_1_2.
