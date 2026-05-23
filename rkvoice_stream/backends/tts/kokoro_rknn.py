@@ -40,6 +40,12 @@ MODE = os.environ.get("KOKORO_RKNN_MODE", os.environ.get("KOKORA_RKNN_MODE", "au
 PREFIX_ONNX = os.environ.get("KOKORO_PREFIX_ONNX", "kokoro-prefix-cpu.onnx")
 FRONT_RKNN = os.environ.get("KOKORO_FRONT_RKNN", "rk3588/kokoro-decoder-front.rknn")
 TAIL_ONNX = os.environ.get("KOKORO_TAIL_ONNX", "kokoro-generator-tail-cpu.onnx")
+# Optional 4-stage path: vocoder-front-half (RKNN FP16) + tail-rest (CPU ONNX).
+# If both are set AND resolve to existing files, backend uses 4-stage hybrid
+# (prefix CPU -> decoder-front RKNN -> vocoder-front-half RKNN -> tail-rest CPU).
+# Otherwise falls back to legacy 3-stage (prefix CPU -> decoder-front RKNN -> full tail CPU).
+VOCODER_FRONT_RKNN = os.environ.get("KOKORO_RKNN_VOCODER_FRONT_PATH", "")
+TAIL_REST_ONNX = os.environ.get("KOKORO_RKNN_TAIL_REST_PATH", "")
 PREFIX_ORT_INTRA_OP = int(os.environ.get("KOKORO_PREFIX_ORT_INTRA_OP", "1"))
 PREFIX_ORT_INTER_OP = int(os.environ.get("KOKORO_PREFIX_ORT_INTER_OP", "1"))
 TAIL_ORT_INTRA_OP = int(os.environ.get("KOKORO_TAIL_ORT_INTRA_OP", "4"))
@@ -64,6 +70,8 @@ ORT_ENABLE_MEM_REUSE = os.environ.get("KOKORO_ORT_ENABLE_MEM_REUSE", "1").lower(
 DECODER_INPUT = "/MatMul_1_output_0"
 STYLE_SLICE = "/Slice_2_output_0"
 FRONT_OUTPUT = "/decoder/decode.3/Mul_output_0"
+# M4 4-stage extra intermediate tensor name: vocoder-front-half output.
+VOCODER_FRONT_OUTPUT = "/decoder/generator/Add_5_output_0"
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;。！？；\n])\s*")
 
@@ -187,11 +195,22 @@ class KokoroRKNNBackend:
         self.prefix_path = self._resolve_model_path(PREFIX_ONNX)
         self.front_path = self._resolve_model_path(FRONT_RKNN)
         self.tail_path = self._resolve_model_path(TAIL_ONNX)
+        # 4-stage optional artifacts. Resolved only when env vars set; empty
+        # string -> falls back to 3-stage path.
+        self.vocoder_front_path = (
+            self._resolve_model_path(VOCODER_FRONT_RKNN) if VOCODER_FRONT_RKNN else None
+        )
+        self.tail_rest_path = (
+            self._resolve_model_path(TAIL_REST_ONNX) if TAIL_REST_ONNX else None
+        )
         self.sample_rate = SAMPLE_RATE
         self.seq_len = SEQ_LEN
         self._rknn = None
+        self._rknn_vfront = None  # 4-stage: second RKNN runtime for vocoder-front-half
         self._prefix_sess = None
         self._tail_sess = None
+        self._tail_rest_sess = None
+        self._use_4stage = False
         self._tokenizer = _KokoroTokenizer(self.model_dir)
         self._style = np.zeros((1, STYLE_DIM), dtype=np.float32)
         self._ready = False
@@ -208,7 +227,14 @@ class KokoroRKNNBackend:
         if not self._ready:
             return False
         if self.mode == "hybrid":
-            return self._rknn is not None and self._prefix_sess is not None and self._tail_sess is not None
+            base = (
+                self._rknn is not None
+                and self._prefix_sess is not None
+                and self._tail_sess is not None
+            )
+            if self._use_4stage:
+                base = base and self._rknn_vfront is not None and self._tail_rest_sess is not None
+            return base
         return self._rknn is not None
 
     def preload(self) -> None:
@@ -273,6 +299,45 @@ class KokoroRKNNBackend:
         ret = self._rknn.init_runtime()
         if ret != 0:
             raise RuntimeError(f"Failed to init Kokoro decoder-front RKNN runtime: ret={ret}")
+
+        # 4-stage optional path: load vocoder-front-half RKNN + tail-rest ONNX.
+        # Fallback: if either artifact missing, log warning and use legacy 3-stage tail.
+        if self.vocoder_front_path is not None and self.tail_rest_path is not None:
+            if self.vocoder_front_path.exists() and self.tail_rest_path.exists():
+                self._tail_rest_sess = self._make_ort_session(
+                    ort,
+                    self.tail_rest_path,
+                    intra_op=TAIL_ORT_INTRA_OP,
+                    inter_op=TAIL_ORT_INTER_OP,
+                    graph_opt=ORT_GRAPH_OPT,
+                )
+                self._rknn_vfront = rknn_lite_cls(verbose=False)
+                ret = self._rknn_vfront.load_rknn(str(self.vocoder_front_path))
+                if ret != 0:
+                    raise RuntimeError(
+                        f"Failed to load Kokoro vocoder-front-half RKNN {self.vocoder_front_path}: ret={ret}"
+                    )
+                ret = self._rknn_vfront.init_runtime()
+                if ret != 0:
+                    raise RuntimeError(
+                        f"Failed to init Kokoro vocoder-front-half RKNN runtime: ret={ret}"
+                    )
+                self._use_4stage = True
+                logger.info(
+                    "Kokoro 4-stage path active: vocoder_front=%s tail_rest=%s",
+                    self.vocoder_front_path,
+                    self.tail_rest_path,
+                )
+            else:
+                logger.warning(
+                    "Kokoro 4-stage env set but artifact(s) missing (vocoder_front=%s exists=%s, "
+                    "tail_rest=%s exists=%s); falling back to 3-stage tail.",
+                    self.vocoder_front_path,
+                    self.vocoder_front_path.exists() if self.vocoder_front_path else False,
+                    self.tail_rest_path,
+                    self.tail_rest_path.exists() if self.tail_rest_path else False,
+                )
+
         self._ready = True
         logger.info(
             "Loaded Kokoro hybrid: prefix=%s front=%s tail=%s voice=%s sr=%d ort_graph_opt=%s prefix_threads=%d/%d tail_threads=%d/%d ort_arena=%s ort_mem_pattern=%s ort_mem_reuse=%s",
@@ -330,14 +395,18 @@ class KokoroRKNNBackend:
         return np.zeros((1, STYLE_DIM), dtype=np.float32)
 
     def cleanup(self) -> None:
-        if self._rknn is not None:
-            try:
-                self._rknn.release()
-            except Exception:
-                pass
+        for rknn in (self._rknn, self._rknn_vfront):
+            if rknn is not None:
+                try:
+                    rknn.release()
+                except Exception:
+                    pass
         self._rknn = None
+        self._rknn_vfront = None
         self._prefix_sess = None
         self._tail_sess = None
+        self._tail_rest_sess = None
+        self._use_4stage = False
         self._ready = False
 
     def _infer_segment(self, text: str, speed: float) -> tuple[np.ndarray, dict]:
@@ -389,13 +458,40 @@ class KokoroRKNNBackend:
             return np.zeros(0, dtype=np.float32), meta
 
         hidden = np.asarray(front_outputs[0], dtype=np.float32)
-        t0 = time.perf_counter()
-        tail_outputs = self._tail_sess.run(
-            None,
-            self._build_tail_feed(self._tail_sess, hidden=hidden, style_slice=style_slice),
-        )
-        meta["tail_ms"] = (time.perf_counter() - t0) * 1000
-        meta["infer_ms"] = meta["prefix_ms"] + meta["front_ms"] + meta["tail_ms"]
+
+        if self._use_4stage and self._rknn_vfront is not None and self._tail_rest_sess is not None:
+            # 4-stage: RKNN vocoder-front-half -> CPU tail-rest
+            t0 = time.perf_counter()
+            vfront_outputs = self._rknn_vfront.inference(inputs=[hidden, style_slice])
+            meta["vocoder_front_ms"] = (time.perf_counter() - t0) * 1000
+            if not vfront_outputs:
+                return np.zeros(0, dtype=np.float32), meta
+            voc_add = np.asarray(vfront_outputs[0], dtype=np.float32)
+            t0 = time.perf_counter()
+            tail_outputs = self._tail_rest_sess.run(
+                None,
+                self._build_tail_rest_feed(
+                    self._tail_rest_sess,
+                    voc_add=voc_add,
+                    hidden=hidden,
+                    style_slice=style_slice,
+                ),
+            )
+            meta["tail_ms"] = (time.perf_counter() - t0) * 1000
+            meta["infer_ms"] = (
+                meta["prefix_ms"]
+                + meta["front_ms"]
+                + meta["vocoder_front_ms"]
+                + meta["tail_ms"]
+            )
+        else:
+            t0 = time.perf_counter()
+            tail_outputs = self._tail_sess.run(
+                None,
+                self._build_tail_feed(self._tail_sess, hidden=hidden, style_slice=style_slice),
+            )
+            meta["tail_ms"] = (time.perf_counter() - t0) * 1000
+            meta["infer_ms"] = meta["prefix_ms"] + meta["front_ms"] + meta["tail_ms"]
         if not tail_outputs:
             return np.zeros(0, dtype=np.float32), meta
 
@@ -430,6 +526,27 @@ class KokoroRKNNBackend:
         for item in sess.get_inputs():
             if item.name not in values:
                 raise KeyError(f"Unsupported Kokoro tail input: {item.name}")
+            feed[item.name] = values[item.name]
+        return feed
+
+    @staticmethod
+    def _build_tail_rest_feed(
+        sess,
+        *,
+        voc_add: np.ndarray,
+        hidden: np.ndarray,
+        style_slice: np.ndarray,
+    ) -> dict[str, np.ndarray]:
+        """4-stage tail-rest feed: takes vocoder-front-half output + style + decoder-front output."""
+        values = {
+            VOCODER_FRONT_OUTPUT: voc_add,
+            FRONT_OUTPUT: hidden,
+            STYLE_SLICE: style_slice,
+        }
+        feed: dict[str, np.ndarray] = {}
+        for item in sess.get_inputs():
+            if item.name not in values:
+                raise KeyError(f"Unsupported Kokoro tail-rest input: {item.name}")
             feed[item.name] = values[item.name]
         return feed
 
