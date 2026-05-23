@@ -427,9 +427,24 @@ class KokoroRKNNBackend:
         # Fallback: if either artifact missing, log warning and use legacy 3-stage tail.
         if self.vocoder_front_path is not None and self.tail_rest_path is not None:
             if self.vocoder_front_path.exists() and self.tail_rest_path.exists():
+                # P7a tail-rest INT8 opt-in (function-level env read for hot-reload).
+                # If KOKORO_RKNN_TAIL_REST_INT8_PATH is set AND file exists, use INT8
+                # variant in place of FP32 tail-rest. Else FP32 fallback (default).
+                tail_rest_int8_env = os.environ.get("KOKORO_RKNN_TAIL_REST_INT8_PATH", "")
+                tail_rest_load_path = self.tail_rest_path
+                if tail_rest_int8_env:
+                    int8_p = self._resolve_model_path(tail_rest_int8_env)
+                    if int8_p.exists():
+                        tail_rest_load_path = int8_p
+                        logger.info("Kokoro bucket-32 tail-rest: using INT8 %s", int8_p)
+                    else:
+                        logger.warning(
+                            "Kokoro bucket-32 tail-rest INT8 env set but file missing (%s); "
+                            "falling back to FP32 %s.", int8_p, self.tail_rest_path,
+                        )
                 self._tail_rest_sess = self._make_ort_session(
                     ort,
-                    self.tail_rest_path,
+                    tail_rest_load_path,
                     intra_op=TAIL_ORT_INTRA_OP,
                     inter_op=TAIL_ORT_INTER_OP,
                     graph_opt=ORT_GRAPH_OPT,
@@ -534,8 +549,21 @@ class KokoroRKNNBackend:
                 intra_op=PREFIX_ORT_INTRA_OP, inter_op=PREFIX_ORT_INTER_OP,
                 graph_opt=ORT_GRAPH_OPT,
             )
+            # P7a tail-rest INT8 opt-in: prefer INT8 if env+file present.
+            tail_rest_int8_env = os.environ.get("KOKORO_RKNN_BUCKET8_TAIL_REST_INT8_PATH", "")
+            tail_rest_load_p = tailrest_p
+            if tail_rest_int8_env:
+                int8_p = self._resolve_model_path(tail_rest_int8_env)
+                if int8_p.exists():
+                    tail_rest_load_p = int8_p
+                    logger.info("Kokoro bucket-8 tail-rest: using INT8 %s", int8_p)
+                else:
+                    logger.warning(
+                        "Kokoro bucket-8 tail-rest INT8 env set but file missing (%s); "
+                        "falling back to FP32 %s.", int8_p, tailrest_p,
+                    )
             self._b8_tail_rest_sess = self._make_ort_session(
-                ort, tailrest_p,
+                ort, tail_rest_load_p,
                 intra_op=TAIL_ORT_INTRA_OP, inter_op=TAIL_ORT_INTER_OP,
                 graph_opt=ORT_GRAPH_OPT,
             )
@@ -623,8 +651,21 @@ class KokoroRKNNBackend:
                 intra_op=PREFIX_ORT_INTRA_OP, inter_op=PREFIX_ORT_INTER_OP,
                 graph_opt=ORT_GRAPH_OPT,
             )
+            # P7a tail-rest INT8 opt-in: prefer INT8 if env+file present.
+            tail_rest_int8_env = os.environ.get("KOKORO_RKNN_BUCKET16_TAIL_REST_INT8_PATH", "")
+            tail_rest_load_p = tailrest_p
+            if tail_rest_int8_env:
+                int8_p = self._resolve_model_path(tail_rest_int8_env)
+                if int8_p.exists():
+                    tail_rest_load_p = int8_p
+                    logger.info("Kokoro bucket-16 tail-rest: using INT8 %s", int8_p)
+                else:
+                    logger.warning(
+                        "Kokoro bucket-16 tail-rest INT8 env set but file missing (%s); "
+                        "falling back to FP32 %s.", int8_p, tailrest_p,
+                    )
             self._b16_tail_rest_sess = self._make_ort_session(
-                ort, tailrest_p,
+                ort, tail_rest_load_p,
                 intra_op=TAIL_ORT_INTRA_OP, inter_op=TAIL_ORT_INTER_OP,
                 graph_opt=ORT_GRAPH_OPT,
             )
