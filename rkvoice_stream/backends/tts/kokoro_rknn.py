@@ -549,14 +549,31 @@ class KokoroRKNNBackend:
                 intra_op=PREFIX_ORT_INTRA_OP, inter_op=PREFIX_ORT_INTER_OP,
                 graph_opt=ORT_GRAPH_OPT,
             )
-            # P7a tail-rest INT8 opt-in: prefer INT8 if env+file present.
-            tail_rest_int8_env = os.environ.get("KOKORO_RKNN_BUCKET8_TAIL_REST_INT8_PATH", "")
+            # P7b static MM+Gemm INT8 opt-in (preferred over P7a dynamic INT8).
+            # P7a dynamic INT8 opt-in (fallback). FP32 if neither env set/file missing.
+            # Function-level env reads for hot-reload (env staleness avoidance).
             tail_rest_load_p = tailrest_p
-            if tail_rest_int8_env:
+            tail_rest_static_env = os.environ.get(
+                "KOKORO_RKNN_BUCKET8_TAIL_REST_INT8STATIC_PATH", "",
+            )
+            tail_rest_int8_env = os.environ.get("KOKORO_RKNN_BUCKET8_TAIL_REST_INT8_PATH", "")
+            if tail_rest_static_env:
+                static_p = self._resolve_model_path(tail_rest_static_env)
+                if static_p.exists():
+                    tail_rest_load_p = static_p
+                    logger.info(
+                        "Kokoro bucket-8 tail-rest using static MM+Gemm INT8 %s", static_p,
+                    )
+                else:
+                    logger.warning(
+                        "Kokoro bucket-8 tail-rest INT8STATIC env set but file missing (%s); "
+                        "falling back to dynamic INT8 / FP32.", static_p,
+                    )
+            if tail_rest_load_p is tailrest_p and tail_rest_int8_env:
                 int8_p = self._resolve_model_path(tail_rest_int8_env)
                 if int8_p.exists():
                     tail_rest_load_p = int8_p
-                    logger.info("Kokoro bucket-8 tail-rest: using INT8 %s", int8_p)
+                    logger.info("Kokoro bucket-8 tail-rest: using dynamic INT8 %s", int8_p)
                 else:
                     logger.warning(
                         "Kokoro bucket-8 tail-rest INT8 env set but file missing (%s); "
