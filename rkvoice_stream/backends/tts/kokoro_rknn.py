@@ -46,6 +46,13 @@ TAIL_ONNX = os.environ.get("KOKORO_TAIL_ONNX", "kokoro-generator-tail-cpu.onnx")
 # Otherwise falls back to legacy 3-stage (prefix CPU -> decoder-front RKNN -> full tail CPU).
 VOCODER_FRONT_RKNN = os.environ.get("KOKORO_RKNN_VOCODER_FRONT_PATH", "")
 TAIL_REST_ONNX = os.environ.get("KOKORO_RKNN_TAIL_REST_PATH", "")
+# Bucket-8 short-sentence router (Phase 2a 2026-05-23). When all four bucket-8
+# artifacts resolve to existing files, the backend additionally loads a
+# bucket-8 engine set and routes sentences with <=8 tokens through it.
+# Missing/unset env -> bucket-32 only (fully backward compatible).
+# Resolved at preload() via _resolve_bucket8_env() (function-level read, not
+# module level — see memory/trt_edge_llm_tts_env_staleness.md).
+BUCKET8_SEQ_LEN = 8
 PREFIX_ORT_INTRA_OP = int(os.environ.get("KOKORO_PREFIX_ORT_INTRA_OP", "1"))
 PREFIX_ORT_INTER_OP = int(os.environ.get("KOKORO_PREFIX_ORT_INTER_OP", "1"))
 TAIL_ORT_INTRA_OP = int(os.environ.get("KOKORO_TAIL_ORT_INTRA_OP", "4"))
@@ -309,6 +316,14 @@ class KokoroRKNNBackend:
         self._tail_sess = None
         self._tail_rest_sess = None
         self._use_4stage = False
+        # Bucket-8 short-sentence engines (optional, Phase 2a 2026-05-23).
+        # Populated by _preload_bucket8() iff all four bucket-8 env vars resolve
+        # to existing files. None => bucket-32 path only (backward compatible).
+        self._b8_prefix_sess = None
+        self._b8_rknn = None
+        self._b8_rknn_vfront = None
+        self._b8_tail_rest_sess = None
+        self._use_bucket8 = False
         self._tokenizer = _KokoroTokenizer(self.model_dir)
         self._style = np.zeros((1, STYLE_DIM), dtype=np.float32)
         self._ready = False
@@ -436,6 +451,10 @@ class KokoroRKNNBackend:
                     self.tail_rest_path.exists() if self.tail_rest_path else False,
                 )
 
+        # Bucket-8 router (Phase 2a 2026-05-23): try to load short-sentence
+        # engine set. Function-level env read (memory:trt_edge_llm_tts_env_staleness).
+        self._preload_bucket8(ort, rknn_lite_cls)
+
         self._ready = True
         logger.info(
             "Loaded Kokoro hybrid: prefix=%s front=%s tail=%s voice=%s sr=%d ort_graph_opt=%s prefix_threads=%d/%d tail_threads=%d/%d ort_arena=%s ort_mem_pattern=%s ort_mem_reuse=%s",
@@ -453,6 +472,101 @@ class KokoroRKNNBackend:
             ORT_ENABLE_MEM_PATTERN,
             ORT_ENABLE_MEM_REUSE,
         )
+
+    def _preload_bucket8(self, ort, rknn_lite_cls) -> None:
+        """Optional bucket-8 short-sentence engine set (Phase 2a).
+
+        Reads env at function scope (not module-level) so reloads/hot-swap
+        pick up env changes — see memory/trt_edge_llm_tts_env_staleness.md.
+
+        If any required env var is unset or any artifact missing, logs an
+        informational note and returns without changing state. The backend
+        will then continue with bucket-32 only.
+        """
+        prefix_env = os.environ.get("KOKORO_RKNN_BUCKET8_PREFIX_PATH", "")
+        decoder_env = os.environ.get("KOKORO_RKNN_BUCKET8_DECODER_FRONT_PATH", "")
+        vfront_env = os.environ.get("KOKORO_RKNN_BUCKET8_VOCODER_FRONT_PATH", "")
+        tailrest_env = os.environ.get("KOKORO_RKNN_BUCKET8_TAIL_REST_PATH", "")
+        if not (prefix_env and decoder_env and vfront_env and tailrest_env):
+            logger.info(
+                "Bucket-8 router: env not set (prefix=%r decoder=%r vfront=%r tail_rest=%r); "
+                "bucket-32 only.",
+                bool(prefix_env), bool(decoder_env), bool(vfront_env), bool(tailrest_env),
+            )
+            return
+
+        prefix_p = self._resolve_model_path(prefix_env)
+        decoder_p = self._resolve_model_path(decoder_env)
+        vfront_p = self._resolve_model_path(vfront_env)
+        tailrest_p = self._resolve_model_path(tailrest_env)
+        missing = [str(p) for p in (prefix_p, decoder_p, vfront_p, tailrest_p) if not p.exists()]
+        if missing:
+            logger.warning(
+                "Bucket-8 router: env set but artifact(s) missing: %s ; falling back to bucket-32 only.",
+                ", ".join(missing),
+            )
+            return
+
+        # Only enable bucket-8 alongside the 4-stage bucket-32 path. The
+        # short-sentence path is itself 4-stage by design.
+        if not self._use_4stage:
+            logger.warning(
+                "Bucket-8 router: enabled but bucket-32 4-stage path is not active; "
+                "bucket-8 routing requires 4-stage. Skipping bucket-8.",
+            )
+            return
+
+        try:
+            self._b8_prefix_sess = self._make_ort_session(
+                ort, prefix_p,
+                intra_op=PREFIX_ORT_INTRA_OP, inter_op=PREFIX_ORT_INTER_OP,
+                graph_opt=ORT_GRAPH_OPT,
+            )
+            self._b8_tail_rest_sess = self._make_ort_session(
+                ort, tailrest_p,
+                intra_op=TAIL_ORT_INTRA_OP, inter_op=TAIL_ORT_INTER_OP,
+                graph_opt=ORT_GRAPH_OPT,
+            )
+            self._b8_rknn = rknn_lite_cls(verbose=False)
+            ret = self._b8_rknn.load_rknn(str(decoder_p))
+            if ret != 0:
+                raise RuntimeError(f"bucket-8 decoder-front load_rknn ret={ret}")
+            ret = self._b8_rknn.init_runtime()
+            if ret != 0:
+                raise RuntimeError(f"bucket-8 decoder-front init_runtime ret={ret}")
+            self._b8_rknn_vfront = rknn_lite_cls(verbose=False)
+            ret = self._b8_rknn_vfront.load_rknn(str(vfront_p))
+            if ret != 0:
+                raise RuntimeError(f"bucket-8 vocoder-front load_rknn ret={ret}")
+            ret = self._b8_rknn_vfront.init_runtime()
+            if ret != 0:
+                raise RuntimeError(f"bucket-8 vocoder-front init_runtime ret={ret}")
+        except Exception as exc:
+            logger.warning("Bucket-8 router: init failed (%s); falling back to bucket-32 only.", exc)
+            # Best-effort cleanup of any partially-initialised engines.
+            for r in (self._b8_rknn, self._b8_rknn_vfront):
+                if r is not None:
+                    try:
+                        r.release()
+                    except Exception:
+                        pass
+            self._b8_prefix_sess = None
+            self._b8_tail_rest_sess = None
+            self._b8_rknn = None
+            self._b8_rknn_vfront = None
+            return
+
+        self._use_bucket8 = True
+        logger.info(
+            "Kokoro bucket-8 router enabled: prefix=%s decoder=%s vfront=%s tail_rest=%s "
+            "(threshold n_tokens<=%d)",
+            prefix_p, decoder_p, vfront_p, tailrest_p, BUCKET8_SEQ_LEN,
+        )
+
+    @staticmethod
+    def _select_bucket(n_tokens: int) -> int:
+        """Pick smallest bucket that fits. Phase 2a: only 8 vs 32."""
+        return BUCKET8_SEQ_LEN if n_tokens <= BUCKET8_SEQ_LEN else 32
 
     @staticmethod
     def _make_ort_session(ort, path: Path, *, intra_op: int, inter_op: int, graph_opt: str):
@@ -493,7 +607,7 @@ class KokoroRKNNBackend:
         return np.zeros((1, STYLE_DIM), dtype=np.float32)
 
     def cleanup(self) -> None:
-        for rknn in (self._rknn, self._rknn_vfront):
+        for rknn in (self._rknn, self._rknn_vfront, self._b8_rknn, self._b8_rknn_vfront):
             if rknn is not None:
                 try:
                     rknn.release()
@@ -501,10 +615,15 @@ class KokoroRKNNBackend:
                     pass
         self._rknn = None
         self._rknn_vfront = None
+        self._b8_rknn = None
+        self._b8_rknn_vfront = None
         self._prefix_sess = None
         self._tail_sess = None
         self._tail_rest_sess = None
+        self._b8_prefix_sess = None
+        self._b8_tail_rest_sess = None
         self._use_4stage = False
+        self._use_bucket8 = False
         self._ready = False
 
     def _infer_segment(
@@ -513,12 +632,22 @@ class KokoroRKNNBackend:
         speed: float,
         language: Optional[str] = None,
     ) -> tuple[np.ndarray, dict]:
+        # Encode at bucket-32 seq_len (default), then route by n_tokens. The
+        # bucket-8 path simply truncates the same token list to its seq_len.
         tokens, n_tokens = self._tokenizer.encode(text, self.seq_len, language=language)
         meta = {"num_tokens": n_tokens}
         if n_tokens == 0:
             return np.zeros(0, dtype=np.float32), meta
 
         if self.mode == "hybrid":
+            # Phase 2a router: short sentences (<=8 tokens) -> bucket-8 path.
+            if self._use_bucket8 and n_tokens <= BUCKET8_SEQ_LEN:
+                meta["bucket"] = BUCKET8_SEQ_LEN
+                # Slice token array to bucket-8 seq_len (1, 8) — bucket-32
+                # encoder padded to 32, bucket-8 path expects 8.
+                b8_tokens = tokens[:, :BUCKET8_SEQ_LEN].copy()
+                return self._infer_segment_bucket8(b8_tokens, n_tokens, speed, meta)
+            meta["bucket"] = 32
             return self._infer_segment_hybrid(tokens, n_tokens, speed)
 
         t0 = time.perf_counter()
@@ -541,7 +670,7 @@ class KokoroRKNNBackend:
         return audio, meta
 
     def _infer_segment_hybrid(self, tokens: np.ndarray, n_tokens: int, speed: float) -> tuple[np.ndarray, dict]:
-        meta = {"num_tokens": n_tokens}
+        meta = {"num_tokens": n_tokens, "bucket": 32}
         speed_arr = np.asarray([speed], dtype=np.float32)
 
         t0 = time.perf_counter()
@@ -598,6 +727,69 @@ class KokoroRKNNBackend:
         if not tail_outputs:
             return np.zeros(0, dtype=np.float32), meta
 
+        audio = np.asarray(tail_outputs[0]).reshape(-1).astype(np.float32)
+        audio = _trim_silence(audio)
+        meta["duration_s"] = audio.size / self.sample_rate
+        if meta["duration_s"] > 0:
+            meta["rtf"] = meta["infer_ms"] / 1000.0 / meta["duration_s"]
+        return audio, meta
+
+    def _infer_segment_bucket8(
+        self,
+        tokens: np.ndarray,
+        n_tokens: int,
+        speed: float,
+        meta: dict,
+    ) -> tuple[np.ndarray, dict]:
+        """Bucket-8 4-stage path: bucket-8 prefix + decoder-front RKNN +
+        vocoder-front-half RKNN + tail-rest CPU.
+
+        Tokens MUST be shape (1, 8) — the caller slices the bucket-32 padded
+        array. Style and speed are reused from the backend (style identical).
+        """
+        speed_arr = np.asarray([speed], dtype=np.float32)
+
+        t0 = time.perf_counter()
+        prefix_outputs = self._b8_prefix_sess.run(
+            None,
+            self._build_ort_feed(self._b8_prefix_sess, tokens=tokens, style=self._style, speed=speed_arr),
+        )
+        meta["prefix_ms"] = (time.perf_counter() - t0) * 1000
+
+        decoder_input = self._select_output(self._b8_prefix_sess, prefix_outputs, DECODER_INPUT, 0)
+        style_slice = self._select_output(self._b8_prefix_sess, prefix_outputs, STYLE_SLICE, 1)
+
+        t0 = time.perf_counter()
+        front_outputs = self._b8_rknn.inference(inputs=[decoder_input, style_slice])
+        meta["front_ms"] = (time.perf_counter() - t0) * 1000
+        if not front_outputs:
+            return np.zeros(0, dtype=np.float32), meta
+
+        hidden = np.asarray(front_outputs[0], dtype=np.float32)
+
+        t0 = time.perf_counter()
+        vfront_outputs = self._b8_rknn_vfront.inference(inputs=[hidden, style_slice])
+        meta["vocoder_front_ms"] = (time.perf_counter() - t0) * 1000
+        if not vfront_outputs:
+            return np.zeros(0, dtype=np.float32), meta
+        voc_add = np.asarray(vfront_outputs[0], dtype=np.float32)
+
+        t0 = time.perf_counter()
+        tail_outputs = self._b8_tail_rest_sess.run(
+            None,
+            self._build_tail_rest_feed(
+                self._b8_tail_rest_sess,
+                voc_add=voc_add,
+                hidden=hidden,
+                style_slice=style_slice,
+            ),
+        )
+        meta["tail_ms"] = (time.perf_counter() - t0) * 1000
+        meta["infer_ms"] = (
+            meta["prefix_ms"] + meta["front_ms"] + meta["vocoder_front_ms"] + meta["tail_ms"]
+        )
+        if not tail_outputs:
+            return np.zeros(0, dtype=np.float32), meta
         audio = np.asarray(tail_outputs[0]).reshape(-1).astype(np.float32)
         audio = _trim_silence(audio)
         meta["duration_s"] = audio.size / self.sample_rate
@@ -729,11 +921,12 @@ class KokoroRKNNBackend:
                 ttfa_ms = (time.perf_counter() - t_stream_start) * 1000.0
                 logger.info(
                     "kokoro synthesize_stream TTFA: first chunk yielded at "
-                    "t=%.1f ms (sentence 0/%d, infer_ms=%.1f, num_tokens=%d)",
+                    "t=%.1f ms (sentence 0/%d, infer_ms=%.1f, num_tokens=%d, bucket=%s)",
                     ttfa_ms,
                     len(sentences),
                     float(meta.get("infer_ms", 0.0)),
                     int(meta.get("num_tokens", 0)),
+                    meta.get("bucket", "?"),
                 )
                 first_yielded = True
             yield audio, {"duration": audio.size / self.sample_rate, "backend": self.name, "mode": self.mode, **meta}
