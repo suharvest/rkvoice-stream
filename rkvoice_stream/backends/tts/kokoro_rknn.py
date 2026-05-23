@@ -711,13 +711,31 @@ class KokoroRKNNBackend:
             raise RuntimeError("KokoroRKNNBackend.preload() has not been called")
         effective_speed = float(speed if speed is not None else kwargs.get("kokoro_speed", 1.0))
         language = kwargs.get("language")
-        for sentence in _split_sentences(text):
+        # TTFA instrumentation: log wall time from synthesize_stream entry to
+        # first yielded sentence (== sentence-0 synthesis wall == backend TTFA).
+        # The HTTP layer adds its own per-request timing; this line is the
+        # ground-truth for "kokoro internal latency to first chunk".
+        t_stream_start = time.perf_counter()
+        first_yielded = False
+        sentences = _split_sentences(text)
+        for idx, sentence in enumerate(sentences):
             audio, meta = self._infer_segment(sentence, effective_speed, language=language)
             if audio.size == 0:
                 continue
             peak = float(np.max(np.abs(audio)))
             if peak > 0:
                 audio = audio / peak * 0.95
+            if not first_yielded:
+                ttfa_ms = (time.perf_counter() - t_stream_start) * 1000.0
+                logger.info(
+                    "kokoro synthesize_stream TTFA: first chunk yielded at "
+                    "t=%.1f ms (sentence 0/%d, infer_ms=%.1f, num_tokens=%d)",
+                    ttfa_ms,
+                    len(sentences),
+                    float(meta.get("infer_ms", 0.0)),
+                    int(meta.get("num_tokens", 0)),
+                )
+                first_yielded = True
             yield audio, {"duration": audio.size / self.sample_rate, "backend": self.name, "mode": self.mode, **meta}
 
     def get_sample_rate(self) -> int:
