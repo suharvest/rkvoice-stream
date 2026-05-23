@@ -93,13 +93,69 @@ def _trim_silence(audio: np.ndarray, threshold: float = 0.005, frame_size: int =
     return audio[keep[0] * frame_size: (keep[-1] + 1) * frame_size]
 
 
+class _MisakiG2P:
+    """Lazy-loaded misaki G2P wrapper.
+
+    misaki v1.1 ZH frontend emits Bopomofo + ASCII tone digits + special
+    CJK glyphs that match Kokoro's tokens.txt 1:1 (see
+    docs/specs/kokoro-rk-zh-fix-misaki.md). English path is left to the
+    existing char-level lookup (tokens.txt already carries the Latin
+    phoneme set used by Kokoro's English exports).
+
+    Import is deferred to first use so deployments without misaki
+    installed fall back to the legacy char-by-char path with a warning.
+    """
+
+    def __init__(self) -> None:
+        self._zh = None
+        self._zh_failed = False
+
+    def zh(self):  # returns a callable str -> str or None on failure
+        if self._zh is not None:
+            return self._zh
+        if self._zh_failed:
+            return None
+        try:
+            from misaki import zh as misaki_zh  # type: ignore
+        except Exception as exc:  # pragma: no cover - env probe
+            logger.warning(
+                "misaki not available; Chinese text will fall back to char-level lookup "
+                "(silent drops expected). Install with: pip install 'misaki[zh]'. err=%s",
+                exc,
+            )
+            self._zh_failed = True
+            return None
+        try:
+            g = misaki_zh.ZHG2P(version="1.1")
+        except Exception as exc:  # pragma: no cover - env probe
+            logger.warning("misaki ZHG2P(version='1.1') init failed: %s", exc)
+            self._zh_failed = True
+            return None
+
+        def _call(text: str) -> str:
+            out = g(text)
+            # ZHG2P returns (phonemes, _) tuple in v1.1
+            if isinstance(out, tuple):
+                out = out[0]
+            return out or ""
+
+        self._zh = _call
+        logger.info("misaki ZH G2P (v1.1) loaded for Kokoro RKNN")
+        return self._zh
+
+
+# Module-level singleton so multiple backend instances share one G2P.
+_G2P = _MisakiG2P()
+
+
 class _KokoroTokenizer:
     """Minimal token mapper for RKNN smoke/runtime.
 
     The tokenizer accepts either a JSON symbol map or a sherpa-style tokens.txt.
-    It is deliberately conservative: unknown characters are skipped unless an
-    <unk> token exists.  Production-quality G2P should live in the exported
-    model package and provide a matching tokens file.
+    For Chinese input (``language='zh'``) it runs misaki v1.1 G2P first, which
+    emits Bopomofo + tone digits that map directly into tokens.txt. For English
+    (and when misaki is unavailable) it falls back to char-level lookup; in
+    that case unknown characters are skipped unless an ``<unk>`` token exists.
     """
 
     def __init__(self, model_dir: Path):
@@ -158,23 +214,65 @@ class _KokoroTokenizer:
         found = self._optional_id(*tokens)
         return default if found is None else found
 
-    def encode(self, text: str, seq_len: int) -> tuple[np.ndarray, int]:
+    def encode(
+        self,
+        text: str,
+        seq_len: int,
+        language: Optional[str] = None,
+    ) -> tuple[np.ndarray, int]:
+        # ZH path: run misaki v1.1 -> Bopomofo/tone-digit sequence first.
+        # The Bopomofo glyphs and tone digits already exist as tokens in
+        # tokens.txt, so the per-char lookup below maps them 1:1.
+        encoded_text = text
+        if language and language.lower().startswith("zh"):
+            zh_g2p = _G2P.zh()
+            if zh_g2p is not None:
+                try:
+                    encoded_text = zh_g2p(text)
+                except Exception as exc:  # pragma: no cover - runtime guard
+                    logger.warning("misaki ZH G2P failed for %r: %s; falling back to raw text", text, exc)
+                    encoded_text = text
+
         ids: list[int] = []
         if self.bos_id is not None:
             ids.append(self.bos_id)
 
-        for ch in text:
+        dropped: list[str] = []
+        for ch in encoded_text:
             if ch.isspace():
                 token_id = self.token_to_id.get(" ", self.token_to_id.get("_"))
             else:
                 token_id = self.token_to_id.get(ch)
             if token_id is None:
                 token_id = self.unk_id
+                if token_id is None:
+                    dropped.append(ch)
             if token_id is not None:
                 ids.append(int(token_id))
 
         if self.eos_id is not None:
             ids.append(self.eos_id)
+
+        if dropped:
+            logger.warning(
+                "Kokoro tokenizer dropped %d char(s) not in tokens.txt: %r (lang=%s, encoded=%r)",
+                len(dropped),
+                "".join(dict.fromkeys(dropped)),
+                language,
+                encoded_text,
+            )
+
+        # If we have only BOS/EOS (or nothing), no real phoneme content survived.
+        # Raising surfaces the failure to the caller (HTTP 500) instead of the
+        # legacy silent 4-byte response.
+        content_count = len(ids) - (1 if self.bos_id is not None else 0) - (
+            1 if self.eos_id is not None else 0
+        )
+        if content_count <= 0:
+            raise ValueError(
+                f"Kokoro tokenizer produced zero phoneme tokens for text={text!r} "
+                f"(language={language!r}, encoded={encoded_text!r}); check G2P and tokens.txt coverage"
+            )
 
         actual = min(len(ids), seq_len)
         arr = np.full((1, seq_len), self.pad_id, dtype=np.int64)
@@ -409,8 +507,13 @@ class KokoroRKNNBackend:
         self._use_4stage = False
         self._ready = False
 
-    def _infer_segment(self, text: str, speed: float) -> tuple[np.ndarray, dict]:
-        tokens, n_tokens = self._tokenizer.encode(text, self.seq_len)
+    def _infer_segment(
+        self,
+        text: str,
+        speed: float,
+        language: Optional[str] = None,
+    ) -> tuple[np.ndarray, dict]:
+        tokens, n_tokens = self._tokenizer.encode(text, self.seq_len, language=language)
         meta = {"num_tokens": n_tokens}
         if n_tokens == 0:
             return np.zeros(0, dtype=np.float32), meta
@@ -564,12 +667,13 @@ class KokoroRKNNBackend:
             raise RuntimeError("KokoroRKNNBackend.preload() has not been called")
 
         effective_speed = float(speed if speed is not None else kwargs.get("kokoro_speed", 1.0))
+        language = kwargs.get("language")
         t_start = time.perf_counter()
         audio_parts: list[np.ndarray] = []
         agg = {"num_tokens": 0, "infer_ms": 0.0, "prefix_ms": 0.0, "front_ms": 0.0, "tail_ms": 0.0}
 
         for sentence in _split_sentences(text):
-            audio, meta = self._infer_segment(sentence, effective_speed)
+            audio, meta = self._infer_segment(sentence, effective_speed, language=language)
             if audio.size:
                 audio_parts.append(audio)
             agg["num_tokens"] += int(meta.get("num_tokens", 0))
@@ -606,8 +710,9 @@ class KokoroRKNNBackend:
         if not self.is_ready():
             raise RuntimeError("KokoroRKNNBackend.preload() has not been called")
         effective_speed = float(speed if speed is not None else kwargs.get("kokoro_speed", 1.0))
+        language = kwargs.get("language")
         for sentence in _split_sentences(text):
-            audio, meta = self._infer_segment(sentence, effective_speed)
+            audio, meta = self._infer_segment(sentence, effective_speed, language=language)
             if audio.size == 0:
                 continue
             peak = float(np.max(np.abs(audio)))
