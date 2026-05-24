@@ -111,6 +111,54 @@ def test_prepare_codec_onnx_rewrites_xor_false_as_identity(tmp_path):
     assert list(rewritten.input) == ["mask"]
 
 
+def test_prepare_codec_onnx_moves_input_cast_to_int64_to_input_dtype(tmp_path):
+    module = _load_module()
+    input_path = tmp_path / "codec.onnx"
+    output_path = tmp_path / "codec.fixed.onnx"
+    graph = helper.make_graph(
+        [
+            helper.make_node("Cast", inputs=["attn_offset_0"], outputs=["offset_i64"], name="/Cast_53", to=TensorProto.INT64),
+            helper.make_node("Add", inputs=["offset_i64", "offset_const"], outputs=["out"], name="/Add"),
+        ],
+        "codec_input_cast_i64",
+        [helper.make_tensor_value_info("attn_offset_0", TensorProto.INT32, [1])],
+        [helper.make_tensor_value_info("out", TensorProto.INT64, [1])],
+        [helper.make_tensor("offset_const", TensorProto.INT64, [1], [0])],
+    )
+    model = helper.make_model(graph)
+    onnx.save_model(model, str(input_path))
+
+    module.prepare_codec_onnx(input_path, output_path)
+
+    fixed = onnx.load(str(output_path), load_external_data=False)
+    fixed_input = fixed.graph.input[0].type.tensor_type
+    rewritten = [node for node in fixed.graph.node if node.output and node.output[0] == "offset_i64"][0]
+    assert fixed_input.elem_type == TensorProto.INT64
+    assert rewritten.op_type == "Identity"
+    assert list(rewritten.input) == ["attn_offset_0"]
+
+
+def test_prepare_codec_onnx_does_not_rewrite_input_cast_to_float(tmp_path):
+    module = _load_module()
+    input_path = tmp_path / "codec.onnx"
+    output_path = tmp_path / "codec.fixed.onnx"
+    graph = helper.make_graph(
+        [helper.make_node("Cast", inputs=["attn_offset_0"], outputs=["offset_f32"], name="/rope/Cast_4", to=TensorProto.FLOAT)],
+        "codec_input_cast_float",
+        [helper.make_tensor_value_info("attn_offset_0", TensorProto.INT64, [1])],
+        [helper.make_tensor_value_info("offset_f32", TensorProto.FLOAT, [1])],
+    )
+    model = helper.make_model(graph)
+    onnx.save_model(model, str(input_path))
+
+    module.prepare_codec_onnx(input_path, output_path)
+
+    fixed = onnx.load(str(output_path), load_external_data=False)
+    kept = fixed.graph.node[0]
+    assert kept.op_type == "Cast"
+    assert kept.attribute[0].i == TensorProto.FLOAT
+
+
 def test_convert_moss_rknn_blocks_before_missing_onnx_check_when_workspace_preflight_fails(
     monkeypatch, tmp_path
 ):

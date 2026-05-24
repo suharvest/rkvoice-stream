@@ -116,6 +116,14 @@ def input_shapes(onnx_path: Path, overrides: dict[str, int]) -> tuple[list[str],
     return names, shapes
 
 
+def input_dtypes(onnx_path: Path) -> list[str]:
+    model = onnx.load(str(onnx_path), load_external_data=False)
+    return [
+        TensorProto.DataType.Name(inp.type.tensor_type.elem_type).lower()
+        for inp in model.graph.input
+    ]
+
+
 def prepare_prefill_onnx(input_path: Path, output_path: Path, seq_len: int, output_mode: str) -> Path:
     """Replace CumSum(attention_mask, axis=-1) with MatMul for RKNN runtime.
 
@@ -204,11 +212,42 @@ def _constant_bool(model: onnx.ModelProto, output_name: str) -> bool | None:
     return None
 
 
+def _cast_to(model: onnx.ModelProto, node: onnx.NodeProto) -> int | None:
+    if node.op_type != "Cast":
+        return None
+    for attr in node.attribute:
+        if attr.name == "to":
+            return int(attr.i)
+    return None
+
+
+def _graph_inputs_by_name(model: onnx.ModelProto) -> dict[str, onnx.ValueInfoProto]:
+    return {inp.name: inp for inp in model.graph.input}
+
+
+def _rewrite_input_casts_to_int64(model: onnx.ModelProto) -> int:
+    inputs = _graph_inputs_by_name(model)
+    rewritten = 0
+    for node in model.graph.node:
+        if len(node.input) != 1 or node.input[0] not in inputs:
+            continue
+        if _cast_to(model, node) != TensorProto.INT64:
+            continue
+        tensor_type = inputs[node.input[0]].type.tensor_type
+        tensor_type.elem_type = TensorProto.INT64
+        del node.attribute[:]
+        node.op_type = "Identity"
+        node.name = f"{node.name or 'Cast'}_int64_input_identity"
+        rewritten += 1
+    return rewritten
+
+
 def prepare_codec_onnx(input_path: Path, output_path: Path) -> Path:
     """Apply exact RKNN compatibility rewrites to codec decode-step ONNX."""
 
     model = onnx.load(str(input_path), load_external_data=True)
     rewritten = 0
+    rewritten += _rewrite_input_casts_to_int64(model)
     for node in model.graph.node:
         if node.op_type != "Xor" or len(node.input) != 2:
             continue
@@ -235,6 +274,31 @@ def prepare_codec_onnx(input_path: Path, output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     onnx.save_model(
         model,
+        str(output_path),
+        save_as_external_data=True,
+        all_tensors_to_one_file=True,
+        location=output_path.with_suffix(".data").name,
+        size_threshold=1024,
+        convert_attribute=False,
+    )
+    return output_path
+
+
+def simplify_static_onnx(input_path: Path, output_path: Path, overrides: dict[str, int]) -> Path:
+    """Run onnxsim with the fixed RKNN input shapes used for conversion."""
+
+    import onnxsim
+
+    input_names, shape_list = input_shapes(input_path, overrides)
+    input_shapes_by_name = dict(zip(input_names, shape_list))
+    model = onnx.load(str(input_path), load_external_data=True)
+    simplified, ok = onnxsim.simplify(model, input_shapes=input_shapes_by_name)
+    if not ok:
+        raise RuntimeError(f"onnxsim failed validation for {input_path}")
+    onnx.checker.check_model(simplified)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    onnx.save_model(
+        simplified,
         str(output_path),
         save_as_external_data=True,
         all_tensors_to_one_file=True,
@@ -318,6 +382,7 @@ def convert_onnx(
         "elapsed_s": round(elapsed, 3),
         "input_names": input_names,
         "input_shapes": shape_list,
+        "input_dtypes": input_dtypes(onnx_path),
         "disable_rules": disable_rules,
         "size_bytes": rknn_path.stat().st_size,
         "sha256": sha256_file(rknn_path),
@@ -347,7 +412,7 @@ def write_manifest(out_dir: Path, target: str, precision: str, artifact_set: str
         *[f"moss_tts_prefill.s{s}.{precision}.{target}.rknn" for s in PREFILL_BUCKETS],
         *[f"moss_tts_decode_step.p{p}.{precision}.{target}.rknn" for p in DECODE_PAST_BUCKETS],
         f"moss_tts_local_fixed_sampled_frame.{precision}.{target}.rknn",
-        *[f"codec_decode_step.f{f}.{precision}.{target}.rknn" for f in CODEC_FRAME_BUCKETS],
+        *[f"codec_decode_step.f{f}.int64offset.{precision}.{target}.rknn" for f in CODEC_FRAME_BUCKETS],
     ]
     manifest = {
         "model_id": "moss-tts-nano-rknn",
@@ -400,6 +465,16 @@ def main() -> int:
     parser.add_argument("--decode-past-buckets", default="1,32,64,128,256,512")
     parser.add_argument("--codec-frame-buckets", default="1,4,8")
     parser.add_argument("--codec-output-mode", choices=["full", "audio_only"], default="full")
+    parser.add_argument(
+        "--codec-crop-output",
+        default="",
+        help="Optional intermediate tensor name used as the only RKNN output for codec crash probes.",
+    )
+    parser.add_argument(
+        "--codec-simplify",
+        action="store_true",
+        help="Run onnxsim after codec graph surgery with fixed bucket shapes before RKNN conversion.",
+    )
     parser.add_argument("--only", choices=["all", "prefill", "decode", "sampler", "codec"], default="all")
     parser.add_argument("--artifact-set", default="")
     parser.add_argument(
@@ -533,17 +608,30 @@ def main() -> int:
 
     if args.only in ("all", "codec"):
         for frames in CODEC_FRAME_BUCKETS:
+            codec_overrides = {"batch": 1, "code_length": frames}
             patched_codec = prepare_codec_onnx(
                 codec_onnx,
                 args.out_dir / "_fixed_onnx" / f"moss_audio_tokenizer_decode_step.f{frames}.onnx",
             )
+            if args.codec_simplify:
+                patched_codec = simplify_static_onnx(
+                    patched_codec,
+                    args.out_dir / "_fixed_onnx" / f"moss_audio_tokenizer_decode_step.f{frames}.sim.onnx",
+                    codec_overrides,
+                )
             codec_outputs = ["audio", "audio_lengths"] if args.codec_output_mode == "audio_only" else None
-            output_suffix = ".audio_only" if args.codec_output_mode == "audio_only" else ""
+            output_suffix = ".int64offset"
+            if args.codec_output_mode == "audio_only":
+                output_suffix += ".audio_only"
+            if args.codec_crop_output:
+                codec_outputs = [args.codec_crop_output]
+                safe_crop = args.codec_crop_output.strip("/").replace("/", "_").replace(":", "_")
+                output_suffix += f".crop_{safe_crop}"
             run_one(
-                f"codec decode frames={frames} output={args.codec_output_mode}",
+                f"codec decode frames={frames} output={args.codec_output_mode} crop={args.codec_crop_output or 'none'}",
                 patched_codec,
                 f"codec_decode_step.f{frames}{output_suffix}.{args.precision}.{args.target}.rknn",
-                {"batch": 1, "code_length": frames},
+                codec_overrides,
                 outputs=codec_outputs,
             )
 

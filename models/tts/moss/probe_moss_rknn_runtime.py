@@ -42,6 +42,8 @@ def _case_from_name(path: Path, explicit: str) -> str:
         return "sampler_island_float"
     if re.search(r"block\d+_attn_residual", name):
         return "attn_residual"
+    if "codec_suffix_layer0_outproj_ffn" in name:
+        return "codec_suffix_layer0_outproj_ffn"
     if "codec_decode_step" in name or "audio_tokenizer_decode" in name:
         return "codec"
     if ".crop_" in name:
@@ -119,6 +121,11 @@ def _inputs_for_case(case: str, path: Path) -> list[np.ndarray]:
             np.zeros((1, 16, 1024), dtype=np.int32),
             np.asarray([0.5], dtype=np.float32),
             np.full((1, 16), 0.5, dtype=np.float32),
+        ]
+    if case == "codec_suffix_layer0_outproj_ffn":
+        return [
+            np.linspace(-0.25, 0.25, num=4 * 256, dtype=np.float32).reshape(1, 4, 256),
+            np.linspace(-0.5, 0.5, num=4 * 256, dtype=np.float32).reshape(1, 4, 256),
         ]
     if case == "codec":
         frames = _parse_bucket(r"\.f(\d+)", name, 1)

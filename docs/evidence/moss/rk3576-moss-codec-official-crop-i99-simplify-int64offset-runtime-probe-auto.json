@@ -1,0 +1,39 @@
+{
+  "summary": {
+    "total": 1,
+    "ok": 0,
+    "crash": 1,
+    "timeout": 0,
+    "missing": 0
+  },
+  "results": [
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.int64offset.crop_rope_Add_output_0.official.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.int64offset.crop_rope_Add_output_0.official.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1
+        ]
+      ],
+      "input_dtypes": [
+        "int64"
+      ],
+      "status": "CRASH",
+      "load_ms": 0.234,
+      "load_ret": 0,
+      "init_ms": 129.977,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "attn_offset_0"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 986.966,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [13:08:37.091] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    }
+  ]
+}

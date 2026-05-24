@@ -310,7 +310,7 @@ fallback. The current priority order is:
    prefill/decode stage, but current MOSS hidden-state parity failures make it
    unsafe for production audio quality even when smoke audio is non-silent.
 
-Codec RKNN status as of the RK3576 `f1` probe:
+Codec RKNN status as of the RK3576 `f1` probes:
 
 - The original codec RKNN build failed in RKNN toolkit rule
   `merge_conv_channel_inner_perm`. Passing
@@ -325,6 +325,20 @@ Codec RKNN status as of the RK3576 `f1` probe:
 - Trying to crop codec outputs to `audio/audio_lengths` with RKNN `outputs=...`
   currently fails during toolkit `fold_constant` even at `optimization_level=0`,
   so the audio-only route is not yet a usable shortcut.
+- Fixed-shape `onnxsim` is required for reliable codec crop probes. Without it,
+  a `/rope/Add_output_0` crop hits the RKNN toolkit `fold_constant` bug; with
+  `--codec-simplify`, the official converter can build the crop.
+- Full codec still crashes even after `audio_codes/audio_code_lengths` are moved
+  to CPU-side INT64 inputs. Crop bisection proves the first stable NPU boundary
+  reaches `i95` (Q/K/V gather), while `i96` `Cast(attn_offset_0 -> INT64)` and
+  `i97` `Cast(INT64 -> FLOAT)` expose RK3576 runtime SIGSEGV paths. The
+  converter now rewrites input-side Cast-to-INT64 as INT64 input ABI and records
+  this in `int64offset` codec artifact names plus `input_dtypes` metadata.
+- The current codec route is therefore not full-graph RKNN. It is:
+  `front RKNN through Q/K/V -> CPU RoPE/attention mask/attention -> suffix RKNN`.
+  The first suffix island, `codec_suffix_layer0_outproj_ffn`, takes CPU attention
+  output plus residual hidden and runs out-projection + norm2 + FFN on RK3576 in
+  about `2.5 ms` with finite output.
 
 Evidence:
 
@@ -335,6 +349,10 @@ Evidence:
 - `docs/evidence/moss/rk3576-moss-codec-f1-xorfix-runtime-probe-all.json`
 - `docs/evidence/moss/wsl2-moss-codec-f1-xorfix-audio-only-build.log`
 - `docs/evidence/moss/wsl2-moss-codec-f1-xorfix-audio-only-opt0-build.log`
+- `docs/evidence/moss/wsl2-moss-codec-official-crop-i99-simplify-manifest.json`
+- `docs/evidence/moss/rk3576-moss-codec-official-crop-i99-simplify-int64offset-runtime-probe-auto.json`
+- `docs/evidence/moss/wsl2-moss-codec-suffix-layer0-outproj-ffn-build.json`
+- `docs/evidence/moss/rk3576-moss-codec-suffix-layer0-outproj-ffn-runtime-probe-auto.json`
 
 ## Gates
 
@@ -2540,9 +2558,12 @@ target is a sampler/decode/codec path that reduces the fixed first-audio cost.
 - Investigate a sampler-aware RKNN path before any production promotion. The current RKNN FP16 prefill MLP path fails sampler token parity even when hidden cosine is high; `bf16`/`tf32`/`optimization_level=0` are not usable fixes, and even the safer `fc_out_only` split only has short-probe parity for selected combinations. The sampler-side `sampler_mlps0` island is accurate and faster than ORT, but the all-at-once text-head + 17-MLP suffix split failed token parity because it violates local-block sequential dependencies. Candidate directions: a true per-local-block sampler runner, sampler-logit correction on CPU, deterministic/local-code constrained sampling that preserves audio quality, or a different graph partition where the final sampler input remains full-ORT-equivalent.
 - Continue prefill surgery only if it removes most attention suffix or per-layer handoff overhead. The all-layer `ln1_cattn` integration is accurate and faster than both `ln2_mlp` baseline and the narrower `cattn` route in the isolated long-prompt verifier, reaching `979.765 ms` prefill (`1.159x` over baseline), but backend-stage Junhao/314 evidence shows it is slower than full ORT for the short production prompt (`prefill 1013.763 ms` vs `933.188 ms`). Service promotion still requires a real TTFA/wall-time win and ASR roundtrip quality, not just hidden/KV parity.
 - Fix or replace the experimental voice-prefix KV cache path. Current TTFA improves but quality fails, so it remains opt-in only.
-- Rebuild suffix probes from ONNX with explicit, queryable input signatures if needed; the current hidden+mask suffix RKNNs now have correct probe inputs but still SIGSEGV.
+- Continue codec split implementation from the verified boundaries: front RKNN
+  through Q/K/V, CPU RoPE/attention, suffix RKNN for out-projection + FFN. The
+  layer-0 suffix island is verified on RK3576; the next step is to generate the
+  same suffix pattern for all 12 codec layers and run parity/latency as a
+  streaming pipeline.
 - Split sampler/decode further before RKNN conversion. The current monolithic sampler/decode graphs load but crash on RK3576 inference.
-- For codec, investigate ONNX MatMul rank/permute surgery before RKNN build; changing RKNN `optimization_level` alone does not avoid the toolkit crash.
 - Convert fixed-shape RKNN buckets and generate `moss-rknn-manifest.json` only after single-bucket RK3576 inference is stable.
 - Implement and compile `/opt/rkvoice-workers/moss_rknn_worker` against RKNN C API.
 - Keep full ORT fallback as the default until hybrid ASR roundtrip passes with manifest-verified artifacts.

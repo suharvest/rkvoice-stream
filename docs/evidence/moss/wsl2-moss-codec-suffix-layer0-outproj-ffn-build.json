@@ -1,0 +1,30 @@
+{
+  "name": "codec_suffix_layer0_outproj_ffn.fp16.rk3576.rknn",
+  "status": "OK",
+  "elapsed_s": 0.21,
+  "input_names": [
+    "/Reshape_3_output_0",
+    "/input_proj/MatMul_output_0"
+  ],
+  "input_shapes": [
+    [
+      1,
+      4,
+      256
+    ],
+    [
+      1,
+      4,
+      256
+    ]
+  ],
+  "input_dtypes": [
+    "float",
+    "float"
+  ],
+  "disable_rules": [
+    "merge_conv_channel_inner_perm"
+  ],
+  "size_bytes": 1317886,
+  "sha256": "2c7bff4385788687979f54918f5b4bd072e3ffd6105f942f26c6d0141a5636b4"
+}
