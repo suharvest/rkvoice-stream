@@ -30,9 +30,11 @@ def test_extract_moss_rknn_island_has_narrow_attention_qkv_projection_preset():
     module = _load_module()
 
     assert "cattn" in module.PRESET_CHOICES
+    assert "ln1_cattn" in module.PRESET_CHOICES
 
     first = module._preset_spec("cattn", 0)
     later = module._preset_spec("cattn", 3)
+    fused = module._preset_spec("ln1_cattn", 4)
 
     assert first["inputs"] == ["/ln_1/LayerNormalization_output_0"]
     assert first["outputs"] == ["/c_attn/Add_output_0"]
@@ -41,6 +43,11 @@ def test_extract_moss_rknn_island_has_narrow_attention_qkv_projection_preset():
 
     assert later["inputs"] == ["/ln_1_3/LayerNormalization_output_0"]
     assert later["outputs"] == ["/c_attn_3/Add_output_0"]
+
+    assert fused["inputs"] == ["/Mul_40_output_0"]
+    assert fused["outputs"] == ["/c_attn_4/Add_output_0"]
+    assert fused["shape"] == [1, 32, 768]
+    assert fused["case"] == "island_float"
 
 
 def test_extract_moss_rknn_island_has_cattn_cpu_boundaries():

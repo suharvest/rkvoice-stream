@@ -128,6 +128,11 @@ def main() -> int:
         type=Path,
         help="optional directory containing ln1 ONNX, cattn RKNN, and attn_after_cattn ONNX artifacts",
     )
+    parser.add_argument(
+        "--ln1-cattn-dir",
+        type=Path,
+        help="optional directory containing fused ln1+cattn RKNN artifacts; uses --cattn-dir for attention suffix when provided",
+    )
     parser.add_argument("--text", default="你好")
     parser.add_argument("--voice", default="Lingyu")
     parser.add_argument("--seq-len", type=int, default=320)
@@ -158,8 +163,9 @@ def main() -> int:
     preload_start = time.perf_counter()
     embedding = _ort_session(args.artifact_dir / f"moss_embedding_prefix.s{args.seq_len}.onnx", args.threads)
     final_norm = _ort_session(args.artifact_dir / f"moss_final_norm.s{args.seq_len}.onnx", args.threads)
-    use_cattn = args.cattn_dir is not None
-    if use_cattn:
+    use_cattn = args.cattn_dir is not None or args.ln1_cattn_dir is not None
+    use_ln1_cattn = args.ln1_cattn_dir is not None
+    if use_cattn and not use_ln1_cattn:
         cattn_dir = args.cattn_dir
         ln1 = [
             _ort_session(cattn_dir / f"moss_block{layer}_ln1.s{args.seq_len}.onnx", args.threads)
@@ -173,9 +179,24 @@ def main() -> int:
             _ort_session(cattn_dir / f"moss_block{layer}_attn_after_cattn.s{args.seq_len}.onnx", args.threads)
             for layer in range(12)
         ]
+        ln1_cattn = []
+    elif use_ln1_cattn:
+        ln1_cattn_dir = args.ln1_cattn_dir
+        suffix_dir = args.cattn_dir or args.ln1_cattn_dir
+        ln1 = []
+        cattn = []
+        ln1_cattn = [
+            _RknnSession(ln1_cattn_dir / f"moss_block{layer}_ln1_cattn.s{args.seq_len}.fp16.rk3576.rknn")
+            for layer in range(12)
+        ]
+        attention_suffix = [
+            _ort_session(suffix_dir / f"moss_block{layer}_attn_after_cattn.s{args.seq_len}.onnx", args.threads)
+            for layer in range(12)
+        ]
     else:
         ln1 = []
         cattn = []
+        ln1_cattn = []
         attention_suffix = []
     attention = [] if use_cattn else [
         _ort_session(args.artifact_dir / f"moss_block{layer}_attn_residual.s{args.seq_len}.onnx", args.threads)
@@ -196,13 +217,19 @@ def main() -> int:
             layer_t0 = time.perf_counter()
             attn_t0 = time.perf_counter()
             if use_cattn:
-                ln1_t0 = time.perf_counter()
-                ln1_name = ln1[layer].get_inputs()[0].name
-                normalized_attn = ln1[layer].run(None, {ln1_name: hidden * mask3})[0]
-                ln1_ms = (time.perf_counter() - ln1_t0) * 1000.0
-                cattn_t0 = time.perf_counter()
-                qkv = cattn[layer].run(np.asarray(normalized_attn, dtype=np.float32))
-                cattn_ms = (time.perf_counter() - cattn_t0) * 1000.0
+                if use_ln1_cattn:
+                    ln1_ms = None
+                    cattn_t0 = time.perf_counter()
+                    qkv = ln1_cattn[layer].run(np.asarray(hidden * mask3, dtype=np.float32))
+                    cattn_ms = (time.perf_counter() - cattn_t0) * 1000.0
+                else:
+                    ln1_t0 = time.perf_counter()
+                    ln1_name = ln1[layer].get_inputs()[0].name
+                    normalized_attn = ln1[layer].run(None, {ln1_name: hidden * mask3})[0]
+                    ln1_ms = (time.perf_counter() - ln1_t0) * 1000.0
+                    cattn_t0 = time.perf_counter()
+                    qkv = cattn[layer].run(np.asarray(normalized_attn, dtype=np.float32))
+                    cattn_ms = (time.perf_counter() - cattn_t0) * 1000.0
                 suffix_t0 = time.perf_counter()
                 suffix_inputs = {
                     f"/c_attn{_suffix(layer)}/Add_output_0": qkv,
@@ -211,7 +238,7 @@ def main() -> int:
                 }
                 attn_residual, key, value = attention_suffix[layer].run(None, suffix_inputs)
                 suffix_ms = (time.perf_counter() - suffix_t0) * 1000.0
-                attn_ms = ln1_ms + cattn_ms + suffix_ms
+                attn_ms = (ln1_ms or 0.0) + cattn_ms + suffix_ms
             else:
                 ln1_ms = None
                 cattn_ms = None
@@ -231,7 +258,8 @@ def main() -> int:
                 {
                     "layer": layer,
                     "ln1_ms": round(ln1_ms, 3) if ln1_ms is not None else None,
-                    "cattn_rknn_ms": round(cattn_ms, 3) if cattn_ms is not None else None,
+                    "cattn_rknn_ms": round(cattn_ms, 3) if cattn_ms is not None and not use_ln1_cattn else None,
+                    "ln1_cattn_rknn_ms": round(cattn_ms, 3) if cattn_ms is not None and use_ln1_cattn else None,
                     "attention_suffix_ms": round(suffix_ms, 3) if suffix_ms is not None else None,
                     "attention_ms": round(attn_ms, 3),
                     "mlp_rknn_ms": round(mlp_ms, 3),
@@ -253,6 +281,8 @@ def main() -> int:
             item.release()
         for item in cattn:
             item.release()
+        for item in ln1_cattn:
+            item.release()
 
     outputs = {"global_hidden": _metrics(targets["global_hidden"], hybrid_global)}
     kv_metrics = {}
@@ -273,7 +303,9 @@ def main() -> int:
         "model_dir": str(args.model_dir),
         "artifact_dir": str(args.artifact_dir),
         "cattn_dir": str(args.cattn_dir) if args.cattn_dir is not None else None,
+        "ln1_cattn_dir": str(args.ln1_cattn_dir) if args.ln1_cattn_dir is not None else None,
         "use_cattn": use_cattn,
+        "use_ln1_cattn": use_ln1_cattn,
         "text": args.text,
         "voice": args.voice,
         "seq_len": args.seq_len,

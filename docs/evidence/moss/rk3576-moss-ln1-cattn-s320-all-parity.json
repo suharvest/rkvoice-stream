@@ -1,0 +1,916 @@
+{
+  "preset": "ln1_cattn",
+  "layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "seq_len": 320,
+  "precision": "fp16",
+  "target": "rk3576",
+  "artifact_dir": "/home/cat/moss-rknn-ln1-cattn-all-probe",
+  "out_dir": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity",
+  "repeat": 8,
+  "thresholds": {
+    "max_rel_l2": 0.01,
+    "min_cosine": 0.999
+  },
+  "passed": true,
+  "elapsed_s": 21.649,
+  "summary": {
+    "layers_total": 12,
+    "reports": 12,
+    "max_rel_l2": 0.0018740996019914746,
+    "min_cosine": 0.9999933838844299,
+    "sum_ort_avg_ms": 346.66,
+    "sum_rknn_avg_ms": 188.159,
+    "speedup": 1.842
+  },
+  "results": [
+    {
+      "layer": 0,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block0_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block0_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block0_ln1_cattn_s320.json",
+      "elapsed_s": 1.787,
+      "output_tail": [
+        "      \"got_max\": 3.755859375",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 32.47,",
+        "    \"rknn_first\": 32.726,",
+        "    \"ort_avg\": 24.42,",
+        "    \"rknn_avg\": 14.629,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:30.036] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:30.036] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:30.036] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:30.052] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block0_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block0_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_16_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.011287689208984375,
+            "mean_abs": 0.000989250373095274,
+            "rel_l2": 0.0018677175976336002,
+            "cosine": 0.9999940395355225,
+            "ref_min": -4.5097455978393555,
+            "ref_max": 3.7596595287323,
+            "got_min": -4.5,
+            "got_max": 3.755859375
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 32.47,
+          "rknn_first": 32.726,
+          "ort_avg": 24.42,
+          "rknn_avg": 14.629,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 1,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block1_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block1_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block1_ln1_cattn_s320.json",
+      "elapsed_s": 1.731,
+      "output_tail": [
+        "      \"got_max\": 3.833984375",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 30.644,",
+        "    \"rknn_first\": 33.074,",
+        "    \"ort_avg\": 24.969,",
+        "    \"rknn_avg\": 15.132,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:31.753] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:31.753] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:31.754] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:31.770] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block1_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block1_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_22_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.010844230651855469,
+            "mean_abs": 0.0010339160216972232,
+            "rel_l2": 0.0018683847738429904,
+            "cosine": 0.9999947547912598,
+            "ref_min": -3.827828884124756,
+            "ref_max": 3.8410916328430176,
+            "got_min": -3.822265625,
+            "got_max": 3.833984375
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 30.644,
+          "rknn_first": 33.074,
+          "ort_avg": 24.969,
+          "rknn_avg": 15.132,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 2,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block2_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block2_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block2_ln1_cattn_s320.json",
+      "elapsed_s": 1.752,
+      "output_tail": [
+        "      \"got_max\": 4.25",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 31.715,",
+        "    \"rknn_first\": 35.205,",
+        "    \"ort_avg\": 24.549,",
+        "    \"rknn_avg\": 15.898,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:33.504] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:33.504] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:33.505] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:33.522] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block2_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block2_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_28_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.011273384094238281,
+            "mean_abs": 0.0010408986127004027,
+            "rel_l2": 0.0018712745513767004,
+            "cosine": 0.9999950528144836,
+            "ref_min": -3.966928482055664,
+            "ref_max": 4.2600417137146,
+            "got_min": -3.966796875,
+            "got_max": 4.25
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 31.715,
+          "rknn_first": 35.205,
+          "ort_avg": 24.549,
+          "rknn_avg": 15.898,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 3,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block3_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block3_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block3_ln1_cattn_s320.json",
+      "elapsed_s": 1.687,
+      "output_tail": [
+        "      \"got_max\": 4.625",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 32.789,",
+        "    \"rknn_first\": 20.099,",
+        "    \"ort_avg\": 25.962,",
+        "    \"rknn_avg\": 15.82,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:35.203] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:35.204] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:35.204] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:35.215] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block3_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block3_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_34_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.012662649154663086,
+            "mean_abs": 0.0010541767114773393,
+            "rel_l2": 0.0018713315948843956,
+            "cosine": 0.9999942779541016,
+            "ref_min": -4.687448024749756,
+            "ref_max": 4.635159969329834,
+            "got_min": -4.67578125,
+            "got_max": 4.625
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 32.789,
+          "rknn_first": 20.099,
+          "ort_avg": 25.962,
+          "rknn_avg": 15.82,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 4,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block4_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block4_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block4_ln1_cattn_s320.json",
+      "elapsed_s": 1.784,
+      "output_tail": [
+        "      \"got_max\": 5.1875",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 39.118,",
+        "    \"rknn_first\": 32.509,",
+        "    \"ort_avg\": 25.333,",
+        "    \"rknn_avg\": 15.746,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:36.971] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:36.971] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:36.971] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:36.987] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block4_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block4_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_40_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.014890909194946289,
+            "mean_abs": 0.0010807154467329383,
+            "rel_l2": 0.0018731781747192144,
+            "cosine": 0.9999957084655762,
+            "ref_min": -5.184455394744873,
+            "ref_max": 5.200814247131348,
+            "got_min": -5.1796875,
+            "got_max": 5.1875
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 39.118,
+          "rknn_first": 32.509,
+          "ort_avg": 25.333,
+          "rknn_avg": 15.746,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 5,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block5_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block5_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block5_ln1_cattn_s320.json",
+      "elapsed_s": 1.766,
+      "output_tail": [
+        "      \"got_max\": 5.25",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 32.96,",
+        "    \"rknn_first\": 32.622,",
+        "    \"ort_avg\": 24.693,",
+        "    \"rknn_avg\": 15.558,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:38.743] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:38.743] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:38.743] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:38.760] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block5_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block5_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_46_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.015235424041748047,
+            "mean_abs": 0.001076646032743156,
+            "rel_l2": 0.0018740996019914746,
+            "cosine": 0.9999951124191284,
+            "ref_min": -5.108460426330566,
+            "ref_max": 5.255450248718262,
+            "got_min": -5.109375,
+            "got_max": 5.25
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 32.96,
+          "rknn_first": 32.622,
+          "ort_avg": 24.693,
+          "rknn_avg": 15.558,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 6,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block6_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block6_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block6_ln1_cattn_s320.json",
+      "elapsed_s": 1.818,
+      "output_tail": [
+        "      \"got_max\": 4.15625",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 32.748,",
+        "    \"rknn_first\": 34.664,",
+        "    \"ort_avg\": 24.633,",
+        "    \"rknn_avg\": 15.527,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:40.567] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:40.567] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:40.567] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:40.584] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block6_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block6_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_52_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.011165618896484375,
+            "mean_abs": 0.0010615618666633964,
+            "rel_l2": 0.0018705417169257998,
+            "cosine": 0.999994695186615,
+            "ref_min": -3.8411574363708496,
+            "ref_max": 4.167415618896484,
+            "got_min": -3.83203125,
+            "got_max": 4.15625
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 32.748,
+          "rknn_first": 34.664,
+          "ort_avg": 24.633,
+          "rknn_avg": 15.527,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 7,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block7_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block7_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block7_ln1_cattn_s320.json",
+      "elapsed_s": 1.781,
+      "output_tail": [
+        "      \"got_max\": 4.0234375",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 33.124,",
+        "    \"rknn_first\": 32.342,",
+        "    \"ort_avg\": 24.564,",
+        "    \"rknn_avg\": 15.252,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:42.349] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:42.349] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:42.349] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:42.366] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block7_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block7_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_58_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.012866497039794922,
+            "mean_abs": 0.0010694591328501701,
+            "rel_l2": 0.0018694429891183972,
+            "cosine": 0.9999938607215881,
+            "ref_min": -3.9753334522247314,
+            "ref_max": 4.036303997039795,
+            "got_min": -3.974609375,
+            "got_max": 4.0234375
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 33.124,
+          "rknn_first": 32.342,
+          "ort_avg": 24.564,
+          "rknn_avg": 15.252,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 8,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block8_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block8_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block8_ln1_cattn_s320.json",
+      "elapsed_s": 2.234,
+      "output_tail": [
+        "      \"got_max\": 3.9296875",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 34.67,",
+        "    \"rknn_first\": 23.347,",
+        "    \"ort_avg\": 71.634,",
+        "    \"rknn_avg\": 17.183,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:44.164] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:44.164] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:44.164] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:44.179] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block8_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block8_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_64_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.012298345565795898,
+            "mean_abs": 0.001094436040148139,
+            "rel_l2": 0.001873911707662046,
+            "cosine": 0.9999943971633911,
+            "ref_min": -4.482814311981201,
+            "ref_max": 3.938016653060913,
+            "got_min": -4.47265625,
+            "got_max": 3.9296875
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 34.67,
+          "rknn_first": 23.347,
+          "ort_avg": 71.634,
+          "rknn_avg": 17.183,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 9,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block9_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block9_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block9_ln1_cattn_s320.json",
+      "elapsed_s": 1.735,
+      "output_tail": [
+        "      \"got_max\": 4.2265625",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 33.249,",
+        "    \"rknn_first\": 32.857,",
+        "    \"ort_avg\": 26.216,",
+        "    \"rknn_avg\": 16.433,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:46.292] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:46.292] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:46.292] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:46.308] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block9_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block9_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_70_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.01273202896118164,
+            "mean_abs": 0.0011124518932774663,
+            "rel_l2": 0.0018706724513322115,
+            "cosine": 0.9999960064888,
+            "ref_min": -3.9667344093322754,
+            "ref_max": 4.230704307556152,
+            "got_min": -3.958984375,
+            "got_max": 4.2265625
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 33.249,
+          "rknn_first": 32.857,
+          "ort_avg": 26.216,
+          "rknn_avg": 16.433,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 10,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block10_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block10_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block10_ln1_cattn_s320.json",
+      "elapsed_s": 1.811,
+      "output_tail": [
+        "      \"got_max\": 4.1875",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 37.932,",
+        "    \"rknn_first\": 34.706,",
+        "    \"ort_avg\": 24.517,",
+        "    \"rknn_avg\": 15.299,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:48.124] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:48.124] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:48.124] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:48.141] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block10_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block10_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_76_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.01169443130493164,
+            "mean_abs": 0.001109505188651383,
+            "rel_l2": 0.001871806220151484,
+            "cosine": 0.9999933838844299,
+            "ref_min": -4.155099391937256,
+            "ref_max": 4.193028450012207,
+            "got_min": -4.14453125,
+            "got_max": 4.1875
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 37.932,
+          "rknn_first": 34.706,
+          "ort_avg": 24.517,
+          "rknn_avg": 15.299,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    },
+    {
+      "layer": 11,
+      "returncode": 0,
+      "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block11_ln1_cattn.s320.onnx",
+      "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block11_ln1_cattn.s320.fp16.rk3576.rknn",
+      "json": "/home/cat/moss-rknn-ln1-cattn-all-probe/parity/parity_block11_ln1_cattn_s320.json",
+      "elapsed_s": 1.757,
+      "output_tail": [
+        "      \"got_max\": 4.1875",
+        "    }",
+        "  ],",
+        "  \"latency_ms\": {",
+        "    \"ort_first\": 27.625,",
+        "    \"rknn_first\": 34.36,",
+        "    \"ort_avg\": 25.17,",
+        "    \"rknn_avg\": 15.682,",
+        "    \"repeat\": 8",
+        "  },",
+        "  \"gates\": {",
+        "    \"max_rel_l2\": 0.01,",
+        "    \"min_cosine\": 0.999,",
+        "    \"passed\": true",
+        "  }",
+        "}",
+        "I RKNN: [11:37:49.884] RKNN Runtime Information, librknnrt version: 2.3.2 (429f97ae6b@2025-04-09T09:09:27)",
+        "I RKNN: [11:37:49.884] RKNN Driver Information, version: 0.9.8",
+        "I RKNN: [11:37:49.884] RKNN Model Information, version: 6, toolkit version: 2.3.0(compiler version: 2.3.0 (c949ad889d@2024-11-07T11:39:30)), target: RKNPU f2, target platform: rk3576, framework name: ONNX, framework layout: NCHW, model inference type: static_shape",
+        "W RKNN: [11:37:49.901] query RKNN_QUERY_INPUT_DYNAMIC_RANGE error, rknn model is static shape type, please export rknn with dynamic_shapes"
+      ],
+      "report": {
+        "onnx": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block11_ln1_cattn.s320.onnx",
+        "rknn": "/home/cat/moss-rknn-ln1-cattn-all-probe/moss_block11_ln1_cattn.s320.fp16.rk3576.rknn",
+        "input_names": [
+          "/Mul_82_output_0"
+        ],
+        "input_shape": [
+          1,
+          320,
+          768
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              320,
+              2304
+            ],
+            "dtype": "float32",
+            "finite": true,
+            "max_abs": 0.011914730072021484,
+            "mean_abs": 0.001153213670477271,
+            "rel_l2": 0.0018737894715741277,
+            "cosine": 0.9999951720237732,
+            "ref_min": -4.456639289855957,
+            "ref_max": 4.195216178894043,
+            "got_min": -4.4453125,
+            "got_max": 4.1875
+          }
+        ],
+        "latency_ms": {
+          "ort_first": 27.625,
+          "rknn_first": 34.36,
+          "ort_avg": 25.17,
+          "rknn_avg": 15.682,
+          "repeat": 8
+        },
+        "gates": {
+          "max_rel_l2": 0.01,
+          "min_cosine": 0.999,
+          "passed": true
+        }
+      }
+    }
+  ]
+}

@@ -33,6 +33,7 @@ PRESET_CHOICES = (
     "ln2_mlp",
     "fc_in_act",
     "fc_out",
+    "ln1_cattn",
     "cattn",
     "attn_after_cattn",
     "cproj",
@@ -157,6 +158,14 @@ def _preset_spec(preset: str, layer: int) -> dict[str, object]:
             "shape": [1, 32, 768],
             "case": "island_float",
             "description": f"block{layer} fused attention qkv projection only: ln1 hidden -> qkv",
+        }
+    if preset == "ln1_cattn":
+        return {
+            "inputs": [_layer_ln1_input(layer)],
+            "outputs": [f"/c_attn{suf}/Add_output_0"],
+            "shape": [1, 32, 768],
+            "case": "island_float",
+            "description": f"block{layer} ln1 + fused attention qkv projection: masked hidden -> qkv",
         }
     if preset == "sampler_fc_in_act":
         return {

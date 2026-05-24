@@ -32,7 +32,7 @@ def _case_from_name(path: Path, explicit: str) -> str:
     name = path.name
     if "min_layernorm" in name:
         return "layernorm"
-    if re.search(r"block\d+_(mlp|ln2_mlp|fc_in_act|fc_out|cattn|cproj)", name):
+    if re.search(r"block\d+_(mlp|ln2_mlp|fc_in_act|fc_out|ln1_cattn|cattn|cproj)", name):
         return "island_float"
     if "moss_sampler_audio_heads" in name:
         return "sampler_audio_heads"
