@@ -418,6 +418,7 @@ def main() -> int:
                 overrides={"batch": 1, "prefill_seq": args.seq_len},
                 outputs=None,
                 optimization_level=args.optimization_level,
+                disable_rules=[],
                 dataset=None,
                 force=args.force,
                 verbose=args.verbose,

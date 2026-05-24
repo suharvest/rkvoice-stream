@@ -122,10 +122,21 @@ def _inputs_for_case(case: str, path: Path) -> list[np.ndarray]:
         ]
     if case == "codec":
         frames = _parse_bucket(r"\.f(\d+)", name, 1)
-        return [
+        inputs: list[np.ndarray] = [
             np.zeros((1, frames, 16), dtype=np.int32),
             np.asarray([frames], dtype=np.int32),
         ]
+        for _ in range(4):
+            inputs.append(np.zeros((1,), dtype=np.int32))
+        # Streaming codec decode_step carries attention cache state as explicit
+        # inputs. The current MOSS codec export uses progressively larger cache
+        # buckets across its 12 attention blocks.
+        for cache_len in [500, 500, 500, 500, 800, 800, 1200, 1200, 1600, 1600, 1600, 1600]:
+            inputs.append(np.zeros((1,), dtype=np.int32))
+            inputs.append(np.zeros((1, 4, cache_len, 64), dtype=np.float32))
+            inputs.append(np.zeros((1, 4, cache_len, 64), dtype=np.float32))
+            inputs.append(np.full((1, cache_len), -1, dtype=np.int32))
+        return inputs
     raise ValueError(f"Unsupported probe case: {case}")
 
 

@@ -85,6 +85,25 @@ def test_probe_sampler_island_inputs_match_sampler_contracts():
     assert all(x.dtype == np.dtype("float32") for x in [*text, *fc_out, *mlp, *mlps, *audio_heads])
 
 
+def test_probe_codec_input_includes_streaming_cache_state():
+    inputs = _inputs_for_case("codec", Path("codec_decode_step.f1.fp16.rk3576.rknn"))
+
+    assert len(inputs) == 54
+    assert inputs[0].shape == (1, 1, 16)
+    assert inputs[1].shape == (1,)
+    assert [x.shape for x in inputs[2:6]] == [(1,)] * 4
+    assert inputs[6].shape == (1,)
+    assert inputs[7].shape == (1, 4, 500, 64)
+    assert inputs[8].shape == (1, 4, 500, 64)
+    assert inputs[9].shape == (1, 500)
+    assert inputs[-4].shape == (1,)
+    assert inputs[-3].shape == (1, 4, 1600, 64)
+    assert inputs[-2].shape == (1, 4, 1600, 64)
+    assert inputs[-1].shape == (1, 1600)
+    assert inputs[0].dtype == np.dtype("int32")
+    assert inputs[7].dtype == np.dtype("float32")
+
+
 def test_probe_attention_residual_inputs_include_mask():
     inputs = _inputs_for_case("attn_residual", Path("moss_block0_attn_residual.s320.fp16.rk3576.rknn"))
 

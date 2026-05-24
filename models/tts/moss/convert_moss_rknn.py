@@ -69,6 +69,10 @@ def parse_int_list(text: str, default: Iterable[int]) -> tuple[int, ...]:
     return tuple(int(part) for part in text.split(",") if part.strip())
 
 
+def parse_string_list(text: str) -> list[str]:
+    return [part.strip() for part in text.split(",") if part.strip()]
+
+
 def _is_under(path: Path, root: Path) -> bool:
     try:
         path.resolve(strict=False).relative_to(root.resolve(strict=False))
@@ -196,6 +200,7 @@ def convert_onnx(
     overrides: dict[str, int],
     outputs: list[str] | None,
     optimization_level: int,
+    disable_rules: list[str],
     dataset: str | None,
     force: bool,
     verbose: bool,
@@ -223,6 +228,8 @@ def convert_onnx(
             "target_platform": target,
             "optimization_level": optimization_level,
         }
+        if disable_rules:
+            config_kwargs["disable_rules"] = disable_rules
         if precision in FLOAT_DTYPES:
             config_kwargs["float_dtype"] = FLOAT_DTYPES[precision]
         ret = rknn.config(**config_kwargs)
@@ -258,6 +265,7 @@ def convert_onnx(
         "elapsed_s": round(elapsed, 3),
         "input_names": input_names,
         "input_shapes": shape_list,
+        "disable_rules": disable_rules,
         "size_bytes": rknn_path.stat().st_size,
         "sha256": sha256_file(rknn_path),
     }
@@ -324,6 +332,11 @@ def main() -> int:
     parser.add_argument("--precision", default="fp16", choices=["fp16", "bf16", "tf32", "int8"])
     parser.add_argument("--dataset", default=None)
     parser.add_argument("--optimization-level", type=int, default=3)
+    parser.add_argument(
+        "--disable-rules",
+        default="",
+        help="Comma-separated RKNN optimizer rules to disable, e.g. merge_conv_channel_inner_perm",
+    )
     parser.add_argument("--prefill-buckets", default="32,64,128,256")
     parser.add_argument("--prefill-output-mode", choices=["full", "global_hidden"], default="full")
     parser.add_argument(
@@ -350,6 +363,7 @@ def main() -> int:
     PREFILL_BUCKETS = parse_int_list(args.prefill_buckets, PREFILL_BUCKETS)
     DECODE_PAST_BUCKETS = parse_int_list(args.decode_past_buckets, DECODE_PAST_BUCKETS)
     CODEC_FRAME_BUCKETS = parse_int_list(args.codec_frame_buckets, CODEC_FRAME_BUCKETS)
+    disable_rules = parse_string_list(args.disable_rules)
 
     if args.require_rknn_workspace:
         workspace_report = check_output_workspace(
@@ -413,6 +427,7 @@ def main() -> int:
                     overrides=overrides,
                     outputs=outputs,
                     optimization_level=args.optimization_level,
+                    disable_rules=disable_rules,
                     dataset=args.dataset,
                     force=args.force,
                     verbose=args.verbose,

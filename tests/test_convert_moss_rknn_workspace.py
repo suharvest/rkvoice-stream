@@ -70,6 +70,14 @@ def test_convert_moss_rknn_workspace_check_accepts_prepared_workspace(monkeypatc
     assert report["errors"] == []
 
 
+def test_convert_moss_rknn_parses_disable_rule_list():
+    module = _load_module()
+
+    assert module.parse_string_list("") == []
+    assert module.parse_string_list("merge_conv_channel_inner_perm") == ["merge_conv_channel_inner_perm"]
+    assert module.parse_string_list("a, b,,c ") == ["a", "b", "c"]
+
+
 def test_convert_moss_rknn_blocks_before_missing_onnx_check_when_workspace_preflight_fails(
     monkeypatch, tmp_path
 ):
