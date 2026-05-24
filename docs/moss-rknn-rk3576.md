@@ -358,6 +358,16 @@ Codec RKNN status as of the RK3576 `f1` probes:
   `max_rel_l2=0`, and `min_cosine=0.999999893`; WSL2 summed layer timing is
   `16.803 ms` for full-layer ORT versus `17.473 ms` for split ORT before
   replacing front/suffix with RKNN.
+- Current speed assessment: this codec split is technically correct, but the
+  expected production gain is likely modest unless the runner removes Python
+  handoff overhead or fuses multiple RKNN calls. The verified RK3576 standalone
+  front islands sum to about `29.262 ms` and suffix islands sum to about
+  `34.265 ms` for one codec step before adding middle attention and 24
+  ORT/RKNN crossings. The existing ORT streaming codec is already about
+  `67-69 ms` per frame. A Python `front RKNN -> middle ORT -> suffix RKNN`
+  runner may therefore land near parity or even slower; a meaningful win likely
+  requires a C/C++ worker, persistent RKNN sessions, fewer crossings, or a wider
+  officially supported RKLLM/RKNN route with proven parity.
 
 Evidence:
 
@@ -2591,7 +2601,9 @@ target is a sampler/decode/codec path that reduces the fixed first-audio cost.
   extracted/verified as standalone pieces, and the ORT-level per-layer split
   pipeline is exact against full-layer subgraphs; the next step is to implement
   the streaming runner with RKNN front/suffix and prove full codec audio/cache
-  parity plus end-to-end codec latency.
+  parity plus end-to-end codec latency. Do not assume this will materially beat
+  `moss_ort`: standalone RKNN layer timings already show the codec-only upside
+  may be small without reducing crossings or moving the runner out of Python.
 - Split sampler/decode further before RKNN conversion. The current monolithic sampler/decode graphs load but crash on RK3576 inference.
 - Convert fixed-shape RKNN buckets and generate `moss-rknn-manifest.json` only after single-bucket RK3576 inference is stable.
 - Implement and compile `/opt/rkvoice-workers/moss_rknn_worker` against RKNN C API.
