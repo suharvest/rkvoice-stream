@@ -1,0 +1,13 @@
+{
+  "scaffold_dir": "/home/harve/models/moss-rkllm-custom-scaffold",
+  "configuration_custom": "/home/harve/models/moss-rkllm-custom-scaffold/configuration_custom.py",
+  "modeling_custom": "/home/harve/models/moss-rkllm-custom-scaffold/modeling_custom.py",
+  "supports_row_width": 17,
+  "supports_audio_embeddings": 16,
+  "ready_for_hf_load_probe": true,
+  "ready_for_rkllm_export": false,
+  "why_not_ready": [
+    "hidden parity against ONNX prefill/decode has not been proven",
+    "RKLLM toolkit export has not been run"
+  ]
+}

@@ -1,0 +1,1948 @@
+{
+  "model_dir": "/home/harve/models/moss-onnx-bundle/MOSS-TTS-Nano-100M-ONNX",
+  "rkllm_bridge_feasibility": {
+    "can_reconstruct_from_onnx_initializers": true,
+    "preferred_runtime_output": "RKLLM_INFER_GET_LAST_HIDDEN_LAYER",
+    "sampler_should_remain_external_initially": true,
+    "reason": "MOSS sampler has multi-head text/audio codebook logic; preserve it outside RKLLM until global hidden parity is proven."
+  },
+  "inventories": {
+    "prefill": {
+      "path": "/home/harve/models/moss-onnx-bundle/MOSS-TTS-Nano-100M-ONNX/moss_tts_prefill.onnx",
+      "exists": true,
+      "initializer_count": 139,
+      "class_counts": {
+        "other": 48,
+        "norm": 26,
+        "embedding": 17,
+        "attention_qkv": 12,
+        "attention_out": 12,
+        "mlp_in": 12,
+        "mlp_out": 12
+      },
+      "common_shapes": [
+        {
+          "shape": [
+            768
+          ],
+          "count": 50
+        },
+        {
+          "shape": [
+            1024,
+            768
+          ],
+          "count": 16
+        },
+        {
+          "shape": [
+            2304
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            3072
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            768,
+            2304
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            768,
+            768
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            768,
+            3072
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            3072,
+            768
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            16384,
+            768
+          ],
+          "count": 1
+        }
+      ],
+      "sample_initializers": [
+        {
+          "name": "core.model.transformer.wte.weight",
+          "shape": [
+            16384,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.ln_1.weight",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.ln_f.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.audio_embeddings.0.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.audio_embeddings.1.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.audio_embeddings.2.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.audio_embeddings.3.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.audio_embeddings.4.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        }
+      ]
+    },
+    "decode_step": {
+      "path": "/home/harve/models/moss-onnx-bundle/MOSS-TTS-Nano-100M-ONNX/moss_tts_decode_step.onnx",
+      "exists": true,
+      "initializer_count": 139,
+      "class_counts": {
+        "other": 48,
+        "norm": 26,
+        "embedding": 17,
+        "attention_qkv": 12,
+        "attention_out": 12,
+        "mlp_in": 12,
+        "mlp_out": 12
+      },
+      "common_shapes": [
+        {
+          "shape": [
+            768
+          ],
+          "count": 50
+        },
+        {
+          "shape": [
+            1024,
+            768
+          ],
+          "count": 16
+        },
+        {
+          "shape": [
+            2304
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            3072
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            768,
+            2304
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            768,
+            768
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            768,
+            3072
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            3072,
+            768
+          ],
+          "count": 12
+        },
+        {
+          "shape": [
+            16384,
+            768
+          ],
+          "count": 1
+        }
+      ],
+      "sample_initializers": [
+        {
+          "name": "core.model.transformer.wte.weight",
+          "shape": [
+            16384,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.ln_1.weight",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.0.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.1.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.2.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.3.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.4.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.5.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.6.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.7.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.8.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.9.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.10.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.h.11.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.transformer.ln_f.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.audio_embeddings.0.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.audio_embeddings.1.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.audio_embeddings.2.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.audio_embeddings.3.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "core.model.audio_embeddings.4.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        }
+      ]
+    },
+    "sampler": {
+      "path": "/home/harve/models/moss-onnx-bundle/MOSS-TTS-Nano-100M-ONNX/moss_tts_local_fixed_sampled_frame.onnx",
+      "exists": true,
+      "initializer_count": 45,
+      "class_counts": {
+        "other": 21,
+        "embedding": 16,
+        "norm": 4,
+        "attention_qkv": 1,
+        "attention_out": 1,
+        "mlp_in": 1,
+        "mlp_out": 1
+      },
+      "common_shapes": [
+        {
+          "shape": [
+            768,
+            1024
+          ],
+          "count": 16
+        },
+        {
+          "shape": [
+            1024,
+            768
+          ],
+          "count": 15
+        },
+        {
+          "shape": [
+            768
+          ],
+          "count": 6
+        },
+        {
+          "shape": [
+            16384,
+            768
+          ],
+          "count": 1
+        },
+        {
+          "shape": [
+            2304
+          ],
+          "count": 1
+        },
+        {
+          "shape": [
+            3072
+          ],
+          "count": 1
+        },
+        {
+          "shape": [
+            768,
+            2304
+          ],
+          "count": 1
+        },
+        {
+          "shape": [
+            768,
+            768
+          ],
+          "count": 1
+        },
+        {
+          "shape": [
+            768,
+            3072
+          ],
+          "count": 1
+        },
+        {
+          "shape": [
+            3072,
+            768
+          ],
+          "count": 1
+        },
+        {
+          "shape": [
+            768,
+            16384
+          ],
+          "count": 1
+        }
+      ],
+      "sample_initializers": [
+        {
+          "name": "model.transformer.wte.weight",
+          "shape": [
+            16384,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.0.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.1.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.2.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.3.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.4.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.5.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.6.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.7.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.8.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.9.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.10.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.11.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.12.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.13.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.audio_embeddings.14.weight",
+          "shape": [
+            1024,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.local_transformer.h.0.ln_1.weight",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.local_transformer.h.0.ln_1.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.local_transformer.h.0.attn.c_attn.bias",
+          "shape": [
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.local_transformer.h.0.attn.c_proj.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.local_transformer.h.0.ln_2.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.local_transformer.h.0.mlp.fc_in.bias",
+          "shape": [
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.local_transformer.h.0.mlp.fc_out.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "model.local_transformer.ln_f.bias",
+          "shape": [
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_5853",
+          "shape": [
+            768,
+            2304
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_5886",
+          "shape": [
+            768,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_5887",
+          "shape": [
+            768,
+            3072
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_5888",
+          "shape": [
+            3072,
+            768
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_5889",
+          "shape": [
+            768,
+            16384
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_5928",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_5972",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6016",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6060",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6104",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6148",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6192",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6236",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6280",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6324",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6368",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6412",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6456",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6500",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6544",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        },
+        {
+          "name": "onnx::MatMul_6588",
+          "shape": [
+            768,
+            1024
+          ],
+          "data_type": 1,
+          "external": true
+        }
+      ]
+    }
+  }
+}

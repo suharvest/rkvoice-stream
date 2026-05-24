@@ -15,6 +15,8 @@ import numpy as np
 class TTSBackend(ABC):
     """Base class for all RK3576 TTS backends."""
 
+    supports_streaming: bool = False
+
     @property
     @abstractmethod
     def name(self) -> str:
@@ -70,12 +72,16 @@ class TTSBackend(ABC):
     def get_sample_rate(self) -> int:
         ...
 
+    def runtime_info(self) -> dict:
+        """Structured non-secret runtime metadata for /health."""
+        return {}
+
 
 def create_backend(backend_name: Optional[str] = None) -> TTSBackend:
     """Factory: create TTS backend by name.
 
     Args:
-        backend_name: 'qwen3_rknn' or None for auto-detect from TTS_BACKEND env.
+        backend_name: TTS backend name or None for auto-detect from TTS_BACKEND env.
     """
     import os
 
@@ -85,6 +91,12 @@ def create_backend(backend_name: Optional[str] = None) -> TTSBackend:
     if backend_name == "qwen3_rknn":
         from rkvoice_stream.backends.tts.qwen3_rknn import Qwen3RKNNBackend
         return Qwen3RKNNBackend()
+    elif backend_name == "moss_ort":
+        from rkvoice_stream.backends.tts.moss_ort import MossORTBackend
+        return MossORTBackend()
+    elif backend_name == "moss_rknn":
+        from rkvoice_stream.backends.tts.moss_rknn import MossRKNNBackend
+        return MossRKNNBackend()
     elif backend_name == "matcha_rknn":
         from rkvoice_stream.backends.tts.matcha import MatchaRKNNBackend
         return MatchaRKNNBackend()

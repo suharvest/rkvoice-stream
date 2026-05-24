@@ -1,0 +1,181 @@
+{
+  "passed": true,
+  "errors": [],
+  "execute": false,
+  "requires_confirmation": true,
+  "confirmation": "FORMAT_RKNN_WORKSPACE",
+  "device": "/dev/mmcblk1",
+  "partition": "/dev/mmcblk1p1",
+  "mount_point": "/mnt/rknn-workspace",
+  "label": "RKNN_WS",
+  "persist_fstab": true,
+  "fstab_file": "/etc/fstab",
+  "fstab_entry": "LABEL=RKNN_WS /mnt/rknn-workspace ext4 defaults,nofail,noatime 0 2",
+  "fstab_already_configured": false,
+  "missing_commands": [],
+  "commands": [
+    [
+      "parted",
+      "-s",
+      "/dev/mmcblk1",
+      "mklabel",
+      "gpt"
+    ],
+    [
+      "parted",
+      "-s",
+      "/dev/mmcblk1",
+      "mkpart",
+      "primary",
+      "ext4",
+      "0%",
+      "100%"
+    ],
+    [
+      "partprobe",
+      "/dev/mmcblk1"
+    ],
+    [
+      "mkfs.ext4",
+      "-F",
+      "-L",
+      "RKNN_WS",
+      "/dev/mmcblk1p1"
+    ],
+    [
+      "mkdir",
+      "-p",
+      "/mnt/rknn-workspace"
+    ],
+    [
+      "mount",
+      "/dev/mmcblk1p1",
+      "/mnt/rknn-workspace"
+    ],
+    [
+      "mkdir",
+      "-p",
+      "/mnt/rknn-workspace/moss-rknn-workspace"
+    ],
+    [
+      "chmod",
+      "0777",
+      "/mnt/rknn-workspace/moss-rknn-workspace"
+    ],
+    [
+      "write_fstab_entry",
+      "/etc/fstab",
+      "LABEL=RKNN_WS /mnt/rknn-workspace ext4 defaults,nofail,noatime 0 2"
+    ]
+  ],
+  "results": [
+    {
+      "cmd": [
+        "parted",
+        "-s",
+        "/dev/mmcblk1",
+        "mklabel",
+        "gpt"
+      ],
+      "returncode": null,
+      "stdout": "",
+      "stderr": "",
+      "executed": false
+    },
+    {
+      "cmd": [
+        "parted",
+        "-s",
+        "/dev/mmcblk1",
+        "mkpart",
+        "primary",
+        "ext4",
+        "0%",
+        "100%"
+      ],
+      "returncode": null,
+      "stdout": "",
+      "stderr": "",
+      "executed": false
+    },
+    {
+      "cmd": [
+        "partprobe",
+        "/dev/mmcblk1"
+      ],
+      "returncode": null,
+      "stdout": "",
+      "stderr": "",
+      "executed": false
+    },
+    {
+      "cmd": [
+        "mkfs.ext4",
+        "-F",
+        "-L",
+        "RKNN_WS",
+        "/dev/mmcblk1p1"
+      ],
+      "returncode": null,
+      "stdout": "",
+      "stderr": "",
+      "executed": false
+    },
+    {
+      "cmd": [
+        "mkdir",
+        "-p",
+        "/mnt/rknn-workspace"
+      ],
+      "returncode": null,
+      "stdout": "",
+      "stderr": "",
+      "executed": false
+    },
+    {
+      "cmd": [
+        "mount",
+        "/dev/mmcblk1p1",
+        "/mnt/rknn-workspace"
+      ],
+      "returncode": null,
+      "stdout": "",
+      "stderr": "",
+      "executed": false
+    },
+    {
+      "cmd": [
+        "mkdir",
+        "-p",
+        "/mnt/rknn-workspace/moss-rknn-workspace"
+      ],
+      "returncode": null,
+      "stdout": "",
+      "stderr": "",
+      "executed": false
+    },
+    {
+      "cmd": [
+        "chmod",
+        "0777",
+        "/mnt/rknn-workspace/moss-rknn-workspace"
+      ],
+      "returncode": null,
+      "stdout": "",
+      "stderr": "",
+      "executed": false
+    },
+    {
+      "cmd": [
+        "write_fstab_entry",
+        "/etc/fstab",
+        "LABEL=RKNN_WS /mnt/rknn-workspace ext4 defaults,nofail,noatime 0 2"
+      ],
+      "returncode": null,
+      "stdout": "",
+      "stderr": "",
+      "executed": false
+    }
+  ],
+  "workspace": "/mnt/rknn-workspace/moss-rknn-workspace"
+}

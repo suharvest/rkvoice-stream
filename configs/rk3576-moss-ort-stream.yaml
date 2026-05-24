@@ -1,0 +1,39 @@
+# RK3576 MOSS-TTS-Nano ONNX Runtime streaming profile.
+# This is the correctness fallback while RKNN subgraphs are stabilized.
+asr:
+  backend: null
+
+tts:
+  backend: moss_ort
+  require_backend: 1
+  model_dir: /opt/tts/models/moss-tts-nano-onnx
+  manifest: moss-ort-manifest.json
+  sample_rate: 48000
+  channels: 2
+  # RK3576 has 4x A53 + 4x A72 cores. Six ORT intra-op threads gave the best
+  # base tradeoff. Prefill benefits from all big+little cores; decode and codec
+  # are kept slightly narrower to reduce steady-state jitter during streaming.
+  threads: 6
+  prefill_threads: 8
+  decode_threads: 5
+  codec_threads: 5
+  # 0 means use the full official voice-clone prompt. Tail-cropping is lower
+  # latency but failed ASR content quality on RK3576. Junhao's full prompt for
+  # "你好" is 177 rows; prefill_seq 64/96/128/160 all failed the roundtrip gate.
+  prefill_seq: 0
+  max_new_frames: 20
+  codec_streaming: 1
+  # First audio frame is still emitted immediately. Later codec calls batch three
+  # token frames to reduce steady-state RTF while preserving streamability.
+  codec_batch_frames: 3
+  cache_voice_prefix: 0
+  # Warms full-prompt prefill/sampler/decode/codec during service startup.
+  # This increases preload time but removes avoidable first-request cold work.
+  warmup_text: "你好"
+  # Junhao has a much shorter prompt than Lingyu and passed the same RK3576
+  # three-sentence ASR roundtrip gate with seed 314.
+  voice: Junhao
+  # Production RNG seed. The backend advances one continuous RNG stream across
+  # requests; do not reset this per sentence in quality verification.
+  seed: 314
+  allow_deterministic_fallback: 0

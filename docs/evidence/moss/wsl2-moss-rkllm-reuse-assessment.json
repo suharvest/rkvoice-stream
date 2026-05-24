@@ -1,0 +1,111 @@
+{
+  "model_dir": "/home/harve/models/moss-onnx-bundle/MOSS-TTS-Nano-100M-ONNX",
+  "verdict": "custom_hf_bridge_candidate",
+  "official_rkllm_first": true,
+  "direct_builtin_rkllm": {
+    "ready": false,
+    "detected_family": null,
+    "supported_families": [
+      "llama",
+      "tinyllama",
+      "qwen2",
+      "qwen2.5",
+      "qwen3",
+      "phi2",
+      "phi3",
+      "chatglm3",
+      "gemma2",
+      "gemma3",
+      "internlm2",
+      "minicpm3",
+      "minicpm4",
+      "telechat2",
+      "qwen2-vl",
+      "qwen3-vl",
+      "minicpm-v-2_6",
+      "deepseek-r1-distill",
+      "janus-pro",
+      "internvl2",
+      "internvl3",
+      "smolvlm",
+      "rwkv7",
+      "deepseekocr"
+    ],
+    "hf_config": null,
+    "hf_weights": []
+  },
+  "custom_hf_bridge": {
+    "candidate": true,
+    "reuse": "rkllm-toolkit/examples/custom_demo",
+    "rkllm_custom_demo": {
+      "path": "/home/harve/rknn-llm/rkllm-toolkit/examples/custom_demo",
+      "available": true
+    },
+    "needs_onnx_weight_reconstruction": true,
+    "runtime_api_to_reuse": [
+      "RKLLM_INPUT_EMBED",
+      "RKLLM_INFER_GET_LAST_HIDDEN_LAYER",
+      "RKLLM_INFER_GET_LOGITS",
+      "base_domain_id=1",
+      "embed_flash=1"
+    ]
+  },
+  "moss_shape": {
+    "row_width": 17,
+    "hidden_size": 768,
+    "global_layers": 12,
+    "global_heads": 12,
+    "local_layers": 1,
+    "text_vocab_size": 16384,
+    "audio_codebooks": 16,
+    "audio_codebook_sizes": [
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024
+    ]
+  },
+  "required_files": {
+    "missing": [],
+    "present": [
+      "moss_tts_prefill.onnx",
+      "moss_tts_decode_step.onnx",
+      "moss_tts_local_fixed_sampled_frame.onnx",
+      "moss_tts_global_shared.data",
+      "moss_tts_local_shared.data",
+      "tts_browser_onnx_meta.json",
+      "tokenizer.model"
+    ]
+  },
+  "blockers": [
+    "no HuggingFace config.json for RKLLM load_huggingface",
+    "no HuggingFace PyTorch/safetensors weights for RKLLM load_huggingface",
+    "not an RKLLM built-in supported family as-is",
+    "MOSS uses 1 text column + 16 audio codebooks, not a single-token CausalLM vocabulary"
+  ],
+  "recommended_path": [
+    "build a MOSS HuggingFace custom model directory from official RKLLM custom_demo",
+    "map ONNX initializers/external data into that custom model state_dict if original checkpoint is unavailable",
+    "export the global transformer to RKLLM and call it with RKLLM_INPUT_EMBED or token input",
+    "use GET_LAST_HIDDEN_LAYER to preserve the existing MOSS fixed sampler first",
+    "only after hidden parity passes, consider folding sampler logits into RKLLM GET_LOGITS or RKNN",
+    "keep codec streaming as a separate RKNN/ORT stage until codec RKNN MatMul surgery passes real-device probes"
+  ],
+  "fallback_order": [
+    "official RKLLM custom bridge",
+    "RKNN islands for sampler/codec",
+    "rkmatmul only for remaining MatMul-heavy projections if RKLLM export is blocked"
+  ]
+}

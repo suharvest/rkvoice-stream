@@ -1,0 +1,491 @@
+{
+  "profile": {
+    "backend": "moss_ort",
+    "model_dir": "/home/cat/moss-onnx-baseline",
+    "manifest": "moss-ort-manifest.json",
+    "voice": "Junhao",
+    "seed": 314,
+    "threads": 6,
+    "session_threads": {
+      "prefill": 8,
+      "decode": 5,
+      "sampler": 6,
+      "codec": 5
+    },
+    "prefill_seq": 0,
+    "codec_streaming": 1,
+    "codec_batch_frames": 3
+  },
+  "summary": {
+    "passed": true,
+    "checks": {
+      "artifact_manifest": true,
+      "service_streaming": true,
+      "backend_stage": true,
+      "roundtrip_quality": true
+    },
+    "errors": []
+  },
+  "artifact_manifest": {
+    "target_platform": "rk3576",
+    "sample_rate": 48000,
+    "channels": 2,
+    "required_artifacts": 11
+  },
+  "service_streaming": {
+    "base_url": "http://127.0.0.1:8641",
+    "ws_url": "ws://127.0.0.1:8641/dialogue",
+    "text": "你好",
+    "health": {
+      "tts": true,
+      "tts_backend": "moss_ort",
+      "streaming_tts": true,
+      "asr": false,
+      "asr_backend": null,
+      "streaming_asr": false,
+      "tts_info": {
+        "backend": "moss_ort",
+        "ready": true,
+        "model_dir": "/home/cat/moss-onnx-baseline",
+        "sample_rate": 48000,
+        "channels": 2,
+        "supports_streaming": true,
+        "profile": {
+          "voice": "Junhao",
+          "seed": 314,
+          "threads": 6,
+          "session_threads": {
+            "prefill": 8,
+            "decode": 5,
+            "sampler": 6,
+            "codec": 5
+          },
+          "prefill_seq": 0,
+          "max_new_frames": 20,
+          "codec_streaming": true,
+          "codec_full_loaded": false,
+          "codec_batch_frames": 3,
+          "codec_async": false,
+          "cache_voice_prefix": false
+        },
+        "manifest": {
+          "name": "moss-ort-manifest.json",
+          "validated": true,
+          "sha256": "8f2ed6769010afa21c26df467e1096de82d59e2c71c4615fee08d55cab5813b3",
+          "model_id": "moss-tts-nano-onnx",
+          "target_platform": "rk3576",
+          "required_artifacts": 11,
+          "streaming_required": true
+        },
+        "hybrid": {
+          "enabled": false,
+          "strict": false,
+          "dir": "/home/cat/moss-onnx-baseline",
+          "rknn_dir": "/home/cat/moss-onnx-baseline",
+          "seq_len": 320,
+          "split": "ln2_mlp",
+          "layers": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "manifest": null
+        }
+      },
+      "mode": "custom"
+    },
+    "tts_stream": {
+      "bytes": 307204,
+      "sample_rate": 48000,
+      "payload_bytes": 307200,
+      "int16_samples": 153600,
+      "passed": true,
+      "header_ms": 20.22,
+      "first_payload_ms": 1031.002,
+      "wall_ms": 4506.959
+    },
+    "dialogue": {
+      "sample_rate": 48000,
+      "binary_chunks": 9,
+      "payload_bytes": 307200,
+      "first_payload_ms": 1075.1535759991384,
+      "payload_chunk_times_ms": [
+        1075.154,
+        1648.052,
+        2222.989,
+        2788.25,
+        3362.716,
+        3936.877,
+        4476.549,
+        4698.673
+      ],
+      "max_payload_gap_ms": 574.937,
+      "last_text": {
+        "done": true,
+        "chunks": 9
+      },
+      "wall_ms": 4700.098
+    },
+    "gates": {
+      "max_tts_wall_ms": 0.0,
+      "max_dialogue_wall_ms": 0.0,
+      "max_tts_first_payload_ms": 1500.0,
+      "max_dialogue_first_payload_ms": 1500.0,
+      "max_dialogue_payload_gap_ms": 1500.0,
+      "require_manifest_validated": true,
+      "expected_voice": "Junhao",
+      "expected_seed": 314,
+      "expected_manifest": "moss-ort-manifest.json",
+      "expected_codec_batch_frames": 3,
+      "require_production_runtime": true,
+      "min_dialogue_binary_chunks": 7,
+      "passed": true,
+      "errors": []
+    }
+  },
+  "backend_stage": {
+    "gates": {
+      "errors": [],
+      "max_codec_ms": 170.0,
+      "max_prefill_ms": 1200.0,
+      "max_ttfa_ms": 1500.0,
+      "min_audio_frames": 20,
+      "min_chunks": 0,
+      "passed": true
+    },
+    "max_new_frames": 20,
+    "seed": 314,
+    "summary": {
+      "audio_frames": 20,
+      "chunk_shapes": [
+        [
+          3840,
+          2
+        ],
+        [
+          11520,
+          2
+        ],
+        [
+          11520,
+          2
+        ],
+        [
+          11520,
+          2
+        ],
+        [
+          11520,
+          2
+        ],
+        [
+          11520,
+          2
+        ],
+        [
+          11520,
+          2
+        ],
+        [
+          3840,
+          2
+        ]
+      ],
+      "chunks": 8,
+      "first_meta": {
+        "backend": "moss_ort",
+        "channels": 2,
+        "chunk_index": 0,
+        "chunk_start_index": 0,
+        "codec_batch_frames": 1,
+        "codec_ms": 80.161,
+        "decode_ms": null,
+        "mode": "text",
+        "prefill_ms": 735.267,
+        "sample_rate": 48000,
+        "sampler_ms": 90.003,
+        "ttfa_ms": 908
+      },
+      "hybrid_prefill_ms": null,
+      "max_codec_ms": 143.68,
+      "max_decode_ms": 71.105,
+      "max_sampler_ms": 90.003,
+      "metas": [
+        {
+          "backend": "moss_ort",
+          "channels": 2,
+          "chunk_index": 0,
+          "chunk_start_index": 0,
+          "codec_batch_frames": 1,
+          "codec_ms": 80.161,
+          "decode_ms": null,
+          "mode": "text",
+          "prefill_ms": 735.267,
+          "sample_rate": 48000,
+          "sampler_ms": 90.003,
+          "ttfa_ms": 908
+        },
+        {
+          "backend": "moss_ort",
+          "channels": 2,
+          "chunk_index": 3,
+          "chunk_start_index": 1,
+          "codec_batch_frames": 3,
+          "codec_ms": 140.869,
+          "decode_ms": 57.659,
+          "mode": "text",
+          "prefill_ms": null,
+          "sample_rate": 48000,
+          "sampler_ms": 69.912,
+          "ttfa_ms": 908
+        },
+        {
+          "backend": "moss_ort",
+          "channels": 2,
+          "chunk_index": 6,
+          "chunk_start_index": 4,
+          "codec_batch_frames": 3,
+          "codec_ms": 143.68,
+          "decode_ms": 64.769,
+          "mode": "text",
+          "prefill_ms": null,
+          "sample_rate": 48000,
+          "sampler_ms": 69.746,
+          "ttfa_ms": 908
+        },
+        {
+          "backend": "moss_ort",
+          "channels": 2,
+          "chunk_index": 9,
+          "chunk_start_index": 7,
+          "codec_batch_frames": 3,
+          "codec_ms": 129.105,
+          "decode_ms": 65.57,
+          "mode": "text",
+          "prefill_ms": null,
+          "sample_rate": 48000,
+          "sampler_ms": 81.389,
+          "ttfa_ms": 908
+        },
+        {
+          "backend": "moss_ort",
+          "channels": 2,
+          "chunk_index": 12,
+          "chunk_start_index": 10,
+          "codec_batch_frames": 3,
+          "codec_ms": 118.119,
+          "decode_ms": 68.148,
+          "mode": "text",
+          "prefill_ms": null,
+          "sample_rate": 48000,
+          "sampler_ms": 79.201,
+          "ttfa_ms": 908
+        },
+        {
+          "backend": "moss_ort",
+          "channels": 2,
+          "chunk_index": 15,
+          "chunk_start_index": 13,
+          "codec_batch_frames": 3,
+          "codec_ms": 128.212,
+          "decode_ms": 64.364,
+          "mode": "text",
+          "prefill_ms": null,
+          "sample_rate": 48000,
+          "sampler_ms": 79.749,
+          "ttfa_ms": 908
+        },
+        {
+          "backend": "moss_ort",
+          "channels": 2,
+          "chunk_index": 18,
+          "chunk_start_index": 16,
+          "codec_batch_frames": 3,
+          "codec_ms": 118.589,
+          "decode_ms": 71.105,
+          "mode": "text",
+          "prefill_ms": null,
+          "sample_rate": 48000,
+          "sampler_ms": 68.444,
+          "ttfa_ms": 908
+        },
+        {
+          "backend": "moss_ort",
+          "channels": 2,
+          "chunk_index": 19,
+          "chunk_start_index": 19,
+          "codec_batch_frames": 1,
+          "codec_ms": 72.847,
+          "decode_ms": 56.465,
+          "mode": "text",
+          "prefill_ms": null,
+          "sample_rate": 48000,
+          "sampler_ms": 81.801,
+          "ttfa_ms": 908
+        }
+      ],
+      "prefill_ms": 735.267,
+      "preload_ms": 14283.664,
+      "total_samples": 76800,
+      "ttfa_ms": 908.0,
+      "wall_ms": 4641.572
+    },
+    "text": "你好"
+  },
+  "roundtrip_quality": {
+    "avg_cer": 0.4621212121212121,
+    "max_cer": 0.75,
+    "min_rms": 0.08580932021141052,
+    "max_ttfa_ms": 952.0,
+    "max_codec_ms": 118.615,
+    "profile": {
+      "backend": "moss_ort",
+      "voice": "Junhao",
+      "seed": 314,
+      "manifest": "moss-ort-manifest.json",
+      "threads": 6,
+      "session_threads": {
+        "prefill": 8,
+        "decode": 5,
+        "sampler": 6,
+        "codec": 5
+      },
+      "prefill_seq": 0,
+      "codec_streaming": 1,
+      "codec_batch_frames": 3
+    },
+    "results": [
+      {
+        "id": 1,
+        "text": "你好",
+        "wav": "/tmp/moss_production_profile_current_rerun_roundtrip/moss_1.wav",
+        "bytes": 307244,
+        "tts_ms": 4416.46,
+        "meta": {
+          "backend": "moss_ort",
+          "mode": "text",
+          "chunk_index": 19,
+          "chunk_start_index": 19,
+          "codec_batch_frames": 1,
+          "ttfa_ms": 952,
+          "sample_rate": 48000,
+          "channels": 2,
+          "prefill_ms": null,
+          "decode_ms": 54.279,
+          "sampler_ms": 76.613,
+          "codec_ms": 67.928,
+          "duration": 1.6,
+          "inference_time": 4.415636858000653,
+          "wall_ms": 4416,
+          "rtf": 2.759773036250408
+        },
+        "hypothesis": "你好",
+        "cer": 0.0,
+        "wav_info": {
+          "sample_rate": 48000,
+          "channels": 2,
+          "frames": 76800,
+          "duration_s": 1.6,
+          "rms": 0.09701959043741226
+        },
+        "asr_ms": 545.152
+      },
+      {
+        "id": 2,
+        "text": "欢迎使用语音服务",
+        "wav": "/tmp/moss_production_profile_current_rerun_roundtrip/moss_2.wav",
+        "bytes": 307244,
+        "tts_ms": 4408.656,
+        "meta": {
+          "backend": "moss_ort",
+          "mode": "text",
+          "chunk_index": 19,
+          "chunk_start_index": 19,
+          "codec_batch_frames": 1,
+          "ttfa_ms": 894,
+          "sample_rate": 48000,
+          "channels": 2,
+          "prefill_ms": null,
+          "decode_ms": 57.237,
+          "sampler_ms": 82.459,
+          "codec_ms": 66.489,
+          "duration": 1.6,
+          "inference_time": 4.408151588002511,
+          "wall_ms": 4408,
+          "rtf": 2.7550947425015693
+        },
+        "hypothesis": "欢迎",
+        "cer": 0.75,
+        "wav_info": {
+          "sample_rate": 48000,
+          "channels": 2,
+          "frames": 76800,
+          "duration_s": 1.6,
+          "rms": 0.08580932021141052
+        },
+        "asr_ms": 552.205
+      },
+      {
+        "id": 3,
+        "text": "语音识别测试一二三四五",
+        "wav": "/tmp/moss_production_profile_current_rerun_roundtrip/moss_3.wav",
+        "bytes": 199724,
+        "tts_ms": 3152.62,
+        "meta": {
+          "backend": "moss_ort",
+          "mode": "text",
+          "chunk_index": 12,
+          "chunk_start_index": 10,
+          "codec_batch_frames": 3,
+          "ttfa_ms": 937,
+          "sample_rate": 48000,
+          "channels": 2,
+          "prefill_ms": null,
+          "decode_ms": 59.339,
+          "sampler_ms": 80.589,
+          "codec_ms": 118.615,
+          "duration": 1.04,
+          "inference_time": 3.1522283049998805,
+          "wall_ms": 3152,
+          "rtf": 3.030988754807577
+        },
+        "hypothesis": "语音识别啊",
+        "cer": 0.6363636363636364,
+        "wav_info": {
+          "sample_rate": 48000,
+          "channels": 2,
+          "frames": 49920,
+          "duration_s": 1.04,
+          "rms": 0.18435139954090118
+        },
+        "asr_ms": 355.599
+      }
+    ],
+    "gates": {
+      "thresholds": {
+        "max_avg_cer": 0.5,
+        "max_cer": 1.0,
+        "min_rms": 0.02,
+        "max_ttfa_ms": 1500.0,
+        "max_codec_ms": 170.0
+      },
+      "checks": {
+        "avg_cer": true,
+        "max_cer": true,
+        "min_rms": true,
+        "max_ttfa_ms": true,
+        "max_codec_ms": true
+      },
+      "passed": true
+    }
+  }
+}

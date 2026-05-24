@@ -1,0 +1,24 @@
+{
+  "scaffold_dir": "/home/harve/models/moss-rkllm-embed-only-biasfree-scaffold",
+  "custom_config": "/home/harve/project/rkvoice-stream/models/tts/moss/moss_rkllm_toolkit_custom_config.json",
+  "output_path": "/home/harve/models/moss-rkllm-embed-only-biasfree-scaffold/moss_global_embed_only_biasfree_fp16_rk3576.rkllm",
+  "target_platform": "rk3576",
+  "num_npu_core": 2,
+  "max_context": 512,
+  "do_quantization": false,
+  "quantized_dtype": "w8a8",
+  "quantized_algorithm": "normal",
+  "dataset": null,
+  "device": "cpu",
+  "dtype": "float32",
+  "loaded": true,
+  "built": true,
+  "exported": true,
+  "ret": {
+    "load_huggingface": 0,
+    "build": 0,
+    "export_rkllm": 0
+  },
+  "exception": null,
+  "output_size_bytes": 228227108
+}

@@ -1,0 +1,25 @@
+INFO:     Started server process [3117356]
+INFO:     Waiting for application startup.
+2026-05-24 06:18:18,370 [INFO] rkvoice_stream.app.server: Loaded runtime profile: configs/rk3576-moss-ort-stream.yaml
+2026-05-24 06:18:18,370 [INFO] rkvoice_stream.app.server: Loading TTS backend: moss_ort
+[0;93m2026-05-24 06:18:18.457541364 [W:onnxruntime:Default, device_discovery.cc:325 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:92 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+2026-05-24 06:18:33,034 [INFO] rkvoice_stream.backends.tts.moss_ort: MOSS ORT backend ready in 13504ms model_dir=/opt/tts/models/moss-tts-nano-onnx
+2026-05-24 06:18:33,035 [INFO] rkvoice_stream.app.server: TTS backend 'moss_ort' ready.
+2026-05-24 06:18:33,035 [INFO] rkvoice_stream.app.server: ASR_BACKEND not set — ASR disabled.
+2026-05-24 06:18:33,036 [INFO] rkvoice_stream.app.server: Dialogue orchestrator ready (echo mode — no LLM).
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8627 (Press CTRL+C to quit)
+INFO:     127.0.0.1:55298 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55300 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55310 - "POST /tts/stream HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50886 - "WebSocket /dialogue" [accepted]
+INFO:     connection open
+2026-05-24 06:18:37,983 [INFO] rkvoice_stream.app.server: dialogue: user='你好'
+INFO:     connection closed
+INFO:     127.0.0.1:50896 - "GET /health HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+2026-05-24 06:18:42,751 [INFO] rkvoice_stream.app.server: Shutting down — releasing NPU resources...
+2026-05-24 06:18:43,014 [INFO] rkvoice_stream.app.server: Shutdown complete.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [3117356]

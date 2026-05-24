@@ -1,0 +1,1699 @@
+{
+  "out_dir": "/home/harve/models/moss-rkllm-custom-scaffold",
+  "dry_run": false,
+  "config": {
+    "architectures": [
+      "CustomForCausalLM"
+    ],
+    "auto_map": {
+      "AutoConfig": "configuration_custom.CustomConfig",
+      "AutoModel": "modeling_custom.CustomModel",
+      "AutoModelForCausalLM": "modeling_custom.CustomForCausalLM"
+    },
+    "model_type": "moss_rkllm_custom",
+    "torch_dtype": "float16",
+    "transformers_version": "4.36.0",
+    "use_cache": true,
+    "hidden_act": "gelu",
+    "hidden_act_param": 0.0,
+    "hidden_size": 768,
+    "intermediate_size": 3072,
+    "num_attention_heads": 12,
+    "num_key_value_heads": 12,
+    "num_hidden_layers": 12,
+    "max_position_embeddings": 2048,
+    "rms_norm_eps": 1e-05,
+    "vocab_size": 16384,
+    "bos_token_id": 4,
+    "eos_token_id": 5,
+    "pad_token_id": 3,
+    "tie_word_embeddings": false,
+    "scale_emb": 1,
+    "dim_model_base": 768,
+    "scale_depth": 1,
+    "moss_rkllm": {
+      "source": "MOSS ONNX bundle",
+      "row_width": 17,
+      "text_column": 0,
+      "audio_columns": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ],
+      "audio_codebook_sizes": [
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024,
+        1024
+      ],
+      "audio_pad_token_id": 1024,
+      "audio_assistant_slot_token_id": 9,
+      "preferred_runtime_input": "RKLLM_INPUT_EMBED",
+      "preferred_runtime_output": "RKLLM_INFER_GET_LAST_HIDDEN_LAYER",
+      "sampler_external_until_hidden_parity": true
+    }
+  },
+  "mapping": {
+    "format_version": 1,
+    "source_model_dir": "/home/harve/models/moss-onnx-bundle/MOSS-TTS-Nano-100M-ONNX",
+    "target_model_dir": "/home/harve/models/moss-rkllm-custom-scaffold",
+    "status": "scaffold_only",
+    "ready_for_rkllm_export": false,
+    "why_not_ready": [
+      "model.safetensors/state_dict conversion has not been written yet",
+      "modeling_custom.py must be replaced or patched for MOSS bias, GELU, fused c_attn, and 17-column row embeddings",
+      "global hidden parity against ONNX prefill/decode has not been proven"
+    ],
+    "anonymous_onnx_weight_sources": [
+      {
+        "layer": 0,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3324",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 0,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3351",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 0,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3352",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 0,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3353",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 1,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3354",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 1,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3381",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 1,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3382",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 1,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3383",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 2,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3384",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 2,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3411",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 2,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3412",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 2,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3413",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 3,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3414",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 3,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3441",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 3,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3442",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 3,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3443",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 4,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3444",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 4,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3471",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 4,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3472",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 4,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3473",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 5,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3474",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 5,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3501",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 5,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3502",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 5,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3503",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 6,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3504",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 6,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3531",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 6,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3532",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 6,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3533",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 7,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3534",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 7,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3561",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 7,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3562",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 7,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3563",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 8,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3564",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 8,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3591",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 8,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3592",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 8,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3593",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 9,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3594",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 9,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3621",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 9,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3622",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 9,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3623",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 10,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3624",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 10,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3651",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 10,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3652",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 10,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3653",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 11,
+        "logical": "attn.c_attn.weight",
+        "source": "onnx::MatMul_3654",
+        "source_shape": [
+          768,
+          2304
+        ],
+        "expected_shape": [
+          768,
+          2304
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 11,
+        "logical": "attn.c_proj.weight",
+        "source": "onnx::MatMul_3681",
+        "source_shape": [
+          768,
+          768
+        ],
+        "expected_shape": [
+          768,
+          768
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 11,
+        "logical": "mlp.fc_in.weight",
+        "source": "onnx::MatMul_3682",
+        "source_shape": [
+          768,
+          3072
+        ],
+        "expected_shape": [
+          768,
+          3072
+        ],
+        "shape_matches": true
+      },
+      {
+        "layer": 11,
+        "logical": "mlp.fc_out.weight",
+        "source": "onnx::MatMul_3683",
+        "source_shape": [
+          3072,
+          768
+        ],
+        "expected_shape": [
+          3072,
+          768
+        ],
+        "shape_matches": true
+      }
+    ],
+    "anonymous_onnx_weight_sources_complete": true,
+    "weight_map": [
+      {
+        "source": "core.model.transformer.wte.weight",
+        "target": "model.embed_tokens.weight",
+        "transform": "copy"
+      },
+      {
+        "source": "core.model.audio_embeddings.0.weight",
+        "target": "model.audio_embeddings.0.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.1.weight",
+        "target": "model.audio_embeddings.1.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.2.weight",
+        "target": "model.audio_embeddings.2.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.3.weight",
+        "target": "model.audio_embeddings.3.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.4.weight",
+        "target": "model.audio_embeddings.4.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.5.weight",
+        "target": "model.audio_embeddings.5.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.6.weight",
+        "target": "model.audio_embeddings.6.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.7.weight",
+        "target": "model.audio_embeddings.7.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.8.weight",
+        "target": "model.audio_embeddings.8.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.9.weight",
+        "target": "model.audio_embeddings.9.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.10.weight",
+        "target": "model.audio_embeddings.10.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.11.weight",
+        "target": "model.audio_embeddings.11.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.12.weight",
+        "target": "model.audio_embeddings.12.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.13.weight",
+        "target": "model.audio_embeddings.13.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.14.weight",
+        "target": "model.audio_embeddings.14.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.audio_embeddings.15.weight",
+        "target": "model.audio_embeddings.15.weight",
+        "transform": "copy; used by external MOSS row-to-embedding adapter"
+      },
+      {
+        "source": "core.model.transformer.h.0.ln_1.weight",
+        "target": "model.layers.0.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.0.ln_1.bias",
+        "target": "model.layers.0.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3324",
+        "conceptual_source": "core.model.transformer.h.0.attn.c_attn.weight",
+        "target": [
+          "model.layers.0.self_attn.q_proj.weight",
+          "model.layers.0.self_attn.k_proj.weight",
+          "model.layers.0.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.0.attn.c_attn.bias",
+        "target": [
+          "model.layers.0.self_attn.q_proj.bias",
+          "model.layers.0.self_attn.k_proj.bias",
+          "model.layers.0.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3351",
+        "conceptual_source": "core.model.transformer.h.0.attn.c_proj.weight",
+        "target": "model.layers.0.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.0.attn.c_proj.bias",
+        "target": "model.layers.0.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.0.ln_2.bias",
+        "target": "model.layers.0.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3352",
+        "conceptual_source": "core.model.transformer.h.0.mlp.fc_in.weight",
+        "target": "model.layers.0.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.0.mlp.fc_in.bias",
+        "target": "model.layers.0.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3353",
+        "conceptual_source": "core.model.transformer.h.0.mlp.fc_out.weight",
+        "target": "model.layers.0.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.0.mlp.fc_out.bias",
+        "target": "model.layers.0.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.1.ln_1.weight",
+        "target": "model.layers.1.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.1.ln_1.bias",
+        "target": "model.layers.1.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3354",
+        "conceptual_source": "core.model.transformer.h.1.attn.c_attn.weight",
+        "target": [
+          "model.layers.1.self_attn.q_proj.weight",
+          "model.layers.1.self_attn.k_proj.weight",
+          "model.layers.1.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.1.attn.c_attn.bias",
+        "target": [
+          "model.layers.1.self_attn.q_proj.bias",
+          "model.layers.1.self_attn.k_proj.bias",
+          "model.layers.1.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3381",
+        "conceptual_source": "core.model.transformer.h.1.attn.c_proj.weight",
+        "target": "model.layers.1.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.1.attn.c_proj.bias",
+        "target": "model.layers.1.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.1.ln_2.bias",
+        "target": "model.layers.1.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3382",
+        "conceptual_source": "core.model.transformer.h.1.mlp.fc_in.weight",
+        "target": "model.layers.1.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.1.mlp.fc_in.bias",
+        "target": "model.layers.1.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3383",
+        "conceptual_source": "core.model.transformer.h.1.mlp.fc_out.weight",
+        "target": "model.layers.1.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.1.mlp.fc_out.bias",
+        "target": "model.layers.1.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.2.ln_1.weight",
+        "target": "model.layers.2.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.2.ln_1.bias",
+        "target": "model.layers.2.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3384",
+        "conceptual_source": "core.model.transformer.h.2.attn.c_attn.weight",
+        "target": [
+          "model.layers.2.self_attn.q_proj.weight",
+          "model.layers.2.self_attn.k_proj.weight",
+          "model.layers.2.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.2.attn.c_attn.bias",
+        "target": [
+          "model.layers.2.self_attn.q_proj.bias",
+          "model.layers.2.self_attn.k_proj.bias",
+          "model.layers.2.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3411",
+        "conceptual_source": "core.model.transformer.h.2.attn.c_proj.weight",
+        "target": "model.layers.2.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.2.attn.c_proj.bias",
+        "target": "model.layers.2.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.2.ln_2.bias",
+        "target": "model.layers.2.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3412",
+        "conceptual_source": "core.model.transformer.h.2.mlp.fc_in.weight",
+        "target": "model.layers.2.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.2.mlp.fc_in.bias",
+        "target": "model.layers.2.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3413",
+        "conceptual_source": "core.model.transformer.h.2.mlp.fc_out.weight",
+        "target": "model.layers.2.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.2.mlp.fc_out.bias",
+        "target": "model.layers.2.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.3.ln_1.weight",
+        "target": "model.layers.3.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.3.ln_1.bias",
+        "target": "model.layers.3.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3414",
+        "conceptual_source": "core.model.transformer.h.3.attn.c_attn.weight",
+        "target": [
+          "model.layers.3.self_attn.q_proj.weight",
+          "model.layers.3.self_attn.k_proj.weight",
+          "model.layers.3.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.3.attn.c_attn.bias",
+        "target": [
+          "model.layers.3.self_attn.q_proj.bias",
+          "model.layers.3.self_attn.k_proj.bias",
+          "model.layers.3.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3441",
+        "conceptual_source": "core.model.transformer.h.3.attn.c_proj.weight",
+        "target": "model.layers.3.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.3.attn.c_proj.bias",
+        "target": "model.layers.3.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.3.ln_2.bias",
+        "target": "model.layers.3.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3442",
+        "conceptual_source": "core.model.transformer.h.3.mlp.fc_in.weight",
+        "target": "model.layers.3.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.3.mlp.fc_in.bias",
+        "target": "model.layers.3.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3443",
+        "conceptual_source": "core.model.transformer.h.3.mlp.fc_out.weight",
+        "target": "model.layers.3.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.3.mlp.fc_out.bias",
+        "target": "model.layers.3.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.4.ln_1.weight",
+        "target": "model.layers.4.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.4.ln_1.bias",
+        "target": "model.layers.4.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3444",
+        "conceptual_source": "core.model.transformer.h.4.attn.c_attn.weight",
+        "target": [
+          "model.layers.4.self_attn.q_proj.weight",
+          "model.layers.4.self_attn.k_proj.weight",
+          "model.layers.4.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.4.attn.c_attn.bias",
+        "target": [
+          "model.layers.4.self_attn.q_proj.bias",
+          "model.layers.4.self_attn.k_proj.bias",
+          "model.layers.4.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3471",
+        "conceptual_source": "core.model.transformer.h.4.attn.c_proj.weight",
+        "target": "model.layers.4.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.4.attn.c_proj.bias",
+        "target": "model.layers.4.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.4.ln_2.bias",
+        "target": "model.layers.4.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3472",
+        "conceptual_source": "core.model.transformer.h.4.mlp.fc_in.weight",
+        "target": "model.layers.4.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.4.mlp.fc_in.bias",
+        "target": "model.layers.4.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3473",
+        "conceptual_source": "core.model.transformer.h.4.mlp.fc_out.weight",
+        "target": "model.layers.4.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.4.mlp.fc_out.bias",
+        "target": "model.layers.4.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.5.ln_1.weight",
+        "target": "model.layers.5.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.5.ln_1.bias",
+        "target": "model.layers.5.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3474",
+        "conceptual_source": "core.model.transformer.h.5.attn.c_attn.weight",
+        "target": [
+          "model.layers.5.self_attn.q_proj.weight",
+          "model.layers.5.self_attn.k_proj.weight",
+          "model.layers.5.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.5.attn.c_attn.bias",
+        "target": [
+          "model.layers.5.self_attn.q_proj.bias",
+          "model.layers.5.self_attn.k_proj.bias",
+          "model.layers.5.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3501",
+        "conceptual_source": "core.model.transformer.h.5.attn.c_proj.weight",
+        "target": "model.layers.5.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.5.attn.c_proj.bias",
+        "target": "model.layers.5.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.5.ln_2.bias",
+        "target": "model.layers.5.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3502",
+        "conceptual_source": "core.model.transformer.h.5.mlp.fc_in.weight",
+        "target": "model.layers.5.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.5.mlp.fc_in.bias",
+        "target": "model.layers.5.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3503",
+        "conceptual_source": "core.model.transformer.h.5.mlp.fc_out.weight",
+        "target": "model.layers.5.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.5.mlp.fc_out.bias",
+        "target": "model.layers.5.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.6.ln_1.weight",
+        "target": "model.layers.6.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.6.ln_1.bias",
+        "target": "model.layers.6.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3504",
+        "conceptual_source": "core.model.transformer.h.6.attn.c_attn.weight",
+        "target": [
+          "model.layers.6.self_attn.q_proj.weight",
+          "model.layers.6.self_attn.k_proj.weight",
+          "model.layers.6.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.6.attn.c_attn.bias",
+        "target": [
+          "model.layers.6.self_attn.q_proj.bias",
+          "model.layers.6.self_attn.k_proj.bias",
+          "model.layers.6.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3531",
+        "conceptual_source": "core.model.transformer.h.6.attn.c_proj.weight",
+        "target": "model.layers.6.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.6.attn.c_proj.bias",
+        "target": "model.layers.6.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.6.ln_2.bias",
+        "target": "model.layers.6.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3532",
+        "conceptual_source": "core.model.transformer.h.6.mlp.fc_in.weight",
+        "target": "model.layers.6.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.6.mlp.fc_in.bias",
+        "target": "model.layers.6.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3533",
+        "conceptual_source": "core.model.transformer.h.6.mlp.fc_out.weight",
+        "target": "model.layers.6.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.6.mlp.fc_out.bias",
+        "target": "model.layers.6.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.7.ln_1.weight",
+        "target": "model.layers.7.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.7.ln_1.bias",
+        "target": "model.layers.7.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3534",
+        "conceptual_source": "core.model.transformer.h.7.attn.c_attn.weight",
+        "target": [
+          "model.layers.7.self_attn.q_proj.weight",
+          "model.layers.7.self_attn.k_proj.weight",
+          "model.layers.7.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.7.attn.c_attn.bias",
+        "target": [
+          "model.layers.7.self_attn.q_proj.bias",
+          "model.layers.7.self_attn.k_proj.bias",
+          "model.layers.7.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3561",
+        "conceptual_source": "core.model.transformer.h.7.attn.c_proj.weight",
+        "target": "model.layers.7.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.7.attn.c_proj.bias",
+        "target": "model.layers.7.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.7.ln_2.bias",
+        "target": "model.layers.7.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3562",
+        "conceptual_source": "core.model.transformer.h.7.mlp.fc_in.weight",
+        "target": "model.layers.7.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.7.mlp.fc_in.bias",
+        "target": "model.layers.7.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3563",
+        "conceptual_source": "core.model.transformer.h.7.mlp.fc_out.weight",
+        "target": "model.layers.7.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.7.mlp.fc_out.bias",
+        "target": "model.layers.7.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.8.ln_1.weight",
+        "target": "model.layers.8.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.8.ln_1.bias",
+        "target": "model.layers.8.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3564",
+        "conceptual_source": "core.model.transformer.h.8.attn.c_attn.weight",
+        "target": [
+          "model.layers.8.self_attn.q_proj.weight",
+          "model.layers.8.self_attn.k_proj.weight",
+          "model.layers.8.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.8.attn.c_attn.bias",
+        "target": [
+          "model.layers.8.self_attn.q_proj.bias",
+          "model.layers.8.self_attn.k_proj.bias",
+          "model.layers.8.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3591",
+        "conceptual_source": "core.model.transformer.h.8.attn.c_proj.weight",
+        "target": "model.layers.8.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.8.attn.c_proj.bias",
+        "target": "model.layers.8.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.8.ln_2.bias",
+        "target": "model.layers.8.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3592",
+        "conceptual_source": "core.model.transformer.h.8.mlp.fc_in.weight",
+        "target": "model.layers.8.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.8.mlp.fc_in.bias",
+        "target": "model.layers.8.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3593",
+        "conceptual_source": "core.model.transformer.h.8.mlp.fc_out.weight",
+        "target": "model.layers.8.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.8.mlp.fc_out.bias",
+        "target": "model.layers.8.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.9.ln_1.weight",
+        "target": "model.layers.9.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.9.ln_1.bias",
+        "target": "model.layers.9.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3594",
+        "conceptual_source": "core.model.transformer.h.9.attn.c_attn.weight",
+        "target": [
+          "model.layers.9.self_attn.q_proj.weight",
+          "model.layers.9.self_attn.k_proj.weight",
+          "model.layers.9.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.9.attn.c_attn.bias",
+        "target": [
+          "model.layers.9.self_attn.q_proj.bias",
+          "model.layers.9.self_attn.k_proj.bias",
+          "model.layers.9.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3621",
+        "conceptual_source": "core.model.transformer.h.9.attn.c_proj.weight",
+        "target": "model.layers.9.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.9.attn.c_proj.bias",
+        "target": "model.layers.9.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.9.ln_2.bias",
+        "target": "model.layers.9.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3622",
+        "conceptual_source": "core.model.transformer.h.9.mlp.fc_in.weight",
+        "target": "model.layers.9.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.9.mlp.fc_in.bias",
+        "target": "model.layers.9.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3623",
+        "conceptual_source": "core.model.transformer.h.9.mlp.fc_out.weight",
+        "target": "model.layers.9.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.9.mlp.fc_out.bias",
+        "target": "model.layers.9.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.10.ln_1.weight",
+        "target": "model.layers.10.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.10.ln_1.bias",
+        "target": "model.layers.10.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3624",
+        "conceptual_source": "core.model.transformer.h.10.attn.c_attn.weight",
+        "target": [
+          "model.layers.10.self_attn.q_proj.weight",
+          "model.layers.10.self_attn.k_proj.weight",
+          "model.layers.10.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.10.attn.c_attn.bias",
+        "target": [
+          "model.layers.10.self_attn.q_proj.bias",
+          "model.layers.10.self_attn.k_proj.bias",
+          "model.layers.10.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3651",
+        "conceptual_source": "core.model.transformer.h.10.attn.c_proj.weight",
+        "target": "model.layers.10.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.10.attn.c_proj.bias",
+        "target": "model.layers.10.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.10.ln_2.bias",
+        "target": "model.layers.10.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3652",
+        "conceptual_source": "core.model.transformer.h.10.mlp.fc_in.weight",
+        "target": "model.layers.10.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.10.mlp.fc_in.bias",
+        "target": "model.layers.10.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3653",
+        "conceptual_source": "core.model.transformer.h.10.mlp.fc_out.weight",
+        "target": "model.layers.10.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.10.mlp.fc_out.bias",
+        "target": "model.layers.10.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.h.11.ln_1.weight",
+        "target": "model.layers.11.input_layernorm.weight",
+        "transform": "copy if present; otherwise verify tied/default behavior"
+      },
+      {
+        "source": "core.model.transformer.h.11.ln_1.bias",
+        "target": "model.layers.11.input_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3654",
+        "conceptual_source": "core.model.transformer.h.11.attn.c_attn.weight",
+        "target": [
+          "model.layers.11.self_attn.q_proj.weight",
+          "model.layers.11.self_attn.k_proj.weight",
+          "model.layers.11.self_attn.v_proj.weight"
+        ],
+        "transform": "split fused [hidden, 3*hidden] MatMul weight on output dimension"
+      },
+      {
+        "source": "core.model.transformer.h.11.attn.c_attn.bias",
+        "target": [
+          "model.layers.11.self_attn.q_proj.bias",
+          "model.layers.11.self_attn.k_proj.bias",
+          "model.layers.11.self_attn.v_proj.bias"
+        ],
+        "transform": "split fused [3*hidden] bias on output dimension"
+      },
+      {
+        "source": "onnx::MatMul_3681",
+        "conceptual_source": "core.model.transformer.h.11.attn.c_proj.weight",
+        "target": "model.layers.11.self_attn.o_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.11.attn.c_proj.bias",
+        "target": "model.layers.11.self_attn.o_proj.bias",
+        "transform": "copy; requires bias-capable attention projection"
+      },
+      {
+        "source": "core.model.transformer.h.11.ln_2.bias",
+        "target": "model.layers.11.post_attention_layernorm.bias",
+        "transform": "copy; requires MOSS-specific LayerNorm/RMSNorm bridge"
+      },
+      {
+        "source": "onnx::MatMul_3682",
+        "conceptual_source": "core.model.transformer.h.11.mlp.fc_in.weight",
+        "target": "model.layers.11.mlp.up_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.11.mlp.fc_in.bias",
+        "target": "model.layers.11.mlp.up_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "onnx::MatMul_3683",
+        "conceptual_source": "core.model.transformer.h.11.mlp.fc_out.weight",
+        "target": "model.layers.11.mlp.down_proj.weight",
+        "transform": "copy or transpose according to reconstructed module convention"
+      },
+      {
+        "source": "core.model.transformer.h.11.mlp.fc_out.bias",
+        "target": "model.layers.11.mlp.down_proj.bias",
+        "transform": "copy; requires bias-capable MLP"
+      },
+      {
+        "source": "core.model.transformer.ln_f.bias",
+        "target": "model.norm.bias",
+        "transform": "copy; requires MOSS-specific final norm bridge"
+      }
+    ]
+  },
+  "template_files": {
+    "configuration_custom.py": {
+      "source": "/home/harve/rknn-llm/rkllm-toolkit/examples/custom_demo/configuration_custom.py",
+      "exists": true,
+      "target": "/home/harve/models/moss-rkllm-custom-scaffold/configuration_custom.py"
+    },
+    "modeling_custom.py": {
+      "source": "/home/harve/rknn-llm/rkllm-toolkit/examples/custom_demo/modeling_custom.py",
+      "exists": true,
+      "target": "/home/harve/models/moss-rkllm-custom-scaffold/modeling_custom.py"
+    },
+    "tokenizer.model": {
+      "source": "/home/harve/rknn-llm/rkllm-toolkit/examples/custom_demo/tokenizer.model",
+      "exists": true,
+      "target": "/home/harve/models/moss-rkllm-custom-scaffold/tokenizer.model"
+    },
+    "tokenizer_config.json": {
+      "source": "/home/harve/rknn-llm/rkllm-toolkit/examples/custom_demo/tokenizer_config.json",
+      "exists": true,
+      "target": "/home/harve/models/moss-rkllm-custom-scaffold/tokenizer_config.json"
+    },
+    "special_tokens_map.json": {
+      "source": "/home/harve/rknn-llm/rkllm-toolkit/examples/custom_demo/special_tokens_map.json",
+      "exists": true,
+      "target": "/home/harve/models/moss-rkllm-custom-scaffold/special_tokens_map.json"
+    },
+    "generation_config.json": {
+      "source": "/home/harve/rknn-llm/rkllm-toolkit/examples/custom_demo/generation_config.json",
+      "exists": true,
+      "target": "/home/harve/models/moss-rkllm-custom-scaffold/generation_config.json"
+    }
+  },
+  "next_commands": {
+    "rkllm_export_after_state_dict": "python export_rkllm.py --path /home/harve/models/moss-rkllm-custom-scaffold --target-platform rk3576 --num_npu_core 2 --quantized_dtype w4a16"
+  }
+}

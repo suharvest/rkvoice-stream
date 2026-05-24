@@ -1,0 +1,15 @@
+# RK3576 Qwen3-TTS experimental streaming profile.
+#
+# This profile favors first-audio latency over long-context vocoder quality:
+# - ctx0 vocoder avoids the slow/unstable ctx25 RKNN path on cat-remote.
+# - fused CP engine reduces one codec frame from 15 serial RKNN calls to a
+#   single native W8A16 fused path.
+name: "RK3576 Qwen3-TTS RKNN Streaming"
+platform: rk3576
+
+tts:
+  backend: qwen3_rknn
+  model_dir: /opt/tts/models/qwen3
+  vocoder: ctx0_int8
+  cp_engine_lib: /opt/cp_engine/libcp_engine.so
+  cp_weights_dir: /opt/tts/models/qwen3/cp_weights_w8a16_fused

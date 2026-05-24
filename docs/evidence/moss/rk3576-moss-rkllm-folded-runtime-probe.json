@@ -1,0 +1,38 @@
+{
+  "model_path": "/home/cat/moss-rkllm/moss_global_embed_only_folded_fp16_rk3576.rkllm",
+  "seq_len": 8,
+  "hidden_size": 768,
+  "seed": 1234,
+  "final_norm_bias": "/home/cat/moss-rkllm/moss_final_norm_bias.npy",
+  "loaded": true,
+  "prefill_ok": true,
+  "decode_ok": true,
+  "exception": null,
+  "load_ms": 525.535,
+  "prefill_ms": 107.902,
+  "prefill_hidden": {
+    "name": "prefill_hidden",
+    "present": true,
+    "shape": [
+      8,
+      768
+    ],
+    "dtype": "float32",
+    "finite": true,
+    "mean": -0.046656448394060135,
+    "std": 0.9997885227203369
+  },
+  "decode_ms": 34.242,
+  "decode_hidden": {
+    "name": "decode_hidden",
+    "present": true,
+    "shape": [
+      1,
+      768
+    ],
+    "dtype": "float32",
+    "finite": true,
+    "mean": -0.0437033511698246,
+    "std": 0.9982780814170837
+  }
+}

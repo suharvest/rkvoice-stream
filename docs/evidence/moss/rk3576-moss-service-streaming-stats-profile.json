@@ -1,0 +1,205 @@
+{
+  "base_url": "http://127.0.0.1:8625",
+  "ws_url": "ws://127.0.0.1:8625/dialogue",
+  "text": "你好",
+  "health": {
+    "tts": true,
+    "tts_backend": "moss_ort",
+    "streaming_tts": true,
+    "asr": false,
+    "asr_backend": null,
+    "streaming_asr": false,
+    "tts_info": {
+      "backend": "moss_ort",
+      "ready": true,
+      "model_dir": "/home/cat/moss-onnx-baseline",
+      "sample_rate": 48000,
+      "channels": 2,
+      "supports_streaming": true,
+      "profile": {
+        "voice": "Junhao",
+        "seed": 314,
+        "threads": 6,
+        "session_threads": {
+          "prefill": 8,
+          "decode": 5,
+          "sampler": 6,
+          "codec": 5
+        },
+        "prefill_seq": 0,
+        "max_new_frames": 20,
+        "codec_streaming": true,
+        "codec_full_loaded": false,
+        "codec_batch_frames": 3,
+        "codec_async": false,
+        "cache_voice_prefix": false
+      },
+      "manifest": {
+        "name": "moss-ort-manifest.json",
+        "validated": true,
+        "sha256": "8f2ed6769010afa21c26df467e1096de82d59e2c71c4615fee08d55cab5813b3",
+        "model_id": "moss-tts-nano-onnx",
+        "target_platform": "rk3576",
+        "required_artifacts": 11,
+        "streaming_required": true
+      },
+      "hybrid": {
+        "enabled": false,
+        "strict": false,
+        "dir": "/home/cat/moss-onnx-baseline",
+        "rknn_dir": "/home/cat/moss-onnx-baseline",
+        "seq_len": 320,
+        "split": "ln2_mlp",
+        "layers": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "manifest": null
+      },
+      "streaming_stats": {
+        "requests": 0,
+        "completed": 0,
+        "errors": 0,
+        "active": 0,
+        "chunks": 0,
+        "last_error": null,
+        "last_error_time": null
+      }
+    },
+    "mode": "custom"
+  },
+  "health_after": {
+    "tts": true,
+    "tts_backend": "moss_ort",
+    "streaming_tts": true,
+    "asr": false,
+    "asr_backend": null,
+    "streaming_asr": false,
+    "tts_info": {
+      "backend": "moss_ort",
+      "ready": true,
+      "model_dir": "/home/cat/moss-onnx-baseline",
+      "sample_rate": 48000,
+      "channels": 2,
+      "supports_streaming": true,
+      "profile": {
+        "voice": "Junhao",
+        "seed": 314,
+        "threads": 6,
+        "session_threads": {
+          "prefill": 8,
+          "decode": 5,
+          "sampler": 6,
+          "codec": 5
+        },
+        "prefill_seq": 0,
+        "max_new_frames": 20,
+        "codec_streaming": true,
+        "codec_full_loaded": false,
+        "codec_batch_frames": 3,
+        "codec_async": false,
+        "cache_voice_prefix": false
+      },
+      "manifest": {
+        "name": "moss-ort-manifest.json",
+        "validated": true,
+        "sha256": "8f2ed6769010afa21c26df467e1096de82d59e2c71c4615fee08d55cab5813b3",
+        "model_id": "moss-tts-nano-onnx",
+        "target_platform": "rk3576",
+        "required_artifacts": 11,
+        "streaming_required": true
+      },
+      "hybrid": {
+        "enabled": false,
+        "strict": false,
+        "dir": "/home/cat/moss-onnx-baseline",
+        "rknn_dir": "/home/cat/moss-onnx-baseline",
+        "seq_len": 320,
+        "split": "ln2_mlp",
+        "layers": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "manifest": null
+      },
+      "streaming_stats": {
+        "requests": 2,
+        "completed": 2,
+        "errors": 0,
+        "active": 0,
+        "chunks": 16,
+        "last_error": null,
+        "last_error_time": null
+      }
+    },
+    "mode": "custom"
+  },
+  "tts_stream": {
+    "bytes": 307204,
+    "sample_rate": 48000,
+    "payload_bytes": 307200,
+    "int16_samples": 153600,
+    "passed": true,
+    "header_ms": 83.282,
+    "first_payload_ms": 1002.303,
+    "wall_ms": 4554.166
+  },
+  "dialogue": {
+    "sample_rate": 48000,
+    "binary_chunks": 9,
+    "payload_bytes": 307200,
+    "first_payload_ms": 1050.9696230001282,
+    "payload_chunk_times_ms": [
+      1050.97,
+      1636.4,
+      2218.055,
+      2793.769,
+      3341.717,
+      3898.843,
+      4440.66,
+      4656.086
+    ],
+    "max_payload_gap_ms": 585.431,
+    "last_text": {
+      "done": true,
+      "chunks": 9
+    },
+    "wall_ms": 4657.619
+  },
+  "gates": {
+    "max_tts_wall_ms": 0.0,
+    "max_dialogue_wall_ms": 0.0,
+    "max_tts_first_payload_ms": 1500.0,
+    "max_dialogue_first_payload_ms": 1500.0,
+    "max_dialogue_payload_gap_ms": 1500.0,
+    "require_manifest_validated": true,
+    "expected_voice": "Junhao",
+    "expected_seed": 314,
+    "expected_manifest": "moss-ort-manifest.json",
+    "expected_codec_batch_frames": 3,
+    "require_production_runtime": true,
+    "min_dialogue_binary_chunks": 7,
+    "passed": true,
+    "errors": []
+  }
+}

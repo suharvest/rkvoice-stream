@@ -1,0 +1,866 @@
+{
+  "preset": "cattn",
+  "layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "seq_len": 320,
+  "target": "rk3576",
+  "precision": "fp16",
+  "onnx": "/home/harve/models/moss-tts-nano-onnx/moss_tts_prefill.onnx",
+  "out_dir": "/home/harve/models/moss-rknn-cattn-all-probe",
+  "elapsed_s": 37.551,
+  "passed": true,
+  "results": [
+    {
+      "layer": 0,
+      "returncode": 0,
+      "elapsed_s": 4.741,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block0_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block0_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block0_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.485,",
+        "    \"input_names\": [",
+        "      \"/ln_1/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604253,",
+        "    \"sha256\": \"98d926508a9fadb8ee4e7dd10244cd69c82a1d4ae989563b59cc1fd4f0a75739\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block0_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 0,
+        "description": "block0 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block0_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1850.137,
+        "onnx_size_bytes": 815,
+        "onnx_sha256": "fad0b0ac460c35a6a66e118fb55550f42a02e9cd24474089bdfcb638df3906bf",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block0_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block0_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.485,
+          "input_names": [
+            "/ln_1/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604253,
+          "sha256": "98d926508a9fadb8ee4e7dd10244cd69c82a1d4ae989563b59cc1fd4f0a75739"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block0_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 1,
+      "returncode": 0,
+      "elapsed_s": 3.034,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block1_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block1_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block1_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.229,",
+        "    \"input_names\": [",
+        "      \"/ln_1_1/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604321,",
+        "    \"sha256\": \"ff7bdee55f3272dd5b7719ce2a6bb7b7958f9ecb663543f3a4ba233de61b23ed\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block1_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 1,
+        "description": "block1 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block1_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_1/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_1/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_1/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1570.53,
+        "onnx_size_bytes": 845,
+        "onnx_sha256": "04062ac85d336f33f8a093ad5fcce8d9943f4e87bac2b6db2cf0c809f9972041",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block1_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block1_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.229,
+          "input_names": [
+            "/ln_1_1/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604321,
+          "sha256": "ff7bdee55f3272dd5b7719ce2a6bb7b7958f9ecb663543f3a4ba233de61b23ed"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block1_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 2,
+      "returncode": 0,
+      "elapsed_s": 3.349,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block2_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block2_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block2_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.208,",
+        "    \"input_names\": [",
+        "      \"/ln_1_2/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604321,",
+        "    \"sha256\": \"7fc679a9a31f333c882c0c0091135a1739208b266b19abccf247ab7adcb30f25\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block2_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 2,
+        "description": "block2 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block2_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_2/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_2/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_2/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1729.017,
+        "onnx_size_bytes": 845,
+        "onnx_sha256": "11bc559acf5f2069d5605bf6c154e7f536ee5f425f61d4b89cf7a5284216713f",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block2_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block2_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.208,
+          "input_names": [
+            "/ln_1_2/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604321,
+          "sha256": "7fc679a9a31f333c882c0c0091135a1739208b266b19abccf247ab7adcb30f25"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block2_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 3,
+      "returncode": 0,
+      "elapsed_s": 3.157,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block3_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block3_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block3_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.202,",
+        "    \"input_names\": [",
+        "      \"/ln_1_3/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604321,",
+        "    \"sha256\": \"1c6d50a516b969129c45762b0a471fd46d1d350b6c3859e0028d5dcb7b60af93\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block3_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 3,
+        "description": "block3 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block3_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_3/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_3/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_3/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1728.614,
+        "onnx_size_bytes": 853,
+        "onnx_sha256": "e8af4091583f937b75997c7843152102e170a3f232ba86b80e249320bb447173",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block3_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block3_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.202,
+          "input_names": [
+            "/ln_1_3/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604321,
+          "sha256": "1c6d50a516b969129c45762b0a471fd46d1d350b6c3859e0028d5dcb7b60af93"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block3_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 4,
+      "returncode": 0,
+      "elapsed_s": 2.84,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block4_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block4_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block4_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.197,",
+        "    \"input_names\": [",
+        "      \"/ln_1_4/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604321,",
+        "    \"sha256\": \"e5f5412ed240aa084e3dde902762e2267580332c73347582405ea6fbfe64f881\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block4_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 4,
+        "description": "block4 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block4_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_4/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_4/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_4/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1453.495,
+        "onnx_size_bytes": 853,
+        "onnx_sha256": "9092269e309da79539e47ac258d1db1a19c228897e22dcfe2b937d29606ed43a",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block4_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block4_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.197,
+          "input_names": [
+            "/ln_1_4/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604321,
+          "sha256": "e5f5412ed240aa084e3dde902762e2267580332c73347582405ea6fbfe64f881"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block4_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 5,
+      "returncode": 0,
+      "elapsed_s": 3.025,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block5_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block5_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block5_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.211,",
+        "    \"input_names\": [",
+        "      \"/ln_1_5/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604321,",
+        "    \"sha256\": \"08e779cb189d29f571dbd692666ed7c11375d25c53054d759d801ccc6d57ed37\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block5_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 5,
+        "description": "block5 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block5_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_5/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_5/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_5/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1490.889,
+        "onnx_size_bytes": 853,
+        "onnx_sha256": "8ed95876813bbd9939c97ed3cc32e193cd488d6ea3d4a062b7e3d7036c3ce0f0",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block5_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block5_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.211,
+          "input_names": [
+            "/ln_1_5/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604321,
+          "sha256": "08e779cb189d29f571dbd692666ed7c11375d25c53054d759d801ccc6d57ed37"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block5_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 6,
+      "returncode": 0,
+      "elapsed_s": 2.947,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block6_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block6_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block6_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.198,",
+        "    \"input_names\": [",
+        "      \"/ln_1_6/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604321,",
+        "    \"sha256\": \"5e34c88a88f79a78e54e39bcee334350a20cc920f2421ecbadf392c118690420\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block6_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 6,
+        "description": "block6 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block6_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_6/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_6/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_6/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1621.526,
+        "onnx_size_bytes": 853,
+        "onnx_sha256": "713b9b75bbcf62bf579c55eca3327b42e4c171eadfbe00953b780e4a5fc36641",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block6_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block6_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.198,
+          "input_names": [
+            "/ln_1_6/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604321,
+          "sha256": "5e34c88a88f79a78e54e39bcee334350a20cc920f2421ecbadf392c118690420"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block6_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 7,
+      "returncode": 0,
+      "elapsed_s": 2.895,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block7_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block7_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block7_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.191,",
+        "    \"input_names\": [",
+        "      \"/ln_1_7/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604321,",
+        "    \"sha256\": \"0c899c005fbe8ef69825c3036afc1a3c531e572fe2db2398533a60efb66424c8\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block7_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 7,
+        "description": "block7 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block7_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_7/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_7/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_7/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1529.148,
+        "onnx_size_bytes": 853,
+        "onnx_sha256": "e05e7ee36a66185e7800ef0bbe9a27789940e0cdb3c2440ccfe6abe268c956b4",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block7_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block7_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.191,
+          "input_names": [
+            "/ln_1_7/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604321,
+          "sha256": "0c899c005fbe8ef69825c3036afc1a3c531e572fe2db2398533a60efb66424c8"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block7_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 8,
+      "returncode": 0,
+      "elapsed_s": 3.067,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block8_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block8_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block8_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.205,",
+        "    \"input_names\": [",
+        "      \"/ln_1_8/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604321,",
+        "    \"sha256\": \"2abc96cf973491b61a7d4300095437081c13daad8133ef40c17bc7a4f25ac8b1\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block8_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 8,
+        "description": "block8 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block8_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_8/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_8/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_8/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1617.05,
+        "onnx_size_bytes": 853,
+        "onnx_sha256": "793c83f7bbbe6b54c2232a5043be66b519d84b28d41e698abb4a6b2d646889b4",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block8_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block8_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.205,
+          "input_names": [
+            "/ln_1_8/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604321,
+          "sha256": "2abc96cf973491b61a7d4300095437081c13daad8133ef40c17bc7a4f25ac8b1"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block8_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 9,
+      "returncode": 0,
+      "elapsed_s": 2.901,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block9_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block9_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block9_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.21,",
+        "    \"input_names\": [",
+        "      \"/ln_1_9/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604321,",
+        "    \"sha256\": \"f5428b923957546ad2fc57e7877c91eba2f357131a91ee1de85776b8605ac1b4\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block9_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 9,
+        "description": "block9 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block9_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_9/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_9/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_9/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1455.571,
+        "onnx_size_bytes": 853,
+        "onnx_sha256": "525c4dc7941283f4e8a4c001cc599f78c81baf60bf5110857f3afb41b8213b70",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block9_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block9_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.21,
+          "input_names": [
+            "/ln_1_9/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604321,
+          "sha256": "f5428b923957546ad2fc57e7877c91eba2f357131a91ee1de85776b8605ac1b4"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block9_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 10,
+      "returncode": 0,
+      "elapsed_s": 2.819,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block10_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block10_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block10_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.211,",
+        "    \"input_names\": [",
+        "      \"/ln_1_10/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604387,",
+        "    \"sha256\": \"5c622c9aea6494f7ebc1544cb2be9036152d5caac0600919386e79cb6a6e285c\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block10_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 10,
+        "description": "block10 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block10_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_10/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_10/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_10/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1355.761,
+        "onnx_size_bytes": 868,
+        "onnx_sha256": "ec6f9ddfc2d60a30eca2aa37442fea9bbb6eee05831f7d7892e7bceac508dca1",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block10_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block10_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.211,
+          "input_names": [
+            "/ln_1_10/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604387,
+          "sha256": "5c622c9aea6494f7ebc1544cb2be9036152d5caac0600919386e79cb6a6e285c"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block10_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    },
+    {
+      "layer": 11,
+      "returncode": 0,
+      "elapsed_s": 2.772,
+      "report": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block11_cattn.s320.json",
+      "output_tail": [
+        "  \"rknn\": \"/home/harve/models/moss-rknn-cattn-all-probe/moss_block11_cattn.s320.fp16.rk3576.rknn\",",
+        "  \"rknn_build\": {",
+        "    \"name\": \"moss_block11_cattn.s320.fp16.rk3576.rknn\",",
+        "    \"status\": \"OK\",",
+        "    \"elapsed_s\": 0.199,",
+        "    \"input_names\": [",
+        "      \"/ln_1_11/LayerNormalization_output_0\"",
+        "    ],",
+        "    \"input_shapes\": [",
+        "      [",
+        "        1,",
+        "        320,",
+        "        768",
+        "      ]",
+        "    ],",
+        "    \"size_bytes\": 3604387,",
+        "    \"sha256\": \"d0a420e8b9c767f7e0bf9ce9b589ca8e72a988e6d8ee90aad9f90e24e352a0fb\"",
+        "  },",
+        "  \"build_log\": \"/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block11_cattn.s320.fp16.rk3576.rknn.log\"",
+        "}"
+      ],
+      "report_json": {
+        "preset": "cattn",
+        "layer": 11,
+        "description": "block11 fused attention qkv projection only: ln1 hidden -> qkv",
+        "onnx": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block11_cattn.s320.onnx",
+        "inputs": [
+          "/ln_1_11/LayerNormalization_output_0"
+        ],
+        "outputs": [
+          "/c_attn_11/Add_output_0"
+        ],
+        "input_shapes": {
+          "/ln_1_11/LayerNormalization_output_0": [
+            1,
+            320,
+            768
+          ]
+        },
+        "case": "island_float",
+        "extract_ms": 1390.491,
+        "onnx_size_bytes": 868,
+        "onnx_sha256": "a62f20be7316ece52bd291ba43e2c0af5572d1e73a156dd17140adecbcc72fff",
+        "rknn": "/home/harve/models/moss-rknn-cattn-all-probe/moss_block11_cattn.s320.fp16.rk3576.rknn",
+        "rknn_build": {
+          "name": "moss_block11_cattn.s320.fp16.rk3576.rknn",
+          "status": "OK",
+          "elapsed_s": 0.199,
+          "input_names": [
+            "/ln_1_11/LayerNormalization_output_0"
+          ],
+          "input_shapes": [
+            [
+              1,
+              320,
+              768
+            ]
+          ],
+          "size_bytes": 3604387,
+          "sha256": "d0a420e8b9c767f7e0bf9ce9b589ca8e72a988e6d8ee90aad9f90e24e352a0fb"
+        },
+        "build_log": "/home/harve/models/moss-rknn-cattn-all-probe/build_logs/moss_block11_cattn.s320.fp16.rk3576.rknn.log"
+      }
+    }
+  ]
+}

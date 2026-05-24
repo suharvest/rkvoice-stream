@@ -1,0 +1,462 @@
+{
+  "model_dir": "/home/cat/moss-onnx-baseline",
+  "artifact_dir": "/home/cat/moss-rknn-hybrid-baseline",
+  "cattn_dir": "/home/cat/moss-rknn-cattn-all-probe",
+  "use_cattn": true,
+  "text": "你好",
+  "voice": "Lingyu",
+  "seq_len": 320,
+  "actual_len": 297,
+  "timings_ms": {
+    "full_prefill_target_ms": 1649.9,
+    "layers": [
+      {
+        "layer": 0,
+        "ln1_ms": 18.739,
+        "cattn_rknn_ms": 22.896,
+        "attention_suffix_ms": 39.317,
+        "attention_ms": 80.952,
+        "mlp_rknn_ms": 19.102,
+        "layer_ms": 101.819
+      },
+      {
+        "layer": 1,
+        "ln1_ms": 2.375,
+        "cattn_rknn_ms": 21.881,
+        "attention_suffix_ms": 40.307,
+        "attention_ms": 64.563,
+        "mlp_rknn_ms": 17.217,
+        "layer_ms": 83.418
+      },
+      {
+        "layer": 2,
+        "ln1_ms": 2.977,
+        "cattn_rknn_ms": 21.376,
+        "attention_suffix_ms": 39.913,
+        "attention_ms": 64.266,
+        "mlp_rknn_ms": 16.256,
+        "layer_ms": 82.164
+      },
+      {
+        "layer": 3,
+        "ln1_ms": 3.878,
+        "cattn_rknn_ms": 17.888,
+        "attention_suffix_ms": 45.913,
+        "attention_ms": 67.678,
+        "mlp_rknn_ms": 16.664,
+        "layer_ms": 85.964
+      },
+      {
+        "layer": 4,
+        "ln1_ms": 1.941,
+        "cattn_rknn_ms": 18.327,
+        "attention_suffix_ms": 42.733,
+        "attention_ms": 63.001,
+        "mlp_rknn_ms": 16.403,
+        "layer_ms": 81.013
+      },
+      {
+        "layer": 5,
+        "ln1_ms": 2.27,
+        "cattn_rknn_ms": 24.633,
+        "attention_suffix_ms": 39.376,
+        "attention_ms": 66.28,
+        "mlp_rknn_ms": 16.173,
+        "layer_ms": 84.119
+      },
+      {
+        "layer": 6,
+        "ln1_ms": 2.274,
+        "cattn_rknn_ms": 18.31,
+        "attention_suffix_ms": 45.33,
+        "attention_ms": 65.914,
+        "mlp_rknn_ms": 16.955,
+        "layer_ms": 84.447
+      },
+      {
+        "layer": 7,
+        "ln1_ms": 1.876,
+        "cattn_rknn_ms": 13.338,
+        "attention_suffix_ms": 47.645,
+        "attention_ms": 62.859,
+        "mlp_rknn_ms": 16.04,
+        "layer_ms": 80.594
+      },
+      {
+        "layer": 8,
+        "ln1_ms": 1.918,
+        "cattn_rknn_ms": 13.942,
+        "attention_suffix_ms": 49.804,
+        "attention_ms": 65.664,
+        "mlp_rknn_ms": 15.921,
+        "layer_ms": 83.261
+      },
+      {
+        "layer": 9,
+        "ln1_ms": 1.845,
+        "cattn_rknn_ms": 16.997,
+        "attention_suffix_ms": 46.964,
+        "attention_ms": 65.806,
+        "mlp_rknn_ms": 16.016,
+        "layer_ms": 83.431
+      },
+      {
+        "layer": 10,
+        "ln1_ms": 1.929,
+        "cattn_rknn_ms": 22.313,
+        "attention_suffix_ms": 40.438,
+        "attention_ms": 64.679,
+        "mlp_rknn_ms": 16.313,
+        "layer_ms": 82.611
+      },
+      {
+        "layer": 11,
+        "ln1_ms": 3.868,
+        "cattn_rknn_ms": 17.466,
+        "attention_suffix_ms": 43.378,
+        "attention_ms": 64.712,
+        "mlp_rknn_ms": 15.876,
+        "layer_ms": 82.208
+      }
+    ],
+    "hybrid_preload_ms": 5152.471,
+    "embedding_ms": 41.922,
+    "final_norm_ms": 2.7,
+    "hybrid_prefill_ms": 1059.671
+  },
+  "outputs": {
+    "global_hidden": {
+      "shape": [
+        1,
+        320,
+        768
+      ],
+      "finite": true,
+      "max_abs": 0.040189266204833984,
+      "mean_abs": 0.001811461872421205,
+      "rel_l2": 0.0026329203974455595,
+      "cosine": 0.9999968409538269
+    },
+    "kv_max_rel_l2": 0.0033487798646092415,
+    "kv_min_cosine": 0.999990701675415
+  },
+  "kv_metrics": {
+    "present_key_0": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.003783702850341797,
+      "mean_abs": 0.00023889659496489912,
+      "rel_l2": 0.0003226042026653886,
+      "cosine": 0.9999974370002747
+    },
+    "present_value_0": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.001953125,
+      "mean_abs": 0.00010375259444117546,
+      "rel_l2": 0.000354964955477044,
+      "cosine": 0.9999984502792358
+    },
+    "present_key_1": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.011635661125183105,
+      "mean_abs": 0.0009871984366327524,
+      "rel_l2": 0.0011683516204357147,
+      "cosine": 0.9999971389770508
+    },
+    "present_value_1": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.00830078125,
+      "mean_abs": 0.0007386308279819787,
+      "rel_l2": 0.0016776866978034377,
+      "cosine": 0.9999959468841553
+    },
+    "present_key_2": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.05336952209472656,
+      "mean_abs": 0.001703307731077075,
+      "rel_l2": 0.0018600833136588335,
+      "cosine": 0.9999961256980896
+    },
+    "present_value_2": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.0107421875,
+      "mean_abs": 0.0011669757077470422,
+      "rel_l2": 0.002420845441520214,
+      "cosine": 0.9999936819076538
+    },
+    "present_key_3": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.027808070182800293,
+      "mean_abs": 0.0017737954622134566,
+      "rel_l2": 0.0021298748906701803,
+      "cosine": 0.9999939203262329
+    },
+    "present_value_3": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.014923095703125,
+      "mean_abs": 0.0014920764369890094,
+      "rel_l2": 0.0029557966627180576,
+      "cosine": 0.999992847442627
+    },
+    "present_key_4": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.034807443618774414,
+      "mean_abs": 0.0019345844630151987,
+      "rel_l2": 0.0023657844867557287,
+      "cosine": 0.9999954700469971
+    },
+    "present_value_4": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.0191650390625,
+      "mean_abs": 0.0016029893886297941,
+      "rel_l2": 0.003312397748231888,
+      "cosine": 0.9999907612800598
+    },
+    "present_key_5": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.029390990734100342,
+      "mean_abs": 0.0018108857329934835,
+      "rel_l2": 0.002229891484603286,
+      "cosine": 0.999994695186615
+    },
+    "present_value_5": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.0224609375,
+      "mean_abs": 0.0015441594878211617,
+      "rel_l2": 0.00331510859541595,
+      "cosine": 0.999990701675415
+    },
+    "present_key_6": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.02730846405029297,
+      "mean_abs": 0.0016331170918419957,
+      "rel_l2": 0.00192051543854177,
+      "cosine": 0.999995231628418
+    },
+    "present_value_6": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.025146484375,
+      "mean_abs": 0.001475048717111349,
+      "rel_l2": 0.003288505133241415,
+      "cosine": 0.999991774559021
+    },
+    "present_key_7": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.042168617248535156,
+      "mean_abs": 0.0016360648442059755,
+      "rel_l2": 0.0019677409436553717,
+      "cosine": 0.999996542930603
+    },
+    "present_value_7": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.02392578125,
+      "mean_abs": 0.001543707912787795,
+      "rel_l2": 0.0033487798646092415,
+      "cosine": 0.9999918937683105
+    },
+    "present_key_8": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.031450510025024414,
+      "mean_abs": 0.0015524695627391338,
+      "rel_l2": 0.0018578420858830214,
+      "cosine": 0.9999968409538269
+    },
+    "present_value_8": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.033935546875,
+      "mean_abs": 0.0015941530000418425,
+      "rel_l2": 0.0031023966148495674,
+      "cosine": 0.9999929070472717
+    },
+    "present_key_9": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.03505754470825195,
+      "mean_abs": 0.0014064011629670858,
+      "rel_l2": 0.0016930231358855963,
+      "cosine": 0.9999970197677612
+    },
+    "present_value_9": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.0322265625,
+      "mean_abs": 0.0015303861582651734,
+      "rel_l2": 0.002935588825494051,
+      "cosine": 0.9999920725822449
+    },
+    "present_key_10": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.04200172424316406,
+      "mean_abs": 0.001400044304318726,
+      "rel_l2": 0.001791581278666854,
+      "cosine": 0.9999967217445374
+    },
+    "present_value_10": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.031982421875,
+      "mean_abs": 0.0015337365912273526,
+      "rel_l2": 0.0027443275321274996,
+      "cosine": 0.9999934434890747
+    },
+    "present_key_11": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.03267955780029297,
+      "mean_abs": 0.0013940398348495364,
+      "rel_l2": 0.0016075633466243744,
+      "cosine": 0.9999962449073792
+    },
+    "present_value_11": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.02587890625,
+      "mean_abs": 0.0015092005487531424,
+      "rel_l2": 0.0024525781627744436,
+      "cosine": 0.9999938011169434
+    }
+  },
+  "gates": {
+    "max_global_rel_l2": 0.02,
+    "min_global_cosine": 0.999,
+    "passed": true
+  }
+}

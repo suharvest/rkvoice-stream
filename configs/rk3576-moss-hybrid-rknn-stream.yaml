@@ -1,0 +1,34 @@
+# RK3576 MOSS-TTS-Nano hybrid RKNN streaming profile.
+# Experimental only: the current RK3576 hybrid output either fails ASR
+# roundtrip quality gates or loses to the ORT fallback at service-level TTFA.
+# Do not use as the default production profile until docs/moss-rknn-rk3576.md
+# gates pass.
+# Uses ORT for sampler/decode/codec streaming and verified RKNN islands for
+# full-prompt prefill experiments. Falls back only when hybrid_strict is 0.
+asr:
+  backend: null
+
+tts:
+  backend: moss_ort
+  model_dir: /opt/tts/models/moss-tts-nano-onnx
+  sample_rate: 48000
+  channels: 2
+  threads: 6
+  prefill_seq: 0
+  max_new_frames: 20
+  codec_streaming: 1
+  cache_voice_prefix: 0
+  warmup_text: "你好"
+  voice: Lingyu
+  allow_deterministic_fallback: 0
+  hybrid_rknn: 1
+  hybrid_strict: 1
+  hybrid_seq_len: 320
+  # Current best sampler-parity candidate from RK3576 probes. It is still
+  # experimental: strict service verification measured ~2.55-2.61s first
+  # payload, below the ORT fallback and outside the production TTFA gate.
+  hybrid_split: fc_out_only
+  hybrid_layers: 0,1,4,5,6
+  hybrid_dir: /opt/tts/models/moss-tts-nano-hybrid-rknn
+  hybrid_rknn_dir: /opt/tts/models/moss-tts-nano-hybrid-fc-split-rknn
+  hybrid_manifest: moss-hybrid-fc-out-manifest.json

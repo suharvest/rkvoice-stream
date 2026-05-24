@@ -1,0 +1,2460 @@
+{
+  "model_dir": "/home/harve/models/moss-onnx-bundle/MOSS-TTS-Nano-100M-ONNX",
+  "scaffold_dir": "/home/harve/models/moss-rkllm-custom-scaffold",
+  "state_path": "/home/harve/models/moss-rkllm-custom-scaffold/model.safetensors",
+  "write": true,
+  "converted": [
+    {
+      "source": "core.model.transformer.wte.weight",
+      "target": "model.embed_tokens.weight",
+      "source_shape": [
+        16384,
+        768
+      ],
+      "target_shape": [
+        16384,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.0.weight",
+      "target": "model.audio_embeddings.0.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.1.weight",
+      "target": "model.audio_embeddings.1.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.2.weight",
+      "target": "model.audio_embeddings.2.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.3.weight",
+      "target": "model.audio_embeddings.3.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.4.weight",
+      "target": "model.audio_embeddings.4.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.5.weight",
+      "target": "model.audio_embeddings.5.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.6.weight",
+      "target": "model.audio_embeddings.6.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.7.weight",
+      "target": "model.audio_embeddings.7.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.8.weight",
+      "target": "model.audio_embeddings.8.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.9.weight",
+      "target": "model.audio_embeddings.9.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.10.weight",
+      "target": "model.audio_embeddings.10.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.11.weight",
+      "target": "model.audio_embeddings.11.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.12.weight",
+      "target": "model.audio_embeddings.12.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.13.weight",
+      "target": "model.audio_embeddings.13.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.14.weight",
+      "target": "model.audio_embeddings.14.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.audio_embeddings.15.weight",
+      "target": "model.audio_embeddings.15.weight",
+      "source_shape": [
+        1024,
+        768
+      ],
+      "target_shape": [
+        1024,
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.0.ln_1.weight",
+      "target": "model.layers.0.input_layernorm.weight",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.0.ln_1.bias",
+      "target": "model.layers.0.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3324",
+      "target": "model.layers.0.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3324",
+      "target": "model.layers.0.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3324",
+      "target": "model.layers.0.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.0.attn.c_attn.bias",
+      "target": "model.layers.0.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.0.attn.c_attn.bias",
+      "target": "model.layers.0.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.0.attn.c_attn.bias",
+      "target": "model.layers.0.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3351",
+      "target": "model.layers.0.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.0.attn.c_proj.bias",
+      "target": "model.layers.0.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.0.ln_2.bias",
+      "target": "model.layers.0.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3352",
+      "target": "model.layers.0.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.0.mlp.fc_in.bias",
+      "target": "model.layers.0.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3353",
+      "target": "model.layers.0.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.0.mlp.fc_out.bias",
+      "target": "model.layers.0.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.1.ln_1.bias",
+      "target": "model.layers.1.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3354",
+      "target": "model.layers.1.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3354",
+      "target": "model.layers.1.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3354",
+      "target": "model.layers.1.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.1.attn.c_attn.bias",
+      "target": "model.layers.1.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.1.attn.c_attn.bias",
+      "target": "model.layers.1.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.1.attn.c_attn.bias",
+      "target": "model.layers.1.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3381",
+      "target": "model.layers.1.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.1.attn.c_proj.bias",
+      "target": "model.layers.1.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.1.ln_2.bias",
+      "target": "model.layers.1.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3382",
+      "target": "model.layers.1.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.1.mlp.fc_in.bias",
+      "target": "model.layers.1.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3383",
+      "target": "model.layers.1.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.1.mlp.fc_out.bias",
+      "target": "model.layers.1.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.2.ln_1.bias",
+      "target": "model.layers.2.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3384",
+      "target": "model.layers.2.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3384",
+      "target": "model.layers.2.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3384",
+      "target": "model.layers.2.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.2.attn.c_attn.bias",
+      "target": "model.layers.2.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.2.attn.c_attn.bias",
+      "target": "model.layers.2.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.2.attn.c_attn.bias",
+      "target": "model.layers.2.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3411",
+      "target": "model.layers.2.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.2.attn.c_proj.bias",
+      "target": "model.layers.2.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.2.ln_2.bias",
+      "target": "model.layers.2.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3412",
+      "target": "model.layers.2.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.2.mlp.fc_in.bias",
+      "target": "model.layers.2.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3413",
+      "target": "model.layers.2.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.2.mlp.fc_out.bias",
+      "target": "model.layers.2.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.3.ln_1.bias",
+      "target": "model.layers.3.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3414",
+      "target": "model.layers.3.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3414",
+      "target": "model.layers.3.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3414",
+      "target": "model.layers.3.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.3.attn.c_attn.bias",
+      "target": "model.layers.3.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.3.attn.c_attn.bias",
+      "target": "model.layers.3.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.3.attn.c_attn.bias",
+      "target": "model.layers.3.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3441",
+      "target": "model.layers.3.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.3.attn.c_proj.bias",
+      "target": "model.layers.3.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.3.ln_2.bias",
+      "target": "model.layers.3.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3442",
+      "target": "model.layers.3.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.3.mlp.fc_in.bias",
+      "target": "model.layers.3.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3443",
+      "target": "model.layers.3.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.3.mlp.fc_out.bias",
+      "target": "model.layers.3.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.4.ln_1.bias",
+      "target": "model.layers.4.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3444",
+      "target": "model.layers.4.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3444",
+      "target": "model.layers.4.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3444",
+      "target": "model.layers.4.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.4.attn.c_attn.bias",
+      "target": "model.layers.4.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.4.attn.c_attn.bias",
+      "target": "model.layers.4.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.4.attn.c_attn.bias",
+      "target": "model.layers.4.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3471",
+      "target": "model.layers.4.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.4.attn.c_proj.bias",
+      "target": "model.layers.4.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.4.ln_2.bias",
+      "target": "model.layers.4.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3472",
+      "target": "model.layers.4.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.4.mlp.fc_in.bias",
+      "target": "model.layers.4.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3473",
+      "target": "model.layers.4.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.4.mlp.fc_out.bias",
+      "target": "model.layers.4.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.5.ln_1.bias",
+      "target": "model.layers.5.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3474",
+      "target": "model.layers.5.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3474",
+      "target": "model.layers.5.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3474",
+      "target": "model.layers.5.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.5.attn.c_attn.bias",
+      "target": "model.layers.5.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.5.attn.c_attn.bias",
+      "target": "model.layers.5.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.5.attn.c_attn.bias",
+      "target": "model.layers.5.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3501",
+      "target": "model.layers.5.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.5.attn.c_proj.bias",
+      "target": "model.layers.5.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.5.ln_2.bias",
+      "target": "model.layers.5.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3502",
+      "target": "model.layers.5.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.5.mlp.fc_in.bias",
+      "target": "model.layers.5.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3503",
+      "target": "model.layers.5.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.5.mlp.fc_out.bias",
+      "target": "model.layers.5.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.6.ln_1.bias",
+      "target": "model.layers.6.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3504",
+      "target": "model.layers.6.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3504",
+      "target": "model.layers.6.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3504",
+      "target": "model.layers.6.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.6.attn.c_attn.bias",
+      "target": "model.layers.6.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.6.attn.c_attn.bias",
+      "target": "model.layers.6.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.6.attn.c_attn.bias",
+      "target": "model.layers.6.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3531",
+      "target": "model.layers.6.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.6.attn.c_proj.bias",
+      "target": "model.layers.6.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.6.ln_2.bias",
+      "target": "model.layers.6.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3532",
+      "target": "model.layers.6.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.6.mlp.fc_in.bias",
+      "target": "model.layers.6.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3533",
+      "target": "model.layers.6.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.6.mlp.fc_out.bias",
+      "target": "model.layers.6.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.7.ln_1.bias",
+      "target": "model.layers.7.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3534",
+      "target": "model.layers.7.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3534",
+      "target": "model.layers.7.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3534",
+      "target": "model.layers.7.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.7.attn.c_attn.bias",
+      "target": "model.layers.7.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.7.attn.c_attn.bias",
+      "target": "model.layers.7.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.7.attn.c_attn.bias",
+      "target": "model.layers.7.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3561",
+      "target": "model.layers.7.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.7.attn.c_proj.bias",
+      "target": "model.layers.7.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.7.ln_2.bias",
+      "target": "model.layers.7.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3562",
+      "target": "model.layers.7.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.7.mlp.fc_in.bias",
+      "target": "model.layers.7.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3563",
+      "target": "model.layers.7.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.7.mlp.fc_out.bias",
+      "target": "model.layers.7.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.8.ln_1.bias",
+      "target": "model.layers.8.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3564",
+      "target": "model.layers.8.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3564",
+      "target": "model.layers.8.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3564",
+      "target": "model.layers.8.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.8.attn.c_attn.bias",
+      "target": "model.layers.8.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.8.attn.c_attn.bias",
+      "target": "model.layers.8.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.8.attn.c_attn.bias",
+      "target": "model.layers.8.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3591",
+      "target": "model.layers.8.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.8.attn.c_proj.bias",
+      "target": "model.layers.8.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.8.ln_2.bias",
+      "target": "model.layers.8.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3592",
+      "target": "model.layers.8.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.8.mlp.fc_in.bias",
+      "target": "model.layers.8.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3593",
+      "target": "model.layers.8.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.8.mlp.fc_out.bias",
+      "target": "model.layers.8.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.9.ln_1.bias",
+      "target": "model.layers.9.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3594",
+      "target": "model.layers.9.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3594",
+      "target": "model.layers.9.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3594",
+      "target": "model.layers.9.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.9.attn.c_attn.bias",
+      "target": "model.layers.9.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.9.attn.c_attn.bias",
+      "target": "model.layers.9.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.9.attn.c_attn.bias",
+      "target": "model.layers.9.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3621",
+      "target": "model.layers.9.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.9.attn.c_proj.bias",
+      "target": "model.layers.9.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.9.ln_2.bias",
+      "target": "model.layers.9.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3622",
+      "target": "model.layers.9.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.9.mlp.fc_in.bias",
+      "target": "model.layers.9.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3623",
+      "target": "model.layers.9.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.9.mlp.fc_out.bias",
+      "target": "model.layers.9.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.10.ln_1.bias",
+      "target": "model.layers.10.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3624",
+      "target": "model.layers.10.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3624",
+      "target": "model.layers.10.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3624",
+      "target": "model.layers.10.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.10.attn.c_attn.bias",
+      "target": "model.layers.10.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.10.attn.c_attn.bias",
+      "target": "model.layers.10.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.10.attn.c_attn.bias",
+      "target": "model.layers.10.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3651",
+      "target": "model.layers.10.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.10.attn.c_proj.bias",
+      "target": "model.layers.10.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.10.ln_2.bias",
+      "target": "model.layers.10.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3652",
+      "target": "model.layers.10.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.10.mlp.fc_in.bias",
+      "target": "model.layers.10.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3653",
+      "target": "model.layers.10.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.10.mlp.fc_out.bias",
+      "target": "model.layers.10.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.11.ln_1.bias",
+      "target": "model.layers.11.input_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3654",
+      "target": "model.layers.11.self_attn.q_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "q_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3654",
+      "target": "model.layers.11.self_attn.k_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "k_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "onnx::MatMul_3654",
+      "target": "model.layers.11.self_attn.v_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "split": "v_proj",
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.11.attn.c_attn.bias",
+      "target": "model.layers.11.self_attn.q_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "q_proj"
+    },
+    {
+      "source": "core.model.transformer.h.11.attn.c_attn.bias",
+      "target": "model.layers.11.self_attn.k_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "k_proj"
+    },
+    {
+      "source": "core.model.transformer.h.11.attn.c_attn.bias",
+      "target": "model.layers.11.self_attn.v_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "split": "v_proj"
+    },
+    {
+      "source": "onnx::MatMul_3681",
+      "target": "model.layers.11.self_attn.o_proj.weight",
+      "source_shape": [
+        768,
+        768
+      ],
+      "target_shape": [
+        768,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.11.attn.c_proj.bias",
+      "target": "model.layers.11.self_attn.o_proj.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.h.11.ln_2.bias",
+      "target": "model.layers.11.post_attention_layernorm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3682",
+      "target": "model.layers.11.mlp.fc_in.weight",
+      "source_shape": [
+        768,
+        3072
+      ],
+      "target_shape": [
+        3072,
+        768
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.11.mlp.fc_in.bias",
+      "target": "model.layers.11.mlp.fc_in.bias",
+      "source_shape": [
+        3072
+      ],
+      "target_shape": [
+        3072
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "onnx::MatMul_3683",
+      "target": "model.layers.11.mlp.fc_out.weight",
+      "source_shape": [
+        3072,
+        768
+      ],
+      "target_shape": [
+        768,
+        3072
+      ],
+      "transpose_linear": true
+    },
+    {
+      "source": "core.model.transformer.h.11.mlp.fc_out.bias",
+      "target": "model.layers.11.mlp.fc_out.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    },
+    {
+      "source": "core.model.transformer.ln_f.bias",
+      "target": "model.norm.bias",
+      "source_shape": [
+        768
+      ],
+      "target_shape": [
+        768
+      ],
+      "transpose_linear": false
+    }
+  ],
+  "synthetic": [
+    {
+      "target": "model.layers.0.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.1.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.1.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.2.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.2.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.3.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.3.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.4.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.4.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.5.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.5.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.6.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.6.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.7.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.7.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.8.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.8.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.9.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.9.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.10.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.10.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.11.input_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.layers.11.post_attention_layernorm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity LayerNorm gamma; one is mathematically equivalent"
+    },
+    {
+      "target": "model.norm.weight",
+      "shape": [
+        768
+      ],
+      "reason": "ONNX omits identity final LayerNorm gamma"
+    }
+  ],
+  "missing": [],
+  "ready_for_modeling_custom_patch": true,
+  "ready_for_rkllm_export": false,
+  "why_not_ready": [
+    "modeling_custom.py still needs the MOSS 17-column embedding adapter, LayerNorm+bias, GELU MLP, and fused-QKV-compatible shapes",
+    "global hidden parity against ONNX prefill/decode has not been proven"
+  ],
+  "tensor_count": 211,
+  "missing_count": 0,
+  "synthetic_count": 24,
+  "converted_count": 187
+}

@@ -1,0 +1,14 @@
+{
+  "scaffold_dir": "/home/harve/models/moss-rkllm-custom-scaffold",
+  "custom_config": "/home/harve/project/rkvoice-stream/models/tts/moss/moss_rkllm_toolkit_custom_config.json",
+  "device": "cpu",
+  "dtype": "float32",
+  "loaded": true,
+  "ret": 0,
+  "exception": null,
+  "versions": {
+    "torch": "2.7.0+cu126",
+    "transformers": "4.57.1",
+    "rkllm": null
+  }
+}

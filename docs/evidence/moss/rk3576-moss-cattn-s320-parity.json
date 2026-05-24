@@ -1,0 +1,43 @@
+{
+  "onnx": "/home/cat/moss-rknn-cattn-probe/moss_block0_cattn.s320.onnx",
+  "rknn": "/home/cat/moss-rknn-cattn-probe/moss_block0_cattn.s320.fp16.rk3576.rknn",
+  "input_names": [
+    "/ln_1/LayerNormalization_output_0"
+  ],
+  "input_shape": [
+    1,
+    320,
+    768
+  ],
+  "outputs": [
+    {
+      "shape": [
+        1,
+        320,
+        2304
+      ],
+      "dtype": "float32",
+      "finite": true,
+      "max_abs": 0.0005456209182739258,
+      "mean_abs": 4.1897481423802674e-05,
+      "rel_l2": 0.0002921913983300328,
+      "cosine": 0.9999942183494568,
+      "ref_min": -1.1093885898590088,
+      "ref_max": 0.94460129737854,
+      "got_min": -1.109375,
+      "got_max": 0.9443359375
+    }
+  ],
+  "latency_ms": {
+    "ort_first": 26.588,
+    "rknn_first": 30.668,
+    "ort_avg": 24.3,
+    "rknn_avg": 14.941,
+    "repeat": 8
+  },
+  "gates": {
+    "max_rel_l2": 0.01,
+    "min_cosine": 0.999,
+    "passed": true
+  }
+}

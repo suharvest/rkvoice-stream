@@ -1,0 +1,479 @@
+{
+  "summary": {
+    "total": 12,
+    "ok": 12,
+    "crash": 0,
+    "timeout": 0,
+    "missing": 0
+  },
+  "results": [
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block0_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block0_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.263,
+      "load_ret": 0,
+      "init_ms": 131.399,
+      "init_ret": 0,
+      "infer_ms": 31.882,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -3.697265625,
+          "max": 3.654296875,
+          "mean": 0.0006237694178707898
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1223.286,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block10_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block10_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.734,
+      "load_ret": 0,
+      "init_ms": 140.999,
+      "init_ret": 0,
+      "infer_ms": 30.997,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -3.341796875,
+          "max": 3.3125,
+          "mean": -0.0003491871466394514
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1276.234,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block11_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block11_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.415,
+      "load_ret": 0,
+      "init_ms": 144.899,
+      "init_ret": 0,
+      "infer_ms": 29.072,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -2.0703125,
+          "max": 2.19140625,
+          "mean": 0.0007460946799255908
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1312.695,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block1_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block1_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.313,
+      "load_ret": 0,
+      "init_ms": 145.935,
+      "init_ret": 0,
+      "infer_ms": 30.358,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -1.7490234375,
+          "max": 1.80078125,
+          "mean": 5.705339935957454e-05
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1317.241,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block2_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block2_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.328,
+      "load_ret": 0,
+      "init_ms": 143.819,
+      "init_ret": 0,
+      "infer_ms": 30.297,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -1.740234375,
+          "max": 1.794921875,
+          "mean": -0.0001987457217182964
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1302.909,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block3_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block3_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.222,
+      "load_ret": 0,
+      "init_ms": 142.695,
+      "init_ret": 0,
+      "infer_ms": 34.036,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -2.07421875,
+          "max": 2.189453125,
+          "mean": 0.0012330961180850863
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1229.751,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block4_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block4_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.656,
+      "load_ret": 0,
+      "init_ms": 145.958,
+      "init_ret": 0,
+      "infer_ms": 28.991,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -1.62890625,
+          "max": 1.5654296875,
+          "mean": -0.0002990475913975388
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1278.346,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block5_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block5_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.679,
+      "load_ret": 0,
+      "init_ms": 126.456,
+      "init_ret": 0,
+      "infer_ms": 29.765,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -1.6083984375,
+          "max": 1.6474609375,
+          "mean": -0.00044317045831121504
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1281.721,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block6_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block6_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 5.094,
+      "load_ret": 0,
+      "init_ms": 139.097,
+      "init_ret": 0,
+      "infer_ms": 30.075,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -1.7685546875,
+          "max": 1.7685546875,
+          "mean": 5.983644086882123e-07
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1286.492,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block7_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block7_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.632,
+      "load_ret": 0,
+      "init_ms": 148.341,
+      "init_ret": 0,
+      "infer_ms": 30.203,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -1.8935546875,
+          "max": 1.9560546875,
+          "mean": 0.0005065769073553383
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1280.769,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block8_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block8_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.225,
+      "load_ret": 0,
+      "init_ms": 143.704,
+      "init_ret": 0,
+      "infer_ms": 29.683,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -2.26953125,
+          "max": 2.302734375,
+          "mean": -0.000389588822145015
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1309.093,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-cattn-all-probe/moss_block9_cattn.s320.fp16.rk3576.rknn",
+      "name": "moss_block9_cattn.s320.fp16.rk3576.rknn",
+      "case": "island_float",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          320,
+          768
+        ]
+      ],
+      "input_dtypes": [
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 4.608,
+      "load_ret": 0,
+      "init_ms": 141.936,
+      "init_ret": 0,
+      "infer_ms": 30.278,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            320,
+            2304
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -3.240234375,
+          "max": 3.181640625,
+          "mean": 6.757171649951488e-05
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1233.952,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    }
+  ]
+}

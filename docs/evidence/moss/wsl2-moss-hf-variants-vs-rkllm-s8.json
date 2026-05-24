@@ -1,0 +1,86 @@
+{
+  "model_dir": "/home/harve/models/moss-rkllm-embed-only-folded-scaffold",
+  "dump": "/home/harve/project/rkvoice-stream/docs/evidence/moss/rk3576-moss-rkllm-hidden-vs-onnx-s8-dump.npz",
+  "valid_len": 8,
+  "variants": {
+    "hf_original": {
+      "vs_rkllm": {
+        "shape": [
+          1,
+          8,
+          768
+        ],
+        "max_abs": 7.449080944061279,
+        "mean_abs": 1.0422602891921997,
+        "rel_l2": 1.3225855827331543,
+        "cosine": 0.12543481588363647,
+        "finite": true
+      },
+      "vs_onnx": {
+        "shape": [
+          1,
+          8,
+          768
+        ],
+        "max_abs": 1.710653305053711e-05,
+        "mean_abs": 3.390507345102378e-06,
+        "rel_l2": 4.271252237231238e-06,
+        "cosine": 1.0000001192092896,
+        "finite": true
+      }
+    },
+    "hf_zero_layernorm_bias": {
+      "vs_rkllm": {
+        "shape": [
+          1,
+          8,
+          768
+        ],
+        "max_abs": 7.449080944061279,
+        "mean_abs": 1.0422602891921997,
+        "rel_l2": 1.3225855827331543,
+        "cosine": 0.12543481588363647,
+        "finite": true
+      },
+      "vs_onnx": {
+        "shape": [
+          1,
+          8,
+          768
+        ],
+        "max_abs": 1.710653305053711e-05,
+        "mean_abs": 3.390507345102378e-06,
+        "rel_l2": 4.271252237231238e-06,
+        "cosine": 1.0000001192092896,
+        "finite": true
+      }
+    },
+    "hf_rmsnorm": {
+      "vs_rkllm": {
+        "shape": [
+          1,
+          8,
+          768
+        ],
+        "max_abs": 7.431249618530273,
+        "mean_abs": 1.0392403602600098,
+        "rel_l2": 1.3187774419784546,
+        "cosine": 0.1302638202905655,
+        "finite": true
+      },
+      "vs_onnx": {
+        "shape": [
+          1,
+          8,
+          768
+        ],
+        "max_abs": 1.7253700494766235,
+        "mean_abs": 0.3555213510990143,
+        "rel_l2": 0.44534972310066223,
+        "cosine": 0.9008090496063232,
+        "finite": true
+      }
+    }
+  },
+  "best_vs_rkllm": "hf_rmsnorm"
+}

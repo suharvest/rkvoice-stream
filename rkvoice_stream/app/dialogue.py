@@ -76,8 +76,8 @@ class DialogueOrchestrator:
     ) -> AsyncGenerator[bytes, None]:
         """Full dialogue turn: user text → streamed TTS audio chunks.
 
-        Yields WAV bytes for each sentence as soon as TTS completes it.
-        The caller should play each chunk immediately for lowest latency.
+        Yields WAV bytes for each sentence. Low-latency dialogue clients should
+        prefer process_turn_pcm(), which forwards backend streaming chunks.
         """
         t0 = time.monotonic()
         chunk_idx = 0
@@ -114,13 +114,15 @@ class DialogueOrchestrator:
     async def process_turn_pcm(
         self, user_text: str
     ) -> AsyncGenerator[bytes, None]:
-        """Like process_turn but yields raw int16 PCM (no WAV header).
+        """Yield raw int16 PCM chunks from the backend streaming TTS path.
 
         Prefixes the stream with 4 bytes: sample_rate as uint32 LE.
         Suitable for WebSocket streaming.
         """
         import struct
 
+        if not self.tts or not getattr(self.tts, "supports_streaming", False) or not hasattr(self.tts, "synthesize_stream"):
+            raise RuntimeError("dialogue PCM streaming requires a streaming TTS backend")
         sr = self.tts.get_sample_rate() if self.tts else 24000
         yield struct.pack("<I", sr)
 
@@ -128,20 +130,40 @@ class DialogueOrchestrator:
             if not sentence:
                 continue
 
+            q: asyncio.Queue[bytes | BaseException | None] = asyncio.Queue(maxsize=2)
+
+            def _put_from_thread(item: bytes | BaseException | None) -> bool:
+                try:
+                    asyncio.run_coroutine_threadsafe(q.put(item), loop).result()
+                    return True
+                except BaseException as exc:
+                    logger.debug("dialogue streaming queue put cancelled: %s", exc)
+                    return False
+
+            def _run_tts_stream(text: str) -> None:
+                try:
+                    for audio_chunk, _meta in self.tts.synthesize_stream(text=text):
+                        pcm = (np.clip(audio_chunk * 32767, -32768, 32767)).astype(np.int16)
+                        if not _put_from_thread(pcm.tobytes()):
+                            return
+                except Exception as exc:
+                    logger.error("dialogue streaming TTS failed: %s", exc)
+                    _put_from_thread(exc)
+                finally:
+                    _put_from_thread(None)
+
             loop = asyncio.get_event_loop()
-            wav_bytes, meta = await loop.run_in_executor(
-                None,
-                lambda text=sentence: self.tts.synthesize(text=text),
-            )
-
-            # Convert WAV to raw PCM int16
-            import io
-            import soundfile as sf
-
-            buf = io.BytesIO(wav_bytes)
-            audio, _ = sf.read(buf, dtype="float32")
-            pcm = (np.clip(audio * 32767, -32768, 32767)).astype(np.int16)
-            yield pcm.tobytes()
+            worker = loop.run_in_executor(None, _run_tts_stream, sentence)
+            while True:
+                chunk = await q.get()
+                if chunk is None:
+                    break
+                if isinstance(chunk, BaseException):
+                    await worker
+                    raise RuntimeError("dialogue streaming TTS failed") from chunk
+                if chunk:
+                    yield chunk
+            await worker
 
     @staticmethod
     async def _chunk_sentences(

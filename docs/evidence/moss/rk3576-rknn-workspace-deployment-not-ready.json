@@ -1,0 +1,38 @@
+{
+  "passed": false,
+  "errors": [
+    "missing fstab entry: LABEL=RKNN_WS /mnt/rknn-workspace ext4 defaults,nofail,noatime 0 2",
+    "mount point is not mounted: /mnt/rknn-workspace",
+    "workspace does not exist: /mnt/rknn-workspace/moss-rknn-workspace",
+    "workspace is on the root filesystem: /mnt/rknn-workspace/moss-rknn-workspace"
+  ],
+  "workspace": "/mnt/rknn-workspace/moss-rknn-workspace",
+  "mount_point": "/mnt/rknn-workspace",
+  "label": "RKNN_WS",
+  "fstab_file": "/etc/fstab",
+  "fstab_entry": "LABEL=RKNN_WS /mnt/rknn-workspace ext4 defaults,nofail,noatime 0 2",
+  "fstab_entry_present": false,
+  "mounts_file": "/proc/mounts",
+  "mounted": null,
+  "workspace_report": {
+    "passed": false,
+    "errors": [
+      "workspace does not exist: /mnt/rknn-workspace/moss-rknn-workspace",
+      "workspace is on the root filesystem: /mnt/rknn-workspace/moss-rknn-workspace"
+    ],
+    "workspace": "/mnt/rknn-workspace/moss-rknn-workspace",
+    "existing_parent": "/mnt",
+    "root_path": "/",
+    "home_dir": "/home/cat",
+    "same_filesystem_as_root": true,
+    "allow_root_filesystem": false,
+    "require_writable": true,
+    "min_free_mb": 2048,
+    "disk": {
+      "path": "/mnt",
+      "free_mb": 15585,
+      "used_mb": 40840,
+      "total_mb": 58889
+    }
+  }
+}

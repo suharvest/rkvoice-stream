@@ -1,0 +1,42 @@
+{
+  "preset": "cattn",
+  "layer": 0,
+  "description": "block0 fused attention qkv projection only: ln1 hidden -> qkv",
+  "onnx": "/home/harve/models/moss-rknn-cattn-probe/moss_block0_cattn.s320.onnx",
+  "inputs": [
+    "/ln_1/LayerNormalization_output_0"
+  ],
+  "outputs": [
+    "/c_attn/Add_output_0"
+  ],
+  "input_shapes": {
+    "/ln_1/LayerNormalization_output_0": [
+      1,
+      320,
+      768
+    ]
+  },
+  "case": "island_float",
+  "extract_ms": 1415.249,
+  "onnx_size_bytes": 825,
+  "onnx_sha256": "e6f5686b47eb8605be58ca167af93a78c8517e51882dd567be3388e534187a94",
+  "rknn": "/home/harve/models/moss-rknn-cattn-probe/moss_block0_cattn.s320.fp16.rk3576.rknn",
+  "rknn_build": {
+    "name": "moss_block0_cattn.s320.fp16.rk3576.rknn",
+    "status": "OK",
+    "elapsed_s": 0.322,
+    "input_names": [
+      "/ln_1/LayerNormalization_output_0"
+    ],
+    "input_shapes": [
+      [
+        1,
+        320,
+        768
+      ]
+    ],
+    "size_bytes": 3604253,
+    "sha256": "071e882570b6849f6e7d7a1f23f63450e1d24898c25ca7fd482047de9df5d42c"
+  },
+  "build_log": "/home/harve/models/moss-rknn-cattn-probe/build_logs/moss_block0_cattn.s320.fp16.rk3576.rknn.log"
+}

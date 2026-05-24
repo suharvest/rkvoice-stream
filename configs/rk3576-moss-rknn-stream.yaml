@@ -1,0 +1,22 @@
+# RK3576 MOSS-TTS-Nano RKNN production-candidate profile.
+#
+# This profile requires a completed RKNN artifact bundle with
+# moss-rknn-manifest.json and explicit production evidence in quality_status.
+# It is not the current default production profile; use
+# configs/rk3576-moss-ort-stream.yaml until the RKNN bundle passes the same
+# service streaming, backend-stage, and ASR roundtrip quality gates.
+
+tts:
+  backend: moss_rknn
+  require_backend: 1
+  model_dir: /opt/tts/models/moss-tts-nano-rknn
+  worker_bin: /opt/rkvoice-workers/moss_rknn_worker
+  manifest: moss-rknn-manifest.json
+  sample_rate: 48000
+  channels: 2
+  max_seq_len: 1024
+  chunk_frames: 4
+  require_production_default: 1
+
+asr:
+  backend: disabled

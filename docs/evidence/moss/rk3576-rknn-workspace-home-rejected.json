@@ -1,0 +1,22 @@
+{
+  "passed": false,
+  "errors": [
+    "workspace does not exist: /home/cat/moss-rknn-probe",
+    "workspace is under home directory; move RKNN artifacts off root storage: /home/cat/moss-rknn-probe",
+    "workspace is on the root filesystem: /home/cat/moss-rknn-probe"
+  ],
+  "workspace": "/home/cat/moss-rknn-probe",
+  "existing_parent": "/home/cat",
+  "root_path": "/",
+  "home_dir": "/home/cat",
+  "same_filesystem_as_root": true,
+  "allow_root_filesystem": false,
+  "require_writable": true,
+  "min_free_mb": 2048,
+  "disk": {
+    "path": "/home/cat",
+    "free_mb": 15585,
+    "used_mb": 40840,
+    "total_mb": 58889
+  }
+}

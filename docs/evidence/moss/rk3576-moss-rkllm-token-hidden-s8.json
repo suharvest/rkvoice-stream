@@ -1,0 +1,33 @@
+{
+  "model_dir": "/home/cat/moss-onnx-baseline",
+  "rkllm_model": "/home/cat/moss-rkllm/moss_global_embed_only_folded_fp16_rk3576.rkllm",
+  "token_ids": [
+    945,
+    1889,
+    1388,
+    1459,
+    1147,
+    1540,
+    1442,
+    1167
+  ],
+  "thresholds": {
+    "max_rel_l2": 0.02,
+    "min_cosine": 0.999
+  },
+  "passed": false,
+  "onnx_prefill_ms": 83.766,
+  "rkllm_prefill_ms": 36.798,
+  "prefill_metrics": {
+    "shape": [
+      1,
+      8,
+      768
+    ],
+    "max_abs": 9.134130477905273,
+    "mean_abs": 1.0141836404800415,
+    "rel_l2": 1.287031888961792,
+    "cosine": 0.17242154479026794,
+    "finite": true
+  }
+}

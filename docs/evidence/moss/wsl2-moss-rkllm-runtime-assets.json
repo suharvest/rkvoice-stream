@@ -1,0 +1,18 @@
+{
+  "source_scaffold_dir": "/home/harve/models/moss-rkllm-custom-scaffold",
+  "folded_scaffold_dir": "/home/harve/models/moss-rkllm-embed-only-folded-scaffold",
+  "output": "/home/harve/models/moss-rkllm-embed-only-folded-scaffold/moss_rkllm_runtime_assets.npz",
+  "size_bytes": 45442887,
+  "embed_tokens_shape": [
+    16384,
+    768
+  ],
+  "audio_embeddings_shape": [
+    16,
+    1024,
+    768
+  ],
+  "final_norm_bias_shape": [
+    768
+  ]
+}

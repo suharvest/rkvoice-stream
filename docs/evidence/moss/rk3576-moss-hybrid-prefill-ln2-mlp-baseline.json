@@ -1,0 +1,462 @@
+{
+  "model_dir": "/home/cat/moss-onnx-baseline",
+  "artifact_dir": "/home/cat/moss-rknn-hybrid-baseline",
+  "cattn_dir": null,
+  "use_cattn": false,
+  "text": "你好",
+  "voice": "Lingyu",
+  "seq_len": 320,
+  "actual_len": 297,
+  "timings_ms": {
+    "full_prefill_target_ms": 1674.329,
+    "layers": [
+      {
+        "layer": 0,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 80.999,
+        "mlp_rknn_ms": 19.922,
+        "layer_ms": 103.699
+      },
+      {
+        "layer": 1,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 67.283,
+        "mlp_rknn_ms": 19.587,
+        "layer_ms": 89.196
+      },
+      {
+        "layer": 2,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 66.472,
+        "mlp_rknn_ms": 19.5,
+        "layer_ms": 88.361
+      },
+      {
+        "layer": 3,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 66.398,
+        "mlp_rknn_ms": 19.594,
+        "layer_ms": 88.396
+      },
+      {
+        "layer": 4,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 65.983,
+        "mlp_rknn_ms": 19.531,
+        "layer_ms": 87.856
+      },
+      {
+        "layer": 5,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 67.279,
+        "mlp_rknn_ms": 19.479,
+        "layer_ms": 89.159
+      },
+      {
+        "layer": 6,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 65.845,
+        "mlp_rknn_ms": 19.154,
+        "layer_ms": 87.347
+      },
+      {
+        "layer": 7,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 66.939,
+        "mlp_rknn_ms": 19.489,
+        "layer_ms": 88.832
+      },
+      {
+        "layer": 8,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 66.094,
+        "mlp_rknn_ms": 19.45,
+        "layer_ms": 87.898
+      },
+      {
+        "layer": 9,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 66.291,
+        "mlp_rknn_ms": 19.238,
+        "layer_ms": 88.024
+      },
+      {
+        "layer": 10,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 66.782,
+        "mlp_rknn_ms": 19.262,
+        "layer_ms": 88.374
+      },
+      {
+        "layer": 11,
+        "ln1_ms": null,
+        "cattn_rknn_ms": null,
+        "attention_suffix_ms": null,
+        "attention_ms": 65.883,
+        "mlp_rknn_ms": 19.339,
+        "layer_ms": 87.666
+      }
+    ],
+    "hybrid_preload_ms": 3299.595,
+    "embedding_ms": 59.387,
+    "final_norm_ms": 1.201,
+    "hybrid_prefill_ms": 1135.396
+  },
+  "outputs": {
+    "global_hidden": {
+      "shape": [
+        1,
+        320,
+        768
+      ],
+      "finite": true,
+      "max_abs": 0.045372724533081055,
+      "mean_abs": 0.0017856134800240397,
+      "rel_l2": 0.0025943738874047995,
+      "cosine": 0.9999962449073792
+    },
+    "kv_max_rel_l2": 0.0032957729417830706,
+    "kv_min_cosine": 0.9999906420707703
+  },
+  "kv_metrics": {
+    "present_key_0": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.000244140625,
+      "mean_abs": 1.250009540321173e-09,
+      "rel_l2": 4.569662905851146e-07,
+      "cosine": 1.0000001192092896
+    },
+    "present_value_0": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.00048828125,
+      "mean_abs": 2.80172884892238e-09,
+      "rel_l2": 1.8995766595253372e-06,
+      "cosine": 0.9999998807907104
+    },
+    "present_key_1": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.01171875,
+      "mean_abs": 0.0009275756892748177,
+      "rel_l2": 0.001146145281381905,
+      "cosine": 0.9999973773956299
+    },
+    "present_value_1": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.00830078125,
+      "mean_abs": 0.0007172544719651341,
+      "rel_l2": 0.001637847162783146,
+      "cosine": 0.9999954700469971
+    },
+    "present_key_2": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.0546875,
+      "mean_abs": 0.0016477070748806,
+      "rel_l2": 0.00184163567610085,
+      "cosine": 0.9999955296516418
+    },
+    "present_value_2": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.01123046875,
+      "mean_abs": 0.001147194067016244,
+      "rel_l2": 0.0023863401729613543,
+      "cosine": 0.9999940395355225
+    },
+    "present_key_3": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.03076171875,
+      "mean_abs": 0.0017330975970253348,
+      "rel_l2": 0.002113956492394209,
+      "cosine": 0.9999939799308777
+    },
+    "present_value_3": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.015380859375,
+      "mean_abs": 0.0014773743459954858,
+      "rel_l2": 0.002935905009508133,
+      "cosine": 0.9999933838844299
+    },
+    "present_key_4": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.03369140625,
+      "mean_abs": 0.0019032168202102184,
+      "rel_l2": 0.0023564682342112064,
+      "cosine": 0.9999934434890747
+    },
+    "present_value_4": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.019287109375,
+      "mean_abs": 0.001593251945450902,
+      "rel_l2": 0.0032957729417830706,
+      "cosine": 0.9999906420707703
+    },
+    "present_key_5": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.031005859375,
+      "mean_abs": 0.001775322831235826,
+      "rel_l2": 0.002212385879829526,
+      "cosine": 0.9999943375587463
+    },
+    "present_value_5": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.021484375,
+      "mean_abs": 0.0015265278052538633,
+      "rel_l2": 0.0032827930990606546,
+      "cosine": 0.999990701675415
+    },
+    "present_key_6": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.02734375,
+      "mean_abs": 0.0015772748738527298,
+      "rel_l2": 0.0018842577701434493,
+      "cosine": 0.9999948143959045
+    },
+    "present_value_6": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.022216796875,
+      "mean_abs": 0.0014528807951137424,
+      "rel_l2": 0.0032385666854679585,
+      "cosine": 0.9999917149543762
+    },
+    "present_key_7": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.04296875,
+      "mean_abs": 0.001571760163642466,
+      "rel_l2": 0.0019155098125338554,
+      "cosine": 0.9999961256980896
+    },
+    "present_value_7": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.023193359375,
+      "mean_abs": 0.0015093045076355338,
+      "rel_l2": 0.003267307300120592,
+      "cosine": 0.9999917149543762
+    },
+    "present_key_8": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.033203125,
+      "mean_abs": 0.0014908785233274102,
+      "rel_l2": 0.0018100052839145064,
+      "cosine": 0.9999966025352478
+    },
+    "present_value_8": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.0325927734375,
+      "mean_abs": 0.0015611894195899367,
+      "rel_l2": 0.003034802619367838,
+      "cosine": 0.9999937415122986
+    },
+    "present_key_9": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.0390625,
+      "mean_abs": 0.0013533197343349457,
+      "rel_l2": 0.0016544591635465622,
+      "cosine": 0.9999955296516418
+    },
+    "present_value_9": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.03369140625,
+      "mean_abs": 0.0015032037626951933,
+      "rel_l2": 0.0028780994471162558,
+      "cosine": 0.999993085861206
+    },
+    "present_key_10": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.046875,
+      "mean_abs": 0.0013453193241730332,
+      "rel_l2": 0.0017490092432126403,
+      "cosine": 0.9999961256980896
+    },
+    "present_value_10": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.028076171875,
+      "mean_abs": 0.0015060059959068894,
+      "rel_l2": 0.002692572306841612,
+      "cosine": 0.9999932646751404
+    },
+    "present_key_11": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.03424072265625,
+      "mean_abs": 0.0013321156147867441,
+      "rel_l2": 0.0015704842517152429,
+      "cosine": 0.9999960064888
+    },
+    "present_value_11": {
+      "shape": [
+        1,
+        320,
+        12,
+        64
+      ],
+      "finite": true,
+      "max_abs": 0.02734375,
+      "mean_abs": 0.0014782547950744629,
+      "rel_l2": 0.0024062171578407288,
+      "cosine": 0.9999937415122986
+    }
+  },
+  "gates": {
+    "max_global_rel_l2": 0.02,
+    "min_global_cosine": 0.999,
+    "passed": true
+  }
+}

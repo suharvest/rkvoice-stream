@@ -19,9 +19,7 @@ import json
 import logging
 import os
 import queue
-import signal
 import struct
-import sys
 
 import numpy as np
 from fastapi import FastAPI, File, Query, UploadFile, WebSocket
@@ -34,16 +32,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-def _signal_handler(signum, frame):
-    logger.info("Signal %d received, shutting down...", signum)
-    # FastAPI shutdown event will handle NPU resource cleanup
-    sys.exit(0)
-
-
-signal.signal(signal.SIGTERM, _signal_handler)
-signal.signal(signal.SIGINT, _signal_handler)
-
 app = FastAPI(title="RK3576 Speech Service", version="3.0.0")
 
 _backend = None
@@ -51,6 +39,10 @@ _asr_backend = None
 _dialogue = None
 _resource_plan = None
 _speech_mode = None
+
+
+def _env_flag(name: str, default: str = "0") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
 class TTSRequest(BaseModel):
@@ -65,10 +57,28 @@ class TTSRequest(BaseModel):
 async def startup():
     global _backend, _asr_backend, _dialogue, _resource_plan, _speech_mode
 
+    config_path = os.environ.get("CONFIG", "")
+    if config_path:
+        from pathlib import Path
+
+        from rkvoice_stream import _apply_asr_env, _apply_tts_env, load_config
+
+        path = Path(config_path)
+        if not path.exists() and not path.suffix:
+            path = Path("configs") / f"{config_path}.yaml"
+        config = load_config(str(path))
+        if config.get("asr"):
+            _apply_asr_env(config["asr"])
+        if config.get("tts"):
+            _apply_tts_env(config["tts"])
+        logger.info("Loaded runtime profile: %s", path)
+
     # --- ResourcePlanner: auto-select backends if SPEECH_MODE is set ---
     speech_mode = os.environ.get("SPEECH_MODE", "")
     tts_backend_name = os.environ.get("TTS_BACKEND", "")
     asr_backend_name = os.environ.get("ASR_BACKEND", "")
+    require_tts_backend = _env_flag("REQUIRE_TTS_BACKEND")
+    require_asr_backend = _env_flag("REQUIRE_ASR_BACKEND")
 
     if speech_mode and not tts_backend_name and not asr_backend_name:
         from rkvoice_stream.app.resource_planner import ResourcePlanner
@@ -94,9 +104,14 @@ async def startup():
             _backend.preload()
             logger.info("TTS backend '%s' ready.", _backend.name)
         except Exception as e:
+            if require_tts_backend:
+                logger.error("Required TTS backend '%s' failed to load: %s", tts_backend_name, e)
+                raise RuntimeError(f"Required TTS backend '{tts_backend_name}' failed to load") from e
             logger.error("Failed to load TTS backend '%s': %s — TTS disabled", tts_backend_name, e)
             _backend = None
     else:
+        if require_tts_backend:
+            raise RuntimeError("REQUIRE_TTS_BACKEND=1 but TTS_BACKEND is not set or disabled")
         logger.info("TTS_BACKEND not set or disabled — TTS disabled.")
 
     # --- ASR (optional) ---
@@ -108,9 +123,14 @@ async def startup():
             _asr_backend.preload()
             logger.info("ASR backend '%s' ready.", _asr_backend.name)
         except Exception as e:
+            if require_asr_backend:
+                logger.error("Required ASR backend '%s' failed to load: %s", asr_backend_name, e)
+                raise RuntimeError(f"Required ASR backend '{asr_backend_name}' failed to load") from e
             logger.error("Failed to load ASR backend '%s': %s — ASR disabled", asr_backend_name, e)
             _asr_backend = None
     else:
+        if require_asr_backend:
+            raise RuntimeError("REQUIRE_ASR_BACKEND=1 but ASR_BACKEND is not set or disabled")
         logger.info("ASR_BACKEND not set — ASR disabled.")
 
     # --- Dialogue orchestrator (requires TTS) ---
@@ -148,10 +168,16 @@ async def health():
     result = {
         "tts": _backend.is_ready() if _backend else False,
         "tts_backend": _backend.name if _backend and _backend.is_ready() else None,
+        "streaming_tts": bool(_backend and getattr(_backend, "supports_streaming", False)),
         "asr": asr_ready,
         "asr_backend": _asr_backend.name if asr_ready else None,
         "streaming_asr": asr_ready and _asr_backend.has_capability(ASRCapability.STREAMING),
     }
+    if _backend and hasattr(_backend, "runtime_info"):
+        try:
+            result["tts_info"] = _backend.runtime_info()
+        except Exception as exc:
+            result["tts_info_error"] = str(exc)
     if _speech_mode:
         result["mode"] = _speech_mode
     return result
@@ -204,11 +230,14 @@ async def tts_stream_options():
 async def tts_stream(req: TTSRequest):
     """Stream TTS as raw PCM: first 4 bytes = sample_rate (uint32 LE), then int16 PCM chunks.
 
-    Uses real streaming: yields audio as soon as the first 10 AR frames are vocoded
-    (~1.3s AR + ~250ms vocoder ≈ 1.6s TTFT), then continues in 25-frame chunks.
+    Uses the backend streaming contract directly. MOSS emits the first decoded
+    audio frame immediately, then may batch later codec frames to reduce steady
+    state RTF while preserving low first-payload latency.
     """
     if not _backend or not _backend.is_ready():
         return JSONResponse({"error": "TTS not ready"}, status_code=503)
+    if not getattr(_backend, "supports_streaming", False) or not hasattr(_backend, "synthesize_stream"):
+        return JSONResponse({"error": "TTS backend does not support streaming"}, status_code=501)
 
     sr = _backend.get_sample_rate()
 
@@ -216,7 +245,7 @@ async def tts_stream(req: TTSRequest):
         yield struct.pack("<I", sr)
         loop = asyncio.get_event_loop()
 
-        q: queue.Queue[bytes | None] = queue.Queue()
+        q: queue.Queue[bytes | BaseException | None] = queue.Queue(maxsize=2)
 
         def _generate():
             try:
@@ -232,6 +261,7 @@ async def tts_stream(req: TTSRequest):
                     q.put(pcm.tobytes())
             except Exception as exc:
                 logger.error("TTS stream generation error: %s", exc)
+                q.put(exc)
             finally:
                 q.put(None)
 
@@ -240,6 +270,8 @@ async def tts_stream(req: TTSRequest):
             chunk = await loop.run_in_executor(None, q.get)
             if chunk is None:
                 break
+            if isinstance(chunk, BaseException):
+                raise RuntimeError("TTS stream generation failed") from chunk
             yield chunk
 
     return StreamingResponse(stream(), media_type="application/octet-stream")
@@ -478,7 +510,7 @@ async def dialogue_ws(ws: WebSocket):
     Protocol:
       1. Client sends JSON: {"text": "用户说的话"}
       2. Server streams binary: first 4 bytes = sample_rate (uint32 LE),
-         then int16 PCM chunks (one per sentence).
+         then backend-native int16 PCM chunks as soon as they are decoded.
       3. Server sends JSON: {"done": true, "chunks": N} when finished.
       4. Client can send another message or close.
 
@@ -488,6 +520,10 @@ async def dialogue_ws(ws: WebSocket):
 
     if not _dialogue:
         await ws.send_json({"error": "Dialogue not available (TTS not loaded)"})
+        await ws.close()
+        return
+    if not _backend or not getattr(_backend, "supports_streaming", False) or not hasattr(_backend, "synthesize_stream"):
+        await ws.send_json({"error": "Dialogue requires streaming TTS backend"})
         await ws.close()
         return
 
@@ -502,9 +538,14 @@ async def dialogue_ws(ws: WebSocket):
             logger.info("dialogue: user=%r", user_text[:80])
             chunk_count = 0
 
-            async for pcm_chunk in _dialogue.process_turn_pcm(user_text):
-                await ws.send_bytes(pcm_chunk)
-                chunk_count += 1
+            try:
+                async for pcm_chunk in _dialogue.process_turn_pcm(user_text):
+                    await ws.send_bytes(pcm_chunk)
+                    chunk_count += 1
+            except Exception as exc:
+                logger.error("dialogue streaming failed: %s", exc)
+                await ws.send_json({"error": "dialogue streaming failed", "chunks": chunk_count})
+                continue
 
             await ws.send_json({"done": True, "chunks": chunk_count})
 

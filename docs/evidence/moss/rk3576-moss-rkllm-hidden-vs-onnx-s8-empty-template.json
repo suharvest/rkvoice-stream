@@ -1,0 +1,44 @@
+{
+  "model_dir": "/home/cat/moss-onnx-baseline",
+  "rkllm_model": "/home/cat/moss-rkllm/moss_global_embed_only_folded_fp16_rk3576.rkllm",
+  "assets": "/home/cat/moss-rkllm/moss_rkllm_runtime_assets.npz",
+  "text": "你好，欢迎使用本地语音助手。",
+  "threads": 2,
+  "passed": false,
+  "thresholds": {
+    "max_prefill_rel_l2": 0.02,
+    "max_decode_rel_l2": 0.03,
+    "min_cosine": 0.999
+  },
+  "onnx_prefill_ms": 85.079,
+  "rkllm_prefill_ms": 44.257,
+  "mode": "text",
+  "seq_len": 8,
+  "valid_len": 8,
+  "prefill_metrics": {
+    "shape": [
+      1,
+      8,
+      768
+    ],
+    "max_abs": 7.449075698852539,
+    "mean_abs": 1.0422601699829102,
+    "rel_l2": 1.3225082159042358,
+    "cosine": 0.12543494999408722,
+    "finite": true
+  },
+  "onnx_decode_ms": 118.589,
+  "rkllm_decode_ms": 40.408,
+  "decode_metrics": {
+    "shape": [
+      1,
+      1,
+      768
+    ],
+    "max_abs": 6.455179214477539,
+    "mean_abs": 1.036118507385254,
+    "rel_l2": 1.3169606924057007,
+    "cosine": 0.13325417041778564,
+    "finite": true
+  }
+}

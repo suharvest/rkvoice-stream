@@ -1,0 +1,58 @@
+{
+  "passed": true,
+  "errors": [],
+  "execute": true,
+  "requires_confirmation": true,
+  "confirmation": "INSTALL_MOSS_ORT_DEPLOYMENT",
+  "mode": "symlink",
+  "source": "/home/cat/moss-onnx-baseline",
+  "destination": "/opt/tts/models/moss-tts-nano-onnx",
+  "deployed": true,
+  "source_manifest": {
+    "model_dir": "/home/cat/moss-onnx-baseline",
+    "manifest": "moss-ort-manifest.json",
+    "target_platform": "rk3576",
+    "sample_rate": 48000,
+    "channels": 2,
+    "required_artifacts": 11
+  },
+  "commands": [
+    [
+      "mkdir",
+      "-p",
+      "/opt/tts/models"
+    ],
+    [
+      "ln",
+      "-s",
+      "/home/cat/moss-onnx-baseline",
+      "/opt/tts/models/moss-tts-nano-onnx"
+    ]
+  ],
+  "results": [
+    {
+      "cmd": [
+        "mkdir",
+        "-p",
+        "/opt/tts/models"
+      ],
+      "executed": true,
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "cmd": [
+        "ln",
+        "-s",
+        "/home/cat/moss-onnx-baseline",
+        "/opt/tts/models/moss-tts-nano-onnx"
+      ],
+      "executed": true,
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "disk_note": "symlink mode avoids copying the large MOSS ONNX bundle onto root storage"
+}

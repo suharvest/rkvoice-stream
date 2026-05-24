@@ -1,0 +1,54 @@
+INFO:     Started server process [2990841]
+INFO:     Waiting for application startup.
+2026-05-24 05:47:14,597 [INFO] rkvoice_stream.app.server: Loading TTS backend: moss_ort
+[0;93m2026-05-24 05:47:14.684976384 [W:onnxruntime:Default, device_discovery.cc:325 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:92 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+2026-05-24 05:47:28,834 [INFO] rkvoice_stream.backends.tts.moss_ort: MOSS ORT backend ready in 13027ms model_dir=/home/cat/moss-onnx-baseline
+2026-05-24 05:47:28,834 [INFO] rkvoice_stream.app.server: TTS backend 'moss_ort' ready.
+2026-05-24 05:47:28,834 [INFO] rkvoice_stream.app.server: ASR_BACKEND not set — ASR disabled.
+2026-05-24 05:47:28,835 [INFO] rkvoice_stream.app.server: Dialogue orchestrator ready (echo mode — no LLM).
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8625 (Press CTRL+C to quit)
+INFO:     127.0.0.1:43912 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43918 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43932 - "POST /tts/stream HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43938 - "WebSocket /dialogue" [accepted]
+INFO:     connection open
+2026-05-24 05:47:33,843 [INFO] rkvoice_stream.app.server: dialogue: user='你好'
+INFO:     connection closed
+INFO:     127.0.0.1:47008 - "GET /health HTTP/1.1" 200 OK
+2026-05-24 05:47:38,393 [INFO] rkvoice_stream.app.server: Signal 15 received, shutting down...
+2026-05-24 05:47:38,395 [INFO] rkvoice_stream.app.server: Shutting down — releasing NPU resources...
+2026-05-24 05:47:38,633 [INFO] rkvoice_stream.app.server: Shutdown complete.
+ERROR:    Traceback (most recent call last):
+  File "/home/cat/rknn-venv/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "uvloop/loop.pyx", line 1512, in uvloop.loop.Loop.run_until_complete
+  File "uvloop/loop.pyx", line 1505, in uvloop.loop.Loop.run_until_complete
+  File "uvloop/loop.pyx", line 1379, in uvloop.loop.Loop.run_forever
+  File "uvloop/loop.pyx", line 557, in uvloop.loop.Loop._run
+  File "uvloop/handles/poll.pyx", line 216, in uvloop.loop.__on_uvpoll_event
+  File "uvloop/cbhandles.pyx", line 83, in uvloop.loop.Handle._run
+  File "uvloop/cbhandles.pyx", line 66, in uvloop.loop.Handle._run
+  File "uvloop/loop.pyx", line 399, in uvloop.loop.Loop._read_from_self
+  File "uvloop/loop.pyx", line 404, in uvloop.loop.Loop._invoke_signals
+  File "uvloop/loop.pyx", line 379, in uvloop.loop.Loop._ceval_process_signals
+  File "/home/cat/rkvoice-stream/rkvoice_stream/app/server.py", line 41, in _signal_handler
+    sys.exit(0)
+SystemExit: 0
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/cat/rknn-venv/lib/python3.11/site-packages/starlette/routing.py", line 645, in lifespan
+    await receive()
+  File "/home/cat/rknn-venv/lib/python3.11/site-packages/uvicorn/lifespan/on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+

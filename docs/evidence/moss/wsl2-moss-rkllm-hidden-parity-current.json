@@ -1,0 +1,44 @@
+{
+  "model_dir": "/home/harve/models/moss-onnx-bundle/MOSS-TTS-Nano-100M-ONNX",
+  "scaffold_dir": "/home/harve/models/moss-rkllm-custom-scaffold",
+  "seq_len": 8,
+  "passed": false,
+  "thresholds": {
+    "max_rel_l2": 0.001,
+    "min_cosine": 0.999
+  },
+  "metrics_all": {
+    "shape": [
+      1,
+      8,
+      768
+    ],
+    "max_abs": 0.10343825817108154,
+    "mean_abs": 0.008682074025273323,
+    "rel_l2": 0.014385729096829891,
+    "cosine": 0.9998966455459595,
+    "finite": true
+  },
+  "metrics_valid_tokens": {
+    "shape": [
+      1,
+      8,
+      768
+    ],
+    "max_abs": 0.10343825817108154,
+    "mean_abs": 0.008682074025273323,
+    "rel_l2": 0.014385729096829891,
+    "cosine": 0.9998966455459595,
+    "finite": true
+  },
+  "torch_hidden_shape": [
+    1,
+    8,
+    768
+  ],
+  "onnx_hidden_shape": [
+    1,
+    8,
+    768
+  ]
+}

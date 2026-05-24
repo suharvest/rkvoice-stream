@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import os
 import time
 from typing import Optional
 
@@ -80,10 +81,18 @@ class RKLLMEmbedInput(ctypes.Structure):
     ]
 
 
+class RKLLMTokenInput(ctypes.Structure):
+    _fields_ = [
+        ("input_ids", ctypes.POINTER(ctypes.c_int32)),
+        ("n_tokens", ctypes.c_size_t),
+    ]
+
+
 class RKLLMInputUnion(ctypes.Union):
     _fields_ = [
         ("prompt_input", ctypes.c_char_p),
         ("embed_input", RKLLMEmbedInput),
+        ("token_input", RKLLMTokenInput),
     ]
 
 
@@ -217,9 +226,10 @@ class RKLLMTalker:
         # base_domain_id=1 lets RKLLM coexist with RKNN models (domain 0). Required on
         # RK3576/RK3588 — see project_rkllm_domain_coexist memory (2026-04-12).
         param.extend_param.base_domain_id = 1
-        # embed_flash=1 matches ASR's known-good config; 0 was a TTS quirk that
-        # was probably the embed path divergence vs ASR.
-        param.extend_param.embed_flash = 1
+        # External embedding inputs such as MOSS audio+text rows should be able
+        # to bypass flash embedding lookup. Keep the historical ASR default but
+        # allow MOSS parity probes to force 0.
+        param.extend_param.embed_flash = int(os.environ.get("RKLLM_EMBED_FLASH", "1"))
 
         t0 = time.perf_counter()
         ret = self._lib.rkllm_init(
@@ -229,10 +239,10 @@ class RKLLMTalker:
         if ret != 0:
             raise RuntimeError(f"RKLLM init failed: ret={ret}")
 
-        # Note: ASR uses rkllm_set_chat_template(handle, b"", b"", b"") to disable
-        # SDK auto-wrapping. For TTS we skip this — initial tests showed disabling
-        # the template made decode KV-aware but still produced unintelligible audio,
-        # so we leave the default template active for now.
+        if os.environ.get("RKLLM_DISABLE_CHAT_TEMPLATE", "0").strip().lower() in {"1", "true", "yes", "on"}:
+            template_ret = self._lib.rkllm_set_chat_template(self._handle, b"", b"", b"")
+            if template_ret != 0:
+                raise RuntimeError(f"rkllm_set_chat_template failed: ret={template_ret}")
         logger.info("RKLLM talker loaded in %.1fs", elapsed)
 
     def _callback_fn(self, result_ptr, userdata, state):
@@ -302,6 +312,45 @@ class RKLLMTalker:
         inp.input_type = RKLLM_INPUT_EMBED
         inp.input_data.embed_input.embed = c_arr
         inp.input_data.embed_input.n_tokens = n_tokens
+
+        infer_p = RKLLMInferParam()
+        infer_p.mode = mode
+        infer_p.lora_params = None
+        infer_p.prompt_cache_params = None
+        infer_p.keep_history = keep_history
+
+        self._reset()
+        ret = self._lib.rkllm_run(
+            self._handle, ctypes.byref(inp), ctypes.byref(infer_p), None
+        )
+        if ret != 0:
+            raise RuntimeError(f"rkllm_run failed: ret={ret}")
+        if self._callback_error:
+            raise RuntimeError(f"RKLLM callback error: {self._callback_error}")
+
+        result = {}
+        if self._collected_hidden is not None:
+            result["hidden"] = self._collected_hidden
+        if self._collected_logits is not None:
+            result["logits"] = self._collected_logits
+        return result
+
+    def run_tokens(
+        self,
+        token_ids: np.ndarray,
+        mode: int = RKLLM_INFER_GET_LAST_HIDDEN_LAYER,
+        keep_history: int = 0,
+    ) -> dict:
+        """Run RKLLM with token IDs using the model's internal embedding table."""
+        token_ids = np.asarray(token_ids, dtype=np.int32).reshape(-1)
+        c_arr = (ctypes.c_int32 * len(token_ids))(*token_ids)
+
+        inp = RKLLMInput()
+        inp.role = b""
+        inp.enable_thinking = ctypes.c_bool(False)
+        inp.input_type = RKLLM_INPUT_TOKEN
+        inp.input_data.token_input.input_ids = c_arr
+        inp.input_data.token_input.n_tokens = len(token_ids)
 
         infer_p = RKLLMInferParam()
         infer_p.mode = mode

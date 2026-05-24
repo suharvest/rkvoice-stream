@@ -1,0 +1,147 @@
+{
+  "avg_cer": 0.4621212121212121,
+  "max_cer": 0.75,
+  "min_rms": 0.08580932021141052,
+  "max_ttfa_ms": 952.0,
+  "max_codec_ms": 118.615,
+  "profile": {
+    "backend": "moss_ort",
+    "voice": "Junhao",
+    "seed": 314,
+    "manifest": "moss-ort-manifest.json",
+    "threads": 6,
+    "session_threads": {
+      "prefill": 8,
+      "decode": 5,
+      "sampler": 6,
+      "codec": 5
+    },
+    "prefill_seq": 0,
+    "codec_streaming": 1,
+    "codec_batch_frames": 3
+  },
+  "results": [
+    {
+      "id": 1,
+      "text": "你好",
+      "wav": "/tmp/moss_production_profile_current_rerun_roundtrip/moss_1.wav",
+      "bytes": 307244,
+      "tts_ms": 4416.46,
+      "meta": {
+        "backend": "moss_ort",
+        "mode": "text",
+        "chunk_index": 19,
+        "chunk_start_index": 19,
+        "codec_batch_frames": 1,
+        "ttfa_ms": 952,
+        "sample_rate": 48000,
+        "channels": 2,
+        "prefill_ms": null,
+        "decode_ms": 54.279,
+        "sampler_ms": 76.613,
+        "codec_ms": 67.928,
+        "duration": 1.6,
+        "inference_time": 4.415636858000653,
+        "wall_ms": 4416,
+        "rtf": 2.759773036250408
+      },
+      "hypothesis": "你好",
+      "cer": 0.0,
+      "wav_info": {
+        "sample_rate": 48000,
+        "channels": 2,
+        "frames": 76800,
+        "duration_s": 1.6,
+        "rms": 0.09701959043741226
+      },
+      "asr_ms": 545.152
+    },
+    {
+      "id": 2,
+      "text": "欢迎使用语音服务",
+      "wav": "/tmp/moss_production_profile_current_rerun_roundtrip/moss_2.wav",
+      "bytes": 307244,
+      "tts_ms": 4408.656,
+      "meta": {
+        "backend": "moss_ort",
+        "mode": "text",
+        "chunk_index": 19,
+        "chunk_start_index": 19,
+        "codec_batch_frames": 1,
+        "ttfa_ms": 894,
+        "sample_rate": 48000,
+        "channels": 2,
+        "prefill_ms": null,
+        "decode_ms": 57.237,
+        "sampler_ms": 82.459,
+        "codec_ms": 66.489,
+        "duration": 1.6,
+        "inference_time": 4.408151588002511,
+        "wall_ms": 4408,
+        "rtf": 2.7550947425015693
+      },
+      "hypothesis": "欢迎",
+      "cer": 0.75,
+      "wav_info": {
+        "sample_rate": 48000,
+        "channels": 2,
+        "frames": 76800,
+        "duration_s": 1.6,
+        "rms": 0.08580932021141052
+      },
+      "asr_ms": 552.205
+    },
+    {
+      "id": 3,
+      "text": "语音识别测试一二三四五",
+      "wav": "/tmp/moss_production_profile_current_rerun_roundtrip/moss_3.wav",
+      "bytes": 199724,
+      "tts_ms": 3152.62,
+      "meta": {
+        "backend": "moss_ort",
+        "mode": "text",
+        "chunk_index": 12,
+        "chunk_start_index": 10,
+        "codec_batch_frames": 3,
+        "ttfa_ms": 937,
+        "sample_rate": 48000,
+        "channels": 2,
+        "prefill_ms": null,
+        "decode_ms": 59.339,
+        "sampler_ms": 80.589,
+        "codec_ms": 118.615,
+        "duration": 1.04,
+        "inference_time": 3.1522283049998805,
+        "wall_ms": 3152,
+        "rtf": 3.030988754807577
+      },
+      "hypothesis": "语音识别啊",
+      "cer": 0.6363636363636364,
+      "wav_info": {
+        "sample_rate": 48000,
+        "channels": 2,
+        "frames": 49920,
+        "duration_s": 1.04,
+        "rms": 0.18435139954090118
+      },
+      "asr_ms": 355.599
+    }
+  ],
+  "gates": {
+    "thresholds": {
+      "max_avg_cer": 0.5,
+      "max_cer": 1.0,
+      "min_rms": 0.02,
+      "max_ttfa_ms": 1500.0,
+      "max_codec_ms": 170.0
+    },
+    "checks": {
+      "avg_cer": true,
+      "max_cer": true,
+      "min_rms": true,
+      "max_ttfa_ms": true,
+      "max_codec_ms": true
+    },
+    "passed": true
+  }
+}

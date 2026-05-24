@@ -1,0 +1,8 @@
+{
+  "source_dir": "/home/harve/models/moss-rkllm-custom-scaffold",
+  "out_dir": "/home/harve/models/moss-rkllm-embed-only-scaffold",
+  "tensor_count": 196,
+  "dropped_audio_embedding_count": 16,
+  "added_lm_head_weight": true,
+  "rkllm_input_mode": "embed_only"
+}

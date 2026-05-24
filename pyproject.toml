@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "requests", "websocket-client"]
+moss = ["onnxruntime", "sentencepiece"]
 
 [tool.setuptools.packages.find]
 include = ["rkvoice_stream*"]

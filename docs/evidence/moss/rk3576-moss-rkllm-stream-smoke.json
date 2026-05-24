@@ -1,0 +1,77 @@
+{
+  "model_dir": "/home/cat/moss-onnx-baseline",
+  "rkllm_model": "/home/cat/moss-rkllm/moss_global_embed_only_folded_fp16_rk3576.rkllm",
+  "assets": "/home/cat/moss-rkllm/moss_rkllm_runtime_assets.npz",
+  "text": "你好，欢迎使用本地语音助手。",
+  "max_new_frames": 2,
+  "seed": 1234,
+  "passed": true,
+  "ort_aux_preload_ms": 13266.859,
+  "rkllm_load_ms": 469.286,
+  "prefill_ms": 679.369,
+  "mode": "text",
+  "frames": 2,
+  "tokens": [
+    [
+      244,
+      116,
+      289,
+      720,
+      174,
+      511,
+      180,
+      261,
+      659,
+      543,
+      246,
+      1010,
+      437,
+      784,
+      682,
+      862
+    ],
+    [
+      646,
+      189,
+      613,
+      372,
+      602,
+      848,
+      847,
+      891,
+      175,
+      465,
+      954,
+      663,
+      565,
+      416,
+      913,
+      817
+    ]
+  ],
+  "token_ms": [
+    {
+      "frame": 0,
+      "decode_ms": null,
+      "sampler_ms": 91.964,
+      "continue": 1,
+      "codec_ms": 79.525,
+      "samples": 3840
+    },
+    {
+      "frame": 1,
+      "decode_ms": 40.437,
+      "sampler_ms": 87.608,
+      "continue": 1,
+      "codec_ms": 89.171,
+      "samples": 3840
+    }
+  ],
+  "audio_shape": [
+    7680,
+    2
+  ],
+  "audio_finite": true,
+  "audio_rms": 0.09827630966901779,
+  "sample_rate": 48000
+}

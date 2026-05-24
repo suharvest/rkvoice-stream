@@ -1,0 +1,16 @@
+{
+  "loaded": true,
+  "logits_shape": [
+    1,
+    4,
+    16384
+  ],
+  "last_hidden_shape": [
+    1,
+    4,
+    768
+  ],
+  "dtype": "torch.float32",
+  "finite": true,
+  "param_count": 122804736
+}

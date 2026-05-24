@@ -87,6 +87,9 @@ class TTSService:
         self._code_predictor_embed = None
         self._vocoder = None
         self._vocoder_name = None  # RKNN model name for reload
+        self._vocoder_type = None
+        self._vocoder_ctx_frames = VOCODER_CTX_FRAMES
+        self._vocoder_chunk_frames = 25
         self._codec_head_weight = None
         self._codebook_embeds = None
         self._cp_engine = None  # C engine for code_predictor (optional)
@@ -160,23 +163,46 @@ class TTSService:
         # Vocoder selection: prefer noembed type (decoder_ctx25_fp16/int8)
         # tokenizer12hz_decode_stream model has issues (outputs zeros)
         # decoder_ctx25_fp16 works correctly even after RKLLM usage
+        vocoder_profile = os.environ.get("QWEN3_TTS_VOCODER", "").strip().lower()
+        ctx0_int8_path = os.path.join(self._model_dir, "decoder_ctx0_int8.rknn")
+        ctx0_fp16_path = os.path.join(self._model_dir, "decoder_ctx0_fp16.rknn")
         fp16_path = os.path.join(self._model_dir, "decoder_ctx25_fp16.rknn")
         int8_path = os.path.join(self._model_dir, "decoder_ctx25_int8.rknn")
         stream_path = os.path.join(self._model_dir, "tokenizer12hz_decode_stream.rknn")
-        if os.path.exists(fp16_path):
+        if vocoder_profile in ("ctx0", "ctx0_int8") and os.path.exists(ctx0_int8_path):
+            self._vocoder_name = "decoder_ctx0_int8"
+            self._vocoder = load_rknn(self._vocoder_name)
+            self._vocoder_type = "noembed"  # input: [1, 512, 25] float32
+            self._vocoder_ctx_frames = 0
+            self._vocoder_chunk_frames = 25
+            logger.info("Using INT8 ctx0 vocoder (decoder_ctx0_int8)")
+        elif vocoder_profile == "ctx0_fp16" and os.path.exists(ctx0_fp16_path):
+            self._vocoder_name = "decoder_ctx0_fp16"
+            self._vocoder = load_rknn(self._vocoder_name)
+            self._vocoder_type = "noembed"  # input: [1, 512, 25] float32
+            self._vocoder_ctx_frames = 0
+            self._vocoder_chunk_frames = 25
+            logger.info("Using FP16 ctx0 vocoder (decoder_ctx0_fp16)")
+        elif os.path.exists(fp16_path):
             self._vocoder_name = "decoder_ctx25_fp16"
             self._vocoder = load_rknn(self._vocoder_name)
             self._vocoder_type = "noembed"  # input: [1, 512, 50] float32
+            self._vocoder_ctx_frames = VOCODER_CTX_FRAMES
+            self._vocoder_chunk_frames = 25
             logger.info("Using FP16 vocoder (decoder_ctx25_fp16, ~1.3s/chunk)")
         elif os.path.exists(int8_path):
             self._vocoder_name = "decoder_ctx25_int8"
             self._vocoder = load_rknn(self._vocoder_name)
             self._vocoder_type = "noembed"  # input: [1, 512, 50] float32
+            self._vocoder_ctx_frames = VOCODER_CTX_FRAMES
+            self._vocoder_chunk_frames = 25
             logger.info("Using INT8 vocoder (decoder_ctx25_int8, ~620ms/chunk)")
         elif os.path.exists(stream_path):
             self._vocoder_name = "tokenizer12hz_decode_stream"
             self._vocoder = load_rknn(self._vocoder_name)
             self._vocoder_type = "stream"  # input: [1, 75, 16] int64
+            self._vocoder_ctx_frames = 50
+            self._vocoder_chunk_frames = 25
             logger.info("Using stream vocoder (tokenizer12hz_decode_stream)")
         else:
             raise FileNotFoundError("No vocoder model found")
@@ -265,7 +291,9 @@ class TTSService:
         try:
             import sys
             engine_dir = os.path.join(os.path.dirname(__file__), "..", "engine")
-            lib_path = os.path.join(os.path.dirname(__file__), "..", "lib", "libcp_engine.so")
+            lib_path = os.environ.get("QWEN3_TTS_CP_ENGINE_LIB")
+            if not lib_path:
+                lib_path = os.path.join(os.path.dirname(__file__), "..", "lib", "libcp_engine.so")
             if not os.path.exists(lib_path):
                 lib_path = os.path.join(engine_dir, "libcp_engine.so")
             if not os.path.exists(lib_path):
@@ -275,7 +303,10 @@ class TTSService:
             sys.path.insert(0, engine_dir)
             from cp_engine_wrapper import CodePredictorEngine
 
-            weight_dir = os.path.join(self._model_dir, "cp_weights")
+            weight_dir = os.environ.get(
+                "QWEN3_TTS_CP_WEIGHTS_DIR",
+                os.path.join(self._model_dir, "cp_weights"),
+            )
             if not os.path.isdir(weight_dir):
                 logger.info("cp_weights dir not found at %s, skipping C engine", weight_dir)
                 return
@@ -526,8 +557,7 @@ class TTSService:
 
             t0 = time.perf_counter()
             if self._cp_engine is not None:
-                n_residual = NUM_CODE_GROUPS - 1
-                codes, codec_sum = self._cp_engine.run(last_hidden[0], primary_embed[0], num_steps=n_residual)
+                codes, codec_sum = self._run_cp_engine(last_hidden[0], primary_embed[0])
                 frame_codes.extend(int(c) for c in codes)
             else:
                 codec_sum = primary_embed[0].copy()
@@ -816,8 +846,8 @@ class TTSService:
         # Convert codes to continuous embeddings
         all_embeddings = self._codes_to_embeddings(codes_array)  # [512, T]
 
-        chunk_size = 25
-        ctx_size = VOCODER_CTX_FRAMES  # 25
+        chunk_size = self._vocoder_chunk_frames
+        ctx_size = self._vocoder_ctx_frames
         total_T = ctx_size + chunk_size  # 50 (vocoder fixed input size)
         n_chunks = (total_frames + chunk_size - 1) // chunk_size
         logger.info("Vocoder: %d frames -> %d chunks", total_frames, n_chunks)
@@ -889,13 +919,29 @@ class TTSService:
 
         if self._cp_engine is not None:
             try:
-                self._cp_engine.destroy()
+                self._close_cp_engine()
                 logger.info("C engine destroyed")
             except Exception as e:
                 logger.warning("Failed to destroy C engine: %s", e)
             self._cp_engine = None
 
         logger.info("TTSService cleanup complete")
+
+    def _run_cp_engine(self, last_hidden: np.ndarray, primary_embed: np.ndarray):
+        """Run the optional native CP engine across wrapper revisions."""
+        try:
+            return self._cp_engine.run(
+                last_hidden, primary_embed, num_steps=NUM_CODE_GROUPS - 1
+            )
+        except TypeError:
+            return self._cp_engine.run(last_hidden, primary_embed)
+
+    def _close_cp_engine(self) -> None:
+        close = getattr(self._cp_engine, "destroy", None)
+        if close is None:
+            close = getattr(self._cp_engine, "close", None)
+        if close is not None:
+            close()
 
     # ── Streaming ────────────────────────────────────────────────
 
@@ -917,13 +963,13 @@ class TTSService:
 
         Returns: float32 audio for the num_frames new frames only
         """
-        ctx_start = max(0, start_frame - VOCODER_CTX_FRAMES)
+        ctx_start = max(0, start_frame - self._vocoder_ctx_frames)
         end = start_frame + num_frames
 
         chunk_emb = all_embeddings[:, ctx_start:end]  # [512, ctx+chunk]
 
         # Pad to fixed size [512, 50]
-        total_T = VOCODER_CTX_FRAMES + 25  # 50
+        total_T = self._vocoder_ctx_frames + self._vocoder_chunk_frames
         padded = np.zeros((512, total_T), dtype=np.float32)
         padded[:, :chunk_emb.shape[1]] = chunk_emb
 
@@ -1083,8 +1129,7 @@ class TTSService:
             # Residual codes
             frame_codes = [primary_code]
             if self._cp_engine is not None:
-                n_residual = NUM_CODE_GROUPS - 1
-                codes, codec_sum = self._cp_engine.run(last_hidden[0], primary_embed[0], num_steps=n_residual)
+                codes, codec_sum = self._run_cp_engine(last_hidden[0], primary_embed[0])
                 frame_codes.extend(int(c) for c in codes)
             else:
                 codec_sum = primary_embed[0].copy()

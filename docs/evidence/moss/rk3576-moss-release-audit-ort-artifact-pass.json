@@ -1,0 +1,41 @@
+{
+  "passed": true,
+  "errors": [],
+  "checks": {
+    "ort_config": {
+      "passed": true,
+      "errors": [],
+      "path": "configs/rk3576-moss-ort-stream.yaml"
+    },
+    "ort_evidence": {
+      "passed": true,
+      "errors": [],
+      "path": "docs/evidence/moss/rk3576-moss-ort-production-current-rerun.json"
+    },
+    "roundtrip_evidence": {
+      "passed": true,
+      "errors": [],
+      "path": "docs/evidence/moss/rk3576-moss-ort-production-current-rerun-roundtrip.json"
+    },
+    "rknn_candidate_config": {
+      "passed": true,
+      "errors": [],
+      "path": "configs/rk3576-moss-rknn-stream.yaml"
+    },
+    "ort_artifacts": {
+      "passed": true,
+      "errors": [],
+      "path": "configs/rk3576-moss-ort-stream.yaml",
+      "summary": {
+        "model_dir": "/opt/tts/models/moss-tts-nano-onnx",
+        "manifest": "moss-ort-manifest.json",
+        "target_platform": "rk3576",
+        "sample_rate": 48000,
+        "channels": 2,
+        "required_artifacts": 11
+      }
+    }
+  },
+  "production_default": "moss_ort",
+  "rknn_status": "production_candidate_requires_manifest_evidence"
+}

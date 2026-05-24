@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+
+from models.tts.moss.probe_moss_rknn_runtime import _case_from_name, _inputs_for_case, _pass_through, _stderr_runtime_error
+
+
+def test_probe_infers_moss_cases_from_filename():
+    assert _case_from_name(Path("min_layernorm.fp16.rk3576.rknn"), "auto") == "layernorm"
+    assert _case_from_name(Path("moss_block0_mlp.s32.fp16.rk3576.rknn"), "auto") == "island_float"
+    assert _case_from_name(Path("moss_block11_ln2_mlp.s320.fp16.rk3576.rknn"), "auto") == "island_float"
+    assert _case_from_name(Path("moss_block0_fc_out.s320.fp16.rk3576.rknn"), "auto") == "island_float"
+    assert _case_from_name(Path("moss_block0_attn_residual.s320.fp16.rk3576.rknn"), "auto") == "attn_residual"
+    assert _case_from_name(Path("moss_tts_prefill.s32.crop_Add_15_output_0.fp16.rk3576.rknn"), "auto") == "prefill_tokens"
+    assert _case_from_name(Path("moss_tts_prefill.s32.suffix_from_Add15.fp16.rk3576.rknn"), "auto") == "prefill_hidden_mask"
+    assert _case_from_name(Path("moss_tts_prefill.s32.fp16.rk3576.rknn"), "auto") == "prefill"
+    assert _case_from_name(Path("moss_tts_decode_step.p128.fp16.rk3576.rknn"), "auto") == "decode"
+    assert _case_from_name(Path("moss_tts_local_fixed_sampled_frame.fp16.rk3576.rknn"), "auto") == "sampler"
+    assert _case_from_name(Path("moss_sampler_text_lm_head.fp16.rk3576.rknn"), "auto") == "sampler_island_float"
+    assert _case_from_name(Path("moss_sampler_mlp0.fp16.rk3576.rknn"), "auto") == "sampler_island_float"
+    assert _case_from_name(Path("moss_sampler_mlps0.fp16.rk3576.rknn"), "auto") == "sampler_mlps"
+    assert _case_from_name(Path("moss_sampler_audio_heads0.fp16.rk3576.rknn"), "auto") == "sampler_audio_heads"
+    assert _case_from_name(Path("codec_decode_step.f4.fp16.rk3576.rknn"), "auto") == "codec"
+
+
+def test_probe_prefill_inputs_match_fixed_bucket_contract():
+    inputs = _inputs_for_case("prefill", Path("moss_tts_prefill.s64.fp16.rk3576.rknn"))
+
+    assert [x.shape for x in inputs] == [(1, 64, 17), (1, 64)]
+    assert [x.dtype for x in inputs] == [np.dtype("int32"), np.dtype("int32")]
+    assert np.all(inputs[0][:, :, 0] == 1)
+    assert np.all(inputs[1] == 1)
+
+
+def test_probe_decode_inputs_include_all_kv_pairs():
+    inputs = _inputs_for_case("decode", Path("moss_tts_decode_step.p32.fp16.rk3576.rknn"))
+
+    assert len(inputs) == 26
+    assert inputs[0].shape == (1, 1, 17)
+    assert inputs[1].tolist() == [32]
+    assert all(x.shape == (1, 32, 12, 64) for x in inputs[2:])
+
+
+def test_probe_prefill_crop_and_suffix_inputs_match_split_contracts():
+    crop_inputs = _inputs_for_case("prefill_tokens", Path("moss_tts_prefill.s32.crop_Add_15_output_0.fp16.rk3576.rknn"))
+    suffix_inputs = _inputs_for_case("prefill_hidden", Path("moss_tts_prefill.s32.suffix_from_Add15.fp16.rk3576.rknn"))
+    suffix_mask_inputs = _inputs_for_case("prefill_hidden_mask", Path("moss_tts_prefill.s32.suffix_from_Add15.fp16.rk3576.rknn"))
+
+    assert [x.shape for x in crop_inputs] == [(1, 32, 17)]
+    assert crop_inputs[0].dtype == np.dtype("int32")
+    assert [x.shape for x in suffix_inputs] == [(1, 32, 768)]
+    assert suffix_inputs[0].dtype == np.dtype("float32")
+    assert [x.shape for x in suffix_mask_inputs] == [(1, 32, 768), (1, 32)]
+    assert [x.dtype for x in suffix_mask_inputs] == [np.dtype("float32"), np.dtype("int32")]
+
+
+def test_probe_island_float_input_matches_seq_bucket():
+    inputs = _inputs_for_case("island_float", Path("moss_block0_mlp.s64.fp16.rk3576.rknn"))
+
+    assert [x.shape for x in inputs] == [(1, 64, 768)]
+    assert inputs[0].dtype == np.dtype("float32")
+
+
+def test_probe_fc_out_input_uses_mlp_expanded_width():
+    inputs = _inputs_for_case("island_float", Path("moss_block0_fc_out.s320.fp16.rk3576.rknn"))
+
+    assert [x.shape for x in inputs] == [(1, 320, 3072)]
+    assert inputs[0].dtype == np.dtype("float32")
+
+
+def test_probe_sampler_island_inputs_match_sampler_contracts():
+    text = _inputs_for_case("sampler_island_float", Path("moss_sampler_text_lm_head.fp16.rk3576.rknn"))
+    fc_out = _inputs_for_case("sampler_island_float", Path("moss_sampler_fc_out0.fp16.rk3576.rknn"))
+    mlp = _inputs_for_case("sampler_island_float", Path("moss_sampler_mlp0.fp16.rk3576.rknn"))
+    mlps = _inputs_for_case("sampler_mlps", Path("moss_sampler_mlps0.fp16.rk3576.rknn"))
+    audio_heads = _inputs_for_case("sampler_audio_heads", Path("moss_sampler_audio_heads0.fp16.rk3576.rknn"))
+
+    assert [x.shape for x in text] == [(1, 768)]
+    assert [x.shape for x in fc_out] == [(1, 1, 3072)]
+    assert [x.shape for x in mlp] == [(1, 1, 768)]
+    assert [x.shape for x in mlps] == [(1, 1, 768)] * 17
+    assert [x.shape for x in audio_heads] == [(1, 768)] * 16
+    assert all(x.dtype == np.dtype("float32") for x in [*text, *fc_out, *mlp, *mlps, *audio_heads])
+
+
+def test_probe_attention_residual_inputs_include_mask():
+    inputs = _inputs_for_case("attn_residual", Path("moss_block0_attn_residual.s320.fp16.rk3576.rknn"))
+
+    assert [x.shape for x in inputs] == [(1, 320, 768), (1, 320)]
+    assert [x.dtype for x in inputs] == [np.dtype("float32"), np.dtype("int32")]
+    assert np.all(inputs[1] == 1)
+
+
+def test_probe_pass_through_auto_only_marks_integer_inputs():
+    inputs = [
+        np.zeros((1, 4), dtype=np.int32),
+        np.zeros((1, 4), dtype=np.float32),
+        np.zeros((1,), dtype=np.int64),
+    ]
+
+    assert _pass_through(inputs, "auto") == [1, 0, 1]
+    assert _pass_through(inputs, "none") is None
+    assert _pass_through(inputs, "all") == [1, 1, 1]
+
+
+def test_probe_pass_through_auto_omits_all_float_inputs():
+    inputs = [np.zeros((1, 32, 768), dtype=np.float32)]
+
+    assert _pass_through(inputs, "auto") is None
+
+
+def test_probe_treats_rknn_runtime_stderr_errors_as_failures():
+    stderr = "E RKNN: input dtype is undefine!\nE RKNN: failed to submit!, op id: 4"
+
+    assert _stderr_runtime_error(stderr) == "failed to submit"
+    assert _stderr_runtime_error("W Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID.") is None
+    assert _stderr_runtime_error("W Query dynamic range failed. static shape RKNN model") is None
