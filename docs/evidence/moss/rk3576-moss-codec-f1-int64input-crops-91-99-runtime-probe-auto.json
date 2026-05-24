@@ -1,0 +1,350 @@
+{
+  "summary": {
+    "total": 9,
+    "ok": 5,
+    "crash": 4,
+    "timeout": 0,
+    "missing": 0
+  },
+  "results": [
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i91_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i91_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "int64"
+      ],
+      "status": "OK",
+      "load_ms": 2.772,
+      "load_ret": 0,
+      "init_ms": 125.088,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "audio_codes"
+      ],
+      "phase": "inference",
+      "infer_ms": 2.659,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            4,
+            3,
+            4,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -5.24609375,
+          "max": 7.1875,
+          "mean": 0.010220014490187168
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1249.69,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:58:58.825] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i92_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i92_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "int64"
+      ],
+      "status": "OK",
+      "load_ms": 2.661,
+      "load_ret": 0,
+      "init_ms": 133.046,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "audio_codes"
+      ],
+      "phase": "inference",
+      "infer_ms": 2.698,
+      "outputs": [
+        {
+          "shape": [
+            3,
+            1,
+            4,
+            4,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -5.24609375,
+          "max": 7.1875,
+          "mean": 0.010220012627542019
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1291.685,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:59:00.154] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i93_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i93_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "int64"
+      ],
+      "status": "OK",
+      "load_ms": 3.22,
+      "load_ret": 0,
+      "init_ms": 134.504,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "audio_codes"
+      ],
+      "phase": "inference",
+      "infer_ms": 2.645,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            4,
+            4,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -5.24609375,
+          "max": 3.576171875,
+          "mean": -0.06193329393863678
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1293.083,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:59:01.428] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i94_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i94_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "int64"
+      ],
+      "status": "OK",
+      "load_ms": 2.897,
+      "load_ret": 0,
+      "init_ms": 136.327,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "audio_codes"
+      ],
+      "phase": "inference",
+      "infer_ms": 2.623,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            4,
+            4,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -2.96484375,
+          "max": 7.1875,
+          "mean": 0.0933046042919159
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1238.404,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:59:02.701] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i95_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i95_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ]
+      ],
+      "input_dtypes": [
+        "int64"
+      ],
+      "status": "OK",
+      "load_ms": 2.713,
+      "load_ret": 0,
+      "init_ms": 124.055,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "audio_codes"
+      ],
+      "phase": "inference",
+      "infer_ms": 2.606,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            4,
+            4,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -1.8876953125,
+          "max": 1.87109375,
+          "mean": -0.0007112673483788967
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1255.201,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:59:03.948] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i96_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i96_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1
+        ]
+      ],
+      "input_dtypes": [
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 0.227,
+      "load_ret": 0,
+      "init_ms": 129.316,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "attn_offset_0"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 1000.83,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:59:05.222] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i97_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i97_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1
+        ]
+      ],
+      "input_dtypes": [
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 0.22,
+      "load_ret": 0,
+      "init_ms": 130.191,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "attn_offset_0"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 1000.747,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:59:06.224] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i98_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i98_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1
+        ]
+      ],
+      "input_dtypes": [
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 0.225,
+      "load_ret": 0,
+      "init_ms": 111.289,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "attn_offset_0"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 975.045,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:59:07.198] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i99_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i99_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1
+        ]
+      ],
+      "input_dtypes": [
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 0.24,
+      "load_ret": 0,
+      "init_ms": 129.35,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "attn_offset_0"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 1013.013,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:59:08.212] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    }
+  ]
+}

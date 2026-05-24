@@ -132,6 +132,17 @@ def test_probe_codec_int64input_uses_int64_for_cast_fixed_inputs():
     assert inputs["attn_offset_0"].dtype == np.dtype("int32")
 
 
+def test_probe_codec_int64offset_uses_int64_for_offset_and_position_inputs():
+    inputs = _named_inputs_for_case("codec", Path("codec_decode_step.f1.int64offset.fp16.rk3576.rknn"))
+
+    assert inputs["audio_codes"].dtype == np.dtype("int64")
+    assert inputs["audio_code_lengths"].dtype == np.dtype("int64")
+    assert inputs["transformer_offset_0"].dtype == np.dtype("int64")
+    assert inputs["attn_offset_0"].dtype == np.dtype("int64")
+    assert inputs["attn_cached_positions_0"].dtype == np.dtype("int64")
+    assert inputs["attn_cached_keys_0"].dtype == np.dtype("float32")
+
+
 def test_probe_attention_residual_inputs_include_mask():
     inputs = _inputs_for_case("attn_residual", Path("moss_block0_attn_residual.s320.fp16.rk3576.rknn"))
 

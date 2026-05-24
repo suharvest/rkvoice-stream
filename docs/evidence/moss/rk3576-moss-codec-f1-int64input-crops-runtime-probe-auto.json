@@ -1,0 +1,1402 @@
+{
+  "summary": {
+    "total": 8,
+    "ok": 0,
+    "crash": 8,
+    "timeout": 0,
+    "missing": 0
+  },
+  "results": [
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i1125_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i1125_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          800
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          800
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          1200
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          1200
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          1600
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          1600
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          1600
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          1600
+        ]
+      ],
+      "input_dtypes": [
+        "int64",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 56.948,
+      "load_ret": 0,
+      "init_ms": 349.669,
+      "init_ret": 0,
+      "runtime_input_count": 49,
+      "runtime_input_names": [
+        "audio_codes",
+        "attn_offset_0",
+        "attn_cached_keys_0",
+        "attn_cached_values_0",
+        "attn_cached_positions_0",
+        "attn_offset_1",
+        "attn_cached_keys_1",
+        "attn_cached_values_1",
+        "attn_cached_positions_1",
+        "attn_offset_2",
+        "attn_cached_keys_2",
+        "attn_cached_values_2",
+        "attn_cached_positions_2",
+        "attn_offset_3",
+        "attn_cached_keys_3",
+        "attn_cached_values_3",
+        "attn_cached_positions_3",
+        "attn_offset_4",
+        "attn_cached_keys_4",
+        "attn_cached_values_4",
+        "attn_cached_positions_4",
+        "attn_offset_5",
+        "attn_cached_keys_5",
+        "attn_cached_values_5",
+        "attn_cached_positions_5",
+        "attn_offset_6",
+        "attn_cached_keys_6",
+        "attn_cached_values_6",
+        "attn_cached_positions_6",
+        "attn_offset_7",
+        "attn_cached_keys_7",
+        "attn_cached_values_7",
+        "attn_cached_positions_7",
+        "attn_offset_8",
+        "attn_cached_keys_8",
+        "attn_cached_values_8",
+        "attn_cached_positions_8",
+        "attn_offset_9",
+        "attn_cached_keys_9",
+        "attn_cached_values_9",
+        "attn_cached_positions_9",
+        "attn_offset_10",
+        "attn_cached_keys_10",
+        "attn_cached_values_10",
+        "attn_cached_positions_10",
+        "attn_offset_11",
+        "attn_cached_keys_11",
+        "attn_cached_values_11",
+        "attn_cached_positions_11"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 1497.645,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:56:20.523] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(49) >= input_num(49)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i1143_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i1143_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1
+        ]
+      ],
+      "input_dtypes": [
+        "int64"
+      ],
+      "status": "CRASH",
+      "load_ms": 0.169,
+      "load_ret": 0,
+      "init_ms": 131.25,
+      "init_ret": 0,
+      "runtime_input_count": 1,
+      "runtime_input_names": [
+        "audio_code_lengths"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 999.859,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:56:21.750] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(1) >= input_num(1)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i150_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i150_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ]
+      ],
+      "input_dtypes": [
+        "int64",
+        "int32",
+        "float32",
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 2.748,
+      "load_ret": 0,
+      "init_ms": 134.706,
+      "init_ret": 0,
+      "runtime_input_count": 4,
+      "runtime_input_names": [
+        "audio_codes",
+        "attn_offset_0",
+        "attn_cached_keys_0",
+        "attn_cached_positions_0"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 898.728,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:56:22.640] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(4) >= input_num(4)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i250_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i250_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ]
+      ],
+      "input_dtypes": [
+        "int64",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 6.761,
+      "load_ret": 0,
+      "init_ms": 173.033,
+      "init_ret": 0,
+      "runtime_input_count": 9,
+      "runtime_input_names": [
+        "audio_codes",
+        "attn_offset_0",
+        "attn_cached_keys_0",
+        "attn_cached_values_0",
+        "attn_cached_positions_0",
+        "attn_offset_1",
+        "attn_cached_keys_1",
+        "attn_cached_values_1",
+        "attn_cached_positions_1"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 996.901,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:56:23.621] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(9) >= input_num(9)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i426_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i426_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ]
+      ],
+      "input_dtypes": [
+        "int64",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 17.119,
+      "load_ret": 0,
+      "init_ms": 187.084,
+      "init_ret": 0,
+      "runtime_input_count": 17,
+      "runtime_input_names": [
+        "audio_codes",
+        "attn_offset_0",
+        "attn_cached_keys_0",
+        "attn_cached_values_0",
+        "attn_cached_positions_0",
+        "attn_offset_1",
+        "attn_cached_keys_1",
+        "attn_cached_values_1",
+        "attn_cached_positions_1",
+        "attn_offset_2",
+        "attn_cached_keys_2",
+        "attn_cached_values_2",
+        "attn_cached_positions_2",
+        "attn_offset_3",
+        "attn_cached_keys_3",
+        "attn_cached_values_3",
+        "attn_cached_positions_3"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 1019.339,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:56:24.620] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(17) >= input_num(17)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i603_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i603_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          800
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          800
+        ]
+      ],
+      "input_dtypes": [
+        "int64",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 26.353,
+      "load_ret": 0,
+      "init_ms": 221.149,
+      "init_ret": 0,
+      "runtime_input_count": 25,
+      "runtime_input_names": [
+        "audio_codes",
+        "attn_offset_0",
+        "attn_cached_keys_0",
+        "attn_cached_values_0",
+        "attn_cached_positions_0",
+        "attn_offset_1",
+        "attn_cached_keys_1",
+        "attn_cached_values_1",
+        "attn_cached_positions_1",
+        "attn_offset_2",
+        "attn_cached_keys_2",
+        "attn_cached_values_2",
+        "attn_cached_positions_2",
+        "attn_offset_3",
+        "attn_cached_keys_3",
+        "attn_cached_values_3",
+        "attn_cached_positions_3",
+        "attn_offset_4",
+        "attn_cached_keys_4",
+        "attn_cached_values_4",
+        "attn_cached_positions_4",
+        "attn_offset_5",
+        "attn_cached_keys_5",
+        "attn_cached_values_5",
+        "attn_cached_positions_5"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 1160.391,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:56:25.734] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(25) >= input_num(25)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i780_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i780_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          800
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          800
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          1200
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          1200
+        ]
+      ],
+      "input_dtypes": [
+        "int64",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 36.065,
+      "load_ret": 0,
+      "init_ms": 270.593,
+      "init_ret": 0,
+      "runtime_input_count": 33,
+      "runtime_input_names": [
+        "audio_codes",
+        "attn_offset_0",
+        "attn_cached_keys_0",
+        "attn_cached_values_0",
+        "attn_cached_positions_0",
+        "attn_offset_1",
+        "attn_cached_keys_1",
+        "attn_cached_values_1",
+        "attn_cached_positions_1",
+        "attn_offset_2",
+        "attn_cached_keys_2",
+        "attn_cached_values_2",
+        "attn_cached_positions_2",
+        "attn_offset_3",
+        "attn_cached_keys_3",
+        "attn_cached_values_3",
+        "attn_cached_positions_3",
+        "attn_offset_4",
+        "attn_cached_keys_4",
+        "attn_cached_values_4",
+        "attn_cached_positions_4",
+        "attn_offset_5",
+        "attn_cached_keys_5",
+        "attn_cached_values_5",
+        "attn_cached_positions_5",
+        "attn_offset_6",
+        "attn_cached_keys_6",
+        "attn_cached_values_6",
+        "attn_cached_positions_6",
+        "attn_offset_7",
+        "attn_cached_keys_7",
+        "attn_cached_values_7",
+        "attn_cached_positions_7"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 1269.724,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:56:26.979] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(33) >= input_num(33)!\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-castfix-probe/codec_decode_step.f1.crop_i950_int64input.fp16.rk3576.rknn",
+      "name": "codec_decode_step.f1.crop_i950_int64input.fp16.rk3576.rknn",
+      "case": "codec",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          800
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          800
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          1200
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          1200
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          1600
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          1600
+        ]
+      ],
+      "input_dtypes": [
+        "int64",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32",
+        "int32",
+        "float32",
+        "float32",
+        "int32"
+      ],
+      "status": "CRASH",
+      "load_ms": 45.726,
+      "load_ret": 0,
+      "init_ms": 329.511,
+      "init_ret": 0,
+      "runtime_input_count": 41,
+      "runtime_input_names": [
+        "audio_codes",
+        "attn_offset_0",
+        "attn_cached_keys_0",
+        "attn_cached_values_0",
+        "attn_cached_positions_0",
+        "attn_offset_1",
+        "attn_cached_keys_1",
+        "attn_cached_values_1",
+        "attn_cached_positions_1",
+        "attn_offset_2",
+        "attn_cached_keys_2",
+        "attn_cached_values_2",
+        "attn_cached_positions_2",
+        "attn_offset_3",
+        "attn_cached_keys_3",
+        "attn_cached_values_3",
+        "attn_cached_positions_3",
+        "attn_offset_4",
+        "attn_cached_keys_4",
+        "attn_cached_values_4",
+        "attn_cached_positions_4",
+        "attn_offset_5",
+        "attn_cached_keys_5",
+        "attn_cached_values_5",
+        "attn_cached_positions_5",
+        "attn_offset_6",
+        "attn_cached_keys_6",
+        "attn_cached_values_6",
+        "attn_cached_positions_6",
+        "attn_offset_7",
+        "attn_cached_keys_7",
+        "attn_cached_values_7",
+        "attn_cached_positions_7",
+        "attn_offset_8",
+        "attn_cached_keys_8",
+        "attn_cached_values_8",
+        "attn_cached_positions_8",
+        "attn_offset_9",
+        "attn_cached_keys_9",
+        "attn_cached_values_9",
+        "attn_cached_positions_9"
+      ],
+      "phase": "pre_inference",
+      "returncode": -11,
+      "elapsed_ms": 1419.249,
+      "signal": "SIGSEGV",
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\nE RKNN: [12:56:28.339] rknn_query, RKNN_QUERY_INPUT_ATTR, p_attr->index(41) >= input_num(41)!\n"
+    }
+  ]
+}
