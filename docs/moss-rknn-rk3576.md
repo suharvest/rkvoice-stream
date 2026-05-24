@@ -294,7 +294,39 @@ is a preload failure, not a warning.
 ## Current NPU Route Decision
 
 Target route remains high-performance streaming TTS, not an ORT-equivalent
-fallback. The current priority order is:
+fallback. As of the latest codec and sampler probes, the default engineering
+decision is conservative: keep `moss_ort` as production, and only continue NPU
+work where the next experiment can prove both token/audio parity and service
+latency improvement over the current ORT profile.
+
+Routes already ruled out for production promotion:
+
+- Coarse prefill RKNN islands: accurate enough at hidden/KV level for selected
+  splits, but short-prompt service timing is not better than full ORT and RKNN
+  FP16 drift changes sampler decisions.
+- Sampler text-head-only split: token parity can pass, but the remaining ORT
+  suffix keeps the split slower than the full sampler.
+- Sampler grouped or per-block MLP RKNN split: isolated MLP parity is high, but
+  stochastic audio token parity fails; the promotion evidence reports
+  `allow_service_integration=false`, `token parity failed: 0/1`, and speedup
+  only `0.058x`.
+- Python codec front/middle/suffix split as a presumed speed win: boundaries
+  are correct, but standalone RK3576 timings already show the 24 RKNN calls plus
+  middle attention will likely be near ORT unless calls are fused or moved into a
+  persistent C/C++ worker.
+
+The remaining worthwhile NPU directions are therefore narrow:
+
+1. A C/C++ codec worker with persistent RKNN contexts and fewer Python/runtime
+   crossings, gated by full codec audio/cache parity and lower per-frame latency
+   than `moss_ort`.
+2. A sampler strategy that changes the decision surface itself safely: logit
+   correction, margin-aware CPU fallback, deterministic constrained sampling, or
+   a numerically tighter official runtime path. It must pass exact token parity
+   or ASR roundtrip quality before any backend wiring.
+3. RKLLM only if official/custom-model hidden parity is fixed against ONNX.
+
+Historical priority order before these negative probes was:
 
 1. Codec streaming RKNN, if the full cache-carrying decode-step can pass
    RK3576 `inference()` and parity. This is the cleanest latency target because
