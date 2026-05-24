@@ -4,7 +4,14 @@ from pathlib import Path
 
 import numpy as np
 
-from models.tts.moss.probe_moss_rknn_runtime import _case_from_name, _inputs_for_case, _pass_through, _stderr_runtime_error
+from models.tts.moss.probe_moss_rknn_runtime import (
+    _case_from_name,
+    _named_inputs_for_case,
+    _inputs_for_case,
+    _pass_through,
+    _runtime_input_count,
+    _stderr_runtime_error,
+)
 
 
 def test_probe_infers_moss_cases_from_filename():
@@ -104,6 +111,27 @@ def test_probe_codec_input_includes_streaming_cache_state():
     assert inputs[7].dtype == np.dtype("float32")
 
 
+def test_probe_codec_named_inputs_match_runtime_tensor_names():
+    inputs = _named_inputs_for_case("codec", Path("codec_decode_step.f1.fp16.rk3576.rknn"))
+
+    assert inputs["audio_codes"].shape == (1, 1, 16)
+    assert inputs["audio_code_lengths"].shape == (1,)
+    assert inputs["transformer_offset_3"].shape == (1,)
+    assert inputs["attn_offset_0"].shape == (1,)
+    assert inputs["attn_cached_keys_0"].shape == (1, 4, 500, 64)
+    assert inputs["attn_cached_values_11"].shape == (1, 4, 1600, 64)
+    assert inputs["attn_cached_positions_11"].shape == (1, 1600)
+    assert len(inputs) == 54
+
+
+def test_probe_codec_int64input_uses_int64_for_cast_fixed_inputs():
+    inputs = _named_inputs_for_case("codec", Path("codec_decode_step.f1.int64input.fp16.rk3576.rknn"))
+
+    assert inputs["audio_codes"].dtype == np.dtype("int64")
+    assert inputs["audio_code_lengths"].dtype == np.dtype("int64")
+    assert inputs["attn_offset_0"].dtype == np.dtype("int32")
+
+
 def test_probe_attention_residual_inputs_include_mask():
     inputs = _inputs_for_case("attn_residual", Path("moss_block0_attn_residual.s320.fp16.rk3576.rknn"))
 
@@ -136,3 +164,24 @@ def test_probe_treats_rknn_runtime_stderr_errors_as_failures():
     assert _stderr_runtime_error(stderr) == "failed to submit"
     assert _stderr_runtime_error("W Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID.") is None
     assert _stderr_runtime_error("W Query dynamic range failed. static shape RKNN model") is None
+
+
+def test_probe_child_marks_inference_before_call():
+    source = Path("models/tts/moss/probe_moss_rknn_runtime.py").read_text(encoding="utf-8")
+
+    assert 'result["phase"] = "inference"' in source
+    assert source.index('result["phase"] = "inference"') < source.index("rknn.inference(inputs=inputs")
+
+
+def test_runtime_input_count_stops_at_first_missing_input_attr():
+    class Runtime:
+        def get_tensor_attr(self, index, is_output):
+            assert is_output is False
+            if index >= 3:
+                raise RuntimeError("missing")
+            return object()
+
+    class RKNN:
+        rknn_runtime = Runtime()
+
+    assert _runtime_input_count(RKNN(), 54) == 3

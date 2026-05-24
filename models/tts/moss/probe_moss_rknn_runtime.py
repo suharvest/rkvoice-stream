@@ -122,9 +122,10 @@ def _inputs_for_case(case: str, path: Path) -> list[np.ndarray]:
         ]
     if case == "codec":
         frames = _parse_bucket(r"\.f(\d+)", name, 1)
+        int_dtype = np.int64 if "int64input" in name else np.int32
         inputs: list[np.ndarray] = [
-            np.zeros((1, frames, 16), dtype=np.int32),
-            np.asarray([frames], dtype=np.int32),
+            np.zeros((1, frames, 16), dtype=int_dtype),
+            np.asarray([frames], dtype=int_dtype),
         ]
         for _ in range(4):
             inputs.append(np.zeros((1,), dtype=np.int32))
@@ -138,6 +139,24 @@ def _inputs_for_case(case: str, path: Path) -> list[np.ndarray]:
             inputs.append(np.full((1, cache_len), -1, dtype=np.int32))
         return inputs
     raise ValueError(f"Unsupported probe case: {case}")
+
+
+def _named_inputs_for_case(case: str, path: Path) -> dict[str, np.ndarray]:
+    if case != "codec":
+        return {}
+    values = _inputs_for_case(case, path)
+    names = ["audio_codes", "audio_code_lengths"]
+    names.extend(f"transformer_offset_{idx}" for idx in range(4))
+    for idx in range(12):
+        names.extend(
+            [
+                f"attn_offset_{idx}",
+                f"attn_cached_keys_{idx}",
+                f"attn_cached_values_{idx}",
+                f"attn_cached_positions_{idx}",
+            ]
+        )
+    return dict(zip(names, values))
 
 
 def _pass_through(inputs: list[np.ndarray], mode: str) -> list[int] | None:
@@ -183,6 +202,31 @@ def _stderr_runtime_error(stderr: str | None) -> str | None:
     return None
 
 
+def _runtime_input_attrs(rknn: Any, max_inputs: int) -> list[Any]:
+    runtime = getattr(rknn, "rknn_runtime", None)
+    getter = getattr(runtime, "get_tensor_attr", None)
+    if getter is None:
+        return []
+    attrs = []
+    for index in range(max_inputs):
+        try:
+            attrs.append(getter(index, False))
+        except Exception:
+            break
+    return attrs
+
+
+def _runtime_input_count(rknn: Any, max_inputs: int) -> int:
+    return len(_runtime_input_attrs(rknn, max_inputs)) or max_inputs
+
+
+def _attr_name(attr: Any) -> str:
+    name = getattr(attr, "name", b"")
+    if isinstance(name, bytes):
+        return name.decode("utf-8", errors="replace").rstrip("\x00")
+    return str(name).rstrip("\x00")
+
+
 def _child_main(args: argparse.Namespace) -> int:
     from rknnlite.api import RKNNLite
 
@@ -220,6 +264,26 @@ def _child_main(args: argparse.Namespace) -> int:
             print(json.dumps(result, ensure_ascii=False), flush=True)
             return 3
 
+        runtime_attrs = _runtime_input_attrs(rknn, len(inputs))
+        named_inputs = _named_inputs_for_case(case, rknn_path)
+        runtime_names = [_attr_name(attr) for attr in runtime_attrs]
+        if runtime_names and named_inputs and all(name in named_inputs for name in runtime_names):
+            inputs = [named_inputs[name] for name in runtime_names]
+            pass_through = _pass_through(inputs, args.pass_through)
+            result["runtime_input_count"] = len(inputs)
+            result["runtime_input_names"] = runtime_names
+            result["input_shapes"] = [list(x.shape) for x in inputs]
+            result["input_dtypes"] = [str(x.dtype) for x in inputs]
+        elif runtime_attrs and len(runtime_attrs) < len(inputs):
+            inputs = inputs[: len(runtime_attrs)]
+            pass_through = _pass_through(inputs, args.pass_through)
+            result["runtime_input_count"] = len(runtime_attrs)
+            result["runtime_input_names"] = runtime_names
+            result["input_shapes"] = [list(x.shape) for x in inputs]
+            result["input_dtypes"] = [str(x.dtype) for x in inputs]
+
+        print(json.dumps({**result, "phase": "pre_inference"}, ensure_ascii=False), flush=True)
+        result["phase"] = "inference"
         t0 = time.perf_counter()
         if pass_through is None:
             outputs = rknn.inference(inputs=inputs)
@@ -297,6 +361,8 @@ def _run_child(script: Path, rknn: Path, case: str, pass_through: str, timeout: 
     if proc.returncode in (139, -11):
         parsed["status"] = "CRASH"
         parsed["signal"] = "SIGSEGV"
+        if parsed.get("init_ret") == 0 and parsed.get("phase") == "init":
+            parsed["phase"] = "inference"
     if proc.stderr:
         parsed["stderr_tail"] = proc.stderr[-4000:]
     runtime_error = _stderr_runtime_error(proc.stderr)
