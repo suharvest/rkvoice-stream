@@ -286,10 +286,55 @@ is a preload failure, not a warning.
 
 - Use the Jetson playbook phases T0-T6 as stop criteria, not as loose guidance.
 - Export ONNX with fixed shapes for RKNN. Avoid dynamic axes; build multiple fixed buckets instead.
-- Run `onnxsim` and the MOSS codec If-rank surgery before RKNN conversion.
+- Run `onnxsim` and the MOSS codec If-rank / bool-control-flow surgery before RKNN conversion.
 - Start FP16 first. INT8 is allowed only after ASR roundtrip quality passes on FP16 and the calibration set is recorded.
 - Verify each RKNN on the RK3576 device with `rknnlite`, not only toolkit simulator.
 - Keep RKLLM/ASR coexistence in mind; if ASR and TTS share the NPU, serialize access or pin domains explicitly.
+
+## Current NPU Route Decision
+
+Target route remains high-performance streaming TTS, not an ORT-equivalent
+fallback. The current priority order is:
+
+1. Codec streaming RKNN, if the full cache-carrying decode-step can pass
+   RK3576 `inference()` and parity. This is the cleanest latency target because
+   it should not change text/sampler decisions and can reduce first-audio plus
+   steady-state codec cost.
+2. Sampler fused MLP / text-head RKNN islands. These have real-device parity
+   and isolated speedups, but the total expected service gain is smaller because
+   CPU/NPU handoff and sequential sampler dependencies can eat the win.
+3. `ln1_cattn` prefill hybrid. It is the widest verified prefill RKNN route
+   today, but the short Junhao production profile is still slightly slower than
+   full ORT, so it is not the default route.
+4. RKLLM only after hidden parity is fixed. Official RKLLM is faster at the raw
+   prefill/decode stage, but current MOSS hidden-state parity failures make it
+   unsafe for production audio quality even when smoke audio is non-silent.
+
+Codec RKNN status as of the RK3576 `f1` probe:
+
+- The original codec RKNN build failed in RKNN toolkit rule
+  `merge_conv_channel_inner_perm`. Passing
+  `disable_rules=["merge_conv_channel_inner_perm"]` builds
+  `codec_decode_step.f1.fp16.rk3576.rknn`.
+- Runtime then failed on unsupported CPU fallback op `Xor`. Graph inspection
+  showed this was exactly `Xor(x, false)`, so `convert_moss_rknn.py` now rewrites
+  it to `Identity(x)` before conversion.
+- The Xor-fixed model builds, and the unsupported-op runtime error is gone, but
+  RK3576 still SIGSEGVs during `inference()` with `pass-through=auto`, `none`,
+  and `all`. This rules out input pass-through as the primary cause.
+- Trying to crop codec outputs to `audio/audio_lengths` with RKNN `outputs=...`
+  currently fails during toolkit `fold_constant` even at `optimization_level=0`,
+  so the audio-only route is not yet a usable shortcut.
+
+Evidence:
+
+- `docs/evidence/moss/wsl2-moss-codec-decode-step-graph-inspect-bool.json`
+- `docs/evidence/moss/wsl2-moss-codec-f1-xorfix-manifest.json`
+- `docs/evidence/moss/rk3576-moss-codec-f1-xorfix-runtime-probe.json`
+- `docs/evidence/moss/rk3576-moss-codec-f1-xorfix-runtime-probe-none.json`
+- `docs/evidence/moss/rk3576-moss-codec-f1-xorfix-runtime-probe-all.json`
+- `docs/evidence/moss/wsl2-moss-codec-f1-xorfix-audio-only-build.log`
+- `docs/evidence/moss/wsl2-moss-codec-f1-xorfix-audio-only-opt0-build.log`
 
 ## Gates
 

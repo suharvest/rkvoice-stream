@@ -1,0 +1,422 @@
+{
+  "model_id": "moss-tts-nano-rknn",
+  "target_platform": "rk3576",
+  "precision": "fp16",
+  "sample_rate": 48000,
+  "channels": 2,
+  "artifact_set": "",
+  "source": "MOSS paged-FP16 ONNX bundle",
+  "buckets": {
+    "prefill_seq": [
+      32,
+      64,
+      128,
+      256
+    ],
+    "decode_past_seq": [
+      1,
+      32,
+      64,
+      128,
+      256,
+      512
+    ],
+    "codec_frames": [
+      1
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "tokenizer.model",
+      "required": true,
+      "size_bytes": 470897,
+      "sha256": "c353ee1479b536bf414c1b247f5542b6607fb8ae91320e5af1781fee200fddff"
+    },
+    {
+      "path": "tts_browser_onnx_meta.json",
+      "required": true,
+      "size_bytes": 4627,
+      "sha256": "e122e641fd29010446ad34551eea2a66eef739e125fea2150bbdaf1f01b965b7"
+    },
+    {
+      "path": "codec_browser_onnx_meta.json",
+      "required": true,
+      "size_bytes": 17036,
+      "sha256": "3e291c883bb7d11ff2fe8e964e3e495519760358859f35c951254c7741592731"
+    },
+    {
+      "path": "moss_tts_prefill.s32.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "moss_tts_prefill.s64.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "moss_tts_prefill.s128.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "moss_tts_prefill.s256.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "moss_tts_decode_step.p1.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "moss_tts_decode_step.p32.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "moss_tts_decode_step.p64.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "moss_tts_decode_step.p128.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "moss_tts_decode_step.p256.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "moss_tts_decode_step.p512.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "moss_tts_local_fixed_sampled_frame.fp16.rk3576.rknn",
+      "required": true
+    },
+    {
+      "path": "codec_decode_step.f1.fp16.rk3576.rknn",
+      "required": true,
+      "size_bytes": 41510061,
+      "sha256": "bf156347fbe2777dece885e746dd844dbcc19b5fed840832edf4daf8b3186d4c"
+    }
+  ],
+  "build_results": [
+    {
+      "name": "codec_decode_step.f1.fp16.rk3576.rknn",
+      "status": "OK",
+      "elapsed_s": 21.633,
+      "input_names": [
+        "audio_codes",
+        "audio_code_lengths",
+        "transformer_offset_0",
+        "transformer_offset_1",
+        "transformer_offset_2",
+        "transformer_offset_3",
+        "attn_offset_0",
+        "attn_cached_keys_0",
+        "attn_cached_values_0",
+        "attn_cached_positions_0",
+        "attn_offset_1",
+        "attn_cached_keys_1",
+        "attn_cached_values_1",
+        "attn_cached_positions_1",
+        "attn_offset_2",
+        "attn_cached_keys_2",
+        "attn_cached_values_2",
+        "attn_cached_positions_2",
+        "attn_offset_3",
+        "attn_cached_keys_3",
+        "attn_cached_values_3",
+        "attn_cached_positions_3",
+        "attn_offset_4",
+        "attn_cached_keys_4",
+        "attn_cached_values_4",
+        "attn_cached_positions_4",
+        "attn_offset_5",
+        "attn_cached_keys_5",
+        "attn_cached_values_5",
+        "attn_cached_positions_5",
+        "attn_offset_6",
+        "attn_cached_keys_6",
+        "attn_cached_values_6",
+        "attn_cached_positions_6",
+        "attn_offset_7",
+        "attn_cached_keys_7",
+        "attn_cached_values_7",
+        "attn_cached_positions_7",
+        "attn_offset_8",
+        "attn_cached_keys_8",
+        "attn_cached_values_8",
+        "attn_cached_positions_8",
+        "attn_offset_9",
+        "attn_cached_keys_9",
+        "attn_cached_values_9",
+        "attn_cached_positions_9",
+        "attn_offset_10",
+        "attn_cached_keys_10",
+        "attn_cached_values_10",
+        "attn_cached_positions_10",
+        "attn_offset_11",
+        "attn_cached_keys_11",
+        "attn_cached_values_11",
+        "attn_cached_positions_11"
+      ],
+      "input_shapes": [
+        [
+          1,
+          1,
+          16
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          4,
+          500,
+          64
+        ],
+        [
+          1,
+          500
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          800
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          4,
+          800,
+          64
+        ],
+        [
+          1,
+          800
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          1200
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          4,
+          1200,
+          64
+        ],
+        [
+          1,
+          1200
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          1600
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          1600
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          1600
+        ],
+        [
+          1
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          4,
+          1600,
+          64
+        ],
+        [
+          1,
+          1600
+        ]
+      ],
+      "disable_rules": [
+        "merge_conv_channel_inner_perm"
+      ],
+      "size_bytes": 41510061,
+      "sha256": "bf156347fbe2777dece885e746dd844dbcc19b5fed840832edf4daf8b3186d4c"
+    }
+  ],
+  "production_gates": {
+    "max_ttfa_ms": 500,
+    "max_rtf": 0.75,
+    "max_asr_cer": 0.15,
+    "min_non_silent_rms": 0.02
+  }
+}

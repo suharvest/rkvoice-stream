@@ -1,0 +1,65 @@
+/home/harve/rknn-build/.venv/lib/python3.12/site-packages/rknn/api/rknn.py:51: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  self.rknn_base = RKNNBase(cur_path, verbose)
+I rknn-toolkit2 version: 2.3.0
+[1;33mW[0m [1;33mload_onnx: If you don't need to crop the model, don't set 'inputs'/'input_size_list'/'outputs'![0m
+I Loading :   0%|                                                           | 0/178 [00:00<?, ?it/s]I Loading : 100%|███████████████████████████████████████████████| 178/178 [00:00<00:00, 4081.85it/s]
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 3![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 3![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 4![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 4![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 7![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 7![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 8![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 8![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 11![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 11![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 12![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 12![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 15![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 15![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 16![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 16![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 19![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 19![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 20![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 20![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 23![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 23![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 24![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 24![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 27![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 27![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 28![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 28![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 31![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 31![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 32![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 32![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 35![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 35![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 36![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 36![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 39![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 39![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 40![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 40![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 43![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 43![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 44![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 44![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 47![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 47![0m
+[1;33mW[0m [1;33mload_onnx: The config.mean_values is None, zeros will be set for input 48![0m
+[1;33mW[0m [1;33mload_onnx: The config.std_values is None, ones will be set for input 48![0m
+[1;33mW[0m [1;33mbuild: These outputs ['audio'] of model are constants, remove it from RKNN model!
+                 Therefore, in the post-processing, these constants can not be obtained from the outputs of inference,
+                 And the user can obtain it from ['audio.npy'] in the current directory![0m
+[1;31mE[0m [1;31mbuild: Traceback (most recent call last):
+  File "rknn/api/rknn_log.py", line 344, in rknn.api.rknn_log.error_catch_decorator.error_catch_wrapper
+  File "rknn/api/rknn_base.py", line 1945, in rknn.api.rknn_base.RKNNBase.build
+  File "rknn/api/graph_optimizer.py", line 1149, in rknn.api.graph_optimizer.GraphOptimizer.fold_constant
+  File "rknn/api/graph_optimizer.py", line 1126, in rknn.api.graph_optimizer.GraphOptimizer.fold_constant.check_inputs
+TypeError: argument of type 'NoneType' is not iterable
+[0m
+[1;33mW[0m [1;33mbuild: ===================== WARN(50) =====================[0m
+[1;31mE[0m [1;31mrknn-toolkit2 version: 2.3.0[0m

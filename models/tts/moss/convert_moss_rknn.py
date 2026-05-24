@@ -192,6 +192,59 @@ def prepare_prefill_onnx(input_path: Path, output_path: Path, seq_len: int, outp
     return output_path
 
 
+def _constant_bool(model: onnx.ModelProto, output_name: str) -> bool | None:
+    for node in model.graph.node:
+        if node.op_type != "Constant" or output_name not in node.output:
+            continue
+        for attr in node.attribute:
+            if attr.name == "value" and attr.HasField("t"):
+                value = numpy_helper.to_array(attr.t)
+                if value.shape == () or value.size == 1:
+                    return bool(value.reshape(-1)[0])
+    return None
+
+
+def prepare_codec_onnx(input_path: Path, output_path: Path) -> Path:
+    """Apply exact RKNN compatibility rewrites to codec decode-step ONNX."""
+
+    model = onnx.load(str(input_path), load_external_data=True)
+    rewritten = 0
+    for node in model.graph.node:
+        if node.op_type != "Xor" or len(node.input) != 2:
+            continue
+        const_value = _constant_bool(model, node.input[1])
+        data_input = node.input[0]
+        if const_value is None:
+            const_value = _constant_bool(model, node.input[0])
+            data_input = node.input[1]
+        if const_value is False:
+            del node.input[:]
+            node.input.extend([data_input])
+            node.op_type = "Identity"
+            node.name = f"{node.name or 'Xor'}_as_identity"
+            rewritten += 1
+        elif const_value is True:
+            del node.input[:]
+            node.input.extend([data_input])
+            node.op_type = "Not"
+            node.name = f"{node.name or 'Xor'}_as_not"
+            rewritten += 1
+
+    if rewritten:
+        onnx.checker.check_model(model)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    onnx.save_model(
+        model,
+        str(output_path),
+        save_as_external_data=True,
+        all_tensors_to_one_file=True,
+        location=output_path.with_suffix(".data").name,
+        size_threshold=1024,
+        convert_attribute=False,
+    )
+    return output_path
+
+
 def convert_onnx(
     onnx_path: Path,
     rknn_path: Path,
@@ -346,6 +399,7 @@ def main() -> int:
     )
     parser.add_argument("--decode-past-buckets", default="1,32,64,128,256,512")
     parser.add_argument("--codec-frame-buckets", default="1,4,8")
+    parser.add_argument("--codec-output-mode", choices=["full", "audio_only"], default="full")
     parser.add_argument("--only", choices=["all", "prefill", "decode", "sampler", "codec"], default="all")
     parser.add_argument("--artifact-set", default="")
     parser.add_argument(
@@ -479,11 +533,18 @@ def main() -> int:
 
     if args.only in ("all", "codec"):
         for frames in CODEC_FRAME_BUCKETS:
-            run_one(
-                f"codec decode frames={frames}",
+            patched_codec = prepare_codec_onnx(
                 codec_onnx,
-                f"codec_decode_step.f{frames}.{args.precision}.{args.target}.rknn",
+                args.out_dir / "_fixed_onnx" / f"moss_audio_tokenizer_decode_step.f{frames}.onnx",
+            )
+            codec_outputs = ["audio", "audio_lengths"] if args.codec_output_mode == "audio_only" else None
+            output_suffix = ".audio_only" if args.codec_output_mode == "audio_only" else ""
+            run_one(
+                f"codec decode frames={frames} output={args.codec_output_mode}",
+                patched_codec,
+                f"codec_decode_step.f{frames}{output_suffix}.{args.precision}.{args.target}.rknn",
                 {"batch": 1, "code_length": frames},
+                outputs=codec_outputs,
             )
 
     write_manifest(args.out_dir, args.target, args.precision, args.artifact_set, build_results)

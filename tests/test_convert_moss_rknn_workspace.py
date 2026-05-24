@@ -6,6 +6,9 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import onnx
+from onnx import TensorProto, helper
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -76,6 +79,36 @@ def test_convert_moss_rknn_parses_disable_rule_list():
     assert module.parse_string_list("") == []
     assert module.parse_string_list("merge_conv_channel_inner_perm") == ["merge_conv_channel_inner_perm"]
     assert module.parse_string_list("a, b,,c ") == ["a", "b", "c"]
+
+
+def test_prepare_codec_onnx_rewrites_xor_false_as_identity(tmp_path):
+    module = _load_module()
+    input_path = tmp_path / "codec.onnx"
+    output_path = tmp_path / "codec.fixed.onnx"
+    graph = helper.make_graph(
+        [
+            helper.make_node(
+                "Constant",
+                inputs=[],
+                outputs=["false_const"],
+                name="/Constant_455",
+                value=helper.make_tensor("false", TensorProto.BOOL, [], [False]),
+            ),
+            helper.make_node("Xor", inputs=["mask", "false_const"], outputs=["out"], name="/Xor"),
+        ],
+        "codec_xor_false",
+        [helper.make_tensor_value_info("mask", TensorProto.BOOL, [1])],
+        [helper.make_tensor_value_info("out", TensorProto.BOOL, [1])],
+    )
+    model = helper.make_model(graph)
+    onnx.save_model(model, str(input_path))
+
+    module.prepare_codec_onnx(input_path, output_path)
+
+    fixed = onnx.load(str(output_path), load_external_data=False)
+    rewritten = [node for node in fixed.graph.node if node.output and node.output[0] == "out"][0]
+    assert rewritten.op_type == "Identity"
+    assert list(rewritten.input) == ["mask"]
 
 
 def test_convert_moss_rknn_blocks_before_missing_onnx_check_when_workspace_preflight_fails(
