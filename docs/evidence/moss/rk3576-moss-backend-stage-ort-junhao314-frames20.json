@@ -1,0 +1,189 @@
+{
+  "gates": {
+    "errors": [],
+    "max_codec_ms": 180.0,
+    "max_prefill_ms": 0.0,
+    "max_ttfa_ms": 1500.0,
+    "min_audio_frames": 20,
+    "min_chunks": 7,
+    "passed": true
+  },
+  "max_new_frames": 20,
+  "seed": 314,
+  "summary": {
+    "audio_frames": 20,
+    "chunk_shapes": [
+      [
+        3840,
+        2
+      ],
+      [
+        11520,
+        2
+      ],
+      [
+        11520,
+        2
+      ],
+      [
+        11520,
+        2
+      ],
+      [
+        11520,
+        2
+      ],
+      [
+        11520,
+        2
+      ],
+      [
+        11520,
+        2
+      ],
+      [
+        3840,
+        2
+      ]
+    ],
+    "chunks": 8,
+    "first_meta": {
+      "backend": "moss_ort",
+      "channels": 2,
+      "chunk_index": 0,
+      "chunk_start_index": 0,
+      "codec_batch_frames": 1,
+      "codec_ms": 78.142,
+      "decode_ms": null,
+      "mode": "text",
+      "prefill_ms": 933.188,
+      "sample_rate": 48000,
+      "sampler_ms": 87.991,
+      "ttfa_ms": 1111
+    },
+    "hybrid_prefill_ms": null,
+    "max_codec_ms": 145.357,
+    "max_decode_ms": 69.609,
+    "max_sampler_ms": 87.991,
+    "metas": [
+      {
+        "backend": "moss_ort",
+        "channels": 2,
+        "chunk_index": 0,
+        "chunk_start_index": 0,
+        "codec_batch_frames": 1,
+        "codec_ms": 78.142,
+        "decode_ms": null,
+        "mode": "text",
+        "prefill_ms": 933.188,
+        "sample_rate": 48000,
+        "sampler_ms": 87.991,
+        "ttfa_ms": 1111
+      },
+      {
+        "backend": "moss_ort",
+        "channels": 2,
+        "chunk_index": 3,
+        "chunk_start_index": 1,
+        "codec_batch_frames": 3,
+        "codec_ms": 145.357,
+        "decode_ms": 56.357,
+        "mode": "text",
+        "prefill_ms": null,
+        "sample_rate": 48000,
+        "sampler_ms": 83.039,
+        "ttfa_ms": 1111
+      },
+      {
+        "backend": "moss_ort",
+        "channels": 2,
+        "chunk_index": 6,
+        "chunk_start_index": 4,
+        "codec_batch_frames": 3,
+        "codec_ms": 138.488,
+        "decode_ms": 69.268,
+        "mode": "text",
+        "prefill_ms": null,
+        "sample_rate": 48000,
+        "sampler_ms": 77.462,
+        "ttfa_ms": 1111
+      },
+      {
+        "backend": "moss_ort",
+        "channels": 2,
+        "chunk_index": 9,
+        "chunk_start_index": 7,
+        "codec_batch_frames": 3,
+        "codec_ms": 131.005,
+        "decode_ms": 68.034,
+        "mode": "text",
+        "prefill_ms": null,
+        "sample_rate": 48000,
+        "sampler_ms": 76.954,
+        "ttfa_ms": 1111
+      },
+      {
+        "backend": "moss_ort",
+        "channels": 2,
+        "chunk_index": 12,
+        "chunk_start_index": 10,
+        "codec_batch_frames": 3,
+        "codec_ms": 116.731,
+        "decode_ms": 65.55,
+        "mode": "text",
+        "prefill_ms": null,
+        "sample_rate": 48000,
+        "sampler_ms": 70.171,
+        "ttfa_ms": 1111
+      },
+      {
+        "backend": "moss_ort",
+        "channels": 2,
+        "chunk_index": 15,
+        "chunk_start_index": 13,
+        "codec_batch_frames": 3,
+        "codec_ms": 119.271,
+        "decode_ms": 56.981,
+        "mode": "text",
+        "prefill_ms": null,
+        "sample_rate": 48000,
+        "sampler_ms": 80.594,
+        "ttfa_ms": 1111
+      },
+      {
+        "backend": "moss_ort",
+        "channels": 2,
+        "chunk_index": 18,
+        "chunk_start_index": 16,
+        "codec_batch_frames": 3,
+        "codec_ms": 116.882,
+        "decode_ms": 59.998,
+        "mode": "text",
+        "prefill_ms": null,
+        "sample_rate": 48000,
+        "sampler_ms": 73.411,
+        "ttfa_ms": 1111
+      },
+      {
+        "backend": "moss_ort",
+        "channels": 2,
+        "chunk_index": 19,
+        "chunk_start_index": 19,
+        "codec_batch_frames": 1,
+        "codec_ms": 73.326,
+        "decode_ms": 69.609,
+        "mode": "text",
+        "prefill_ms": null,
+        "sample_rate": 48000,
+        "sampler_ms": 82.638,
+        "ttfa_ms": 1111
+      }
+    ],
+    "prefill_ms": 933.188,
+    "preload_ms": 13550.328,
+    "total_samples": 76800,
+    "ttfa_ms": 1111.0,
+    "wall_ms": 4786.208
+  },
+  "text": "你好"
+}
