@@ -1,6 +1,6 @@
 # MOSS-TTS-Nano RK3576 Production Port
 
-Status: ONNX Runtime streaming baseline remains the production correctness fallback on RK3576. RKNN hybrid prefill runners are available only as explicit experiments: the original `ln2 + MLP` path improved TTFA but failed ASR roundtrip quality, while the newer `fc_out_only` path has better short sampler parity but is slower than full ORT at service level. Neither hybrid path may be promoted to the default production profile yet.
+Status: ONNX Runtime streaming baseline remains the production correctness fallback on RK3576. RKNN hybrid prefill runners are available only as explicit experiments: the original `ln2 + MLP` path improved TTFA but failed ASR roundtrip quality, the `fc_out_only` path has better short sampler parity but is slower than full ORT at service level, and the current best coarse prefill path `ln1_cattn` passes the 20-frame service streaming gate but is still slightly slower than full ORT under the short Junhao production prompt. No hybrid path may be promoted to the default production profile until it beats the canonical ORT service profile and passes the same ASR roundtrip quality gate.
 
 Official RKLLM custom export is also experimental for MOSS. The current
 embed-only folded `.rkllm` loads on RK3576, runs prefill/decode, and can produce
@@ -63,7 +63,7 @@ tts:
   allow_deterministic_fallback: 0
 ```
 
-The current RK3576 hybrid experimental profile is `configs/rk3576-moss-hybrid-rknn-stream.yaml`, also using backend name `moss_ort` with the hybrid prefill flags enabled. Hybrid strict mode must be enabled for verification so a missing or invalid RKNN island does not silently fall back to full ORT:
+The current RK3576 hybrid experimental profile is `configs/rk3576-moss-hybrid-rknn-stream.yaml`, also using backend name `moss_ort` with the hybrid prefill flags enabled. Hybrid strict mode must be enabled for verification so a missing or invalid RKNN island does not silently fall back to full ORT. The config file still records the older `fc_out_only` diagnostic route; the current best verified NPU prefill route is the explicit service-profile override `MOSS_ORT_HYBRID_SPLIT=ln1_cattn` with all 12 layers:
 
 ```yaml
 tts:
@@ -78,10 +78,10 @@ tts:
   hybrid_rknn: 1
   hybrid_strict: 1
   hybrid_seq_len: 320
-  hybrid_split: fc_out_only
-  hybrid_layers: 0,1,4,5,6
+  hybrid_split: ln1_cattn
+  hybrid_layers: all
   hybrid_dir: /opt/tts/models/moss-tts-nano-hybrid-rknn
-  hybrid_rknn_dir: /opt/tts/models/moss-tts-nano-hybrid-fc-split-rknn
+  hybrid_rknn_dir: /opt/tts/models/moss-tts-nano-hybrid-ln1-cattn-rknn
 ```
 
 Current production baseline should use ONNX Runtime for correctness and streamability while RKNN subgraphs are isolated. Required ORT baseline layout:
@@ -2422,6 +2422,36 @@ does not yet prove production quality because it only generated two frames and
 did not run ASR roundtrip. The next production gate should run the same
 `ln1_cattn` bundle through the existing service profiler with a realistic
 `max_new_frames` target, then roundtrip ASR if TTFA/chunk-count pass.
+
+The 20-frame service profile has now passed the streaming gate with the same
+Junhao/314 production voice settings as the canonical ORT fallback, strict
+hybrid mode, and all 12 `ln1_cattn` RKNN islands:
+
+```text
+evidence=docs/evidence/moss/rk3576-moss-service-profile-ln1-cattn-production.json
+MOSS_ORT_HYBRID_SPLIT=ln1_cattn
+MOSS_ORT_HYBRID_STRICT=1
+MOSS_ORT_HYBRID_LAYERS=all
+
+/tts/stream first_payload=1108.090 ms, wall=4635.766 ms
+/dialogue first_payload=1079.501 ms, wall=4677.058 ms
+dialogue binary_chunks=9, max_payload_gap=577.487 ms
+manifest_validated=true, voice=Junhao, seed=314, codec_batch_frames=3
+gates.passed=true
+```
+
+This is the strongest production-shaped RKNN route so far because it validates
+real FastAPI streaming rather than only isolated prefill parity. It is not yet a
+promotion candidate: the canonical full-ORT production profile on the same
+Junhao/314 setup still measured `/tts/stream first_payload=941.344 ms` and
+`/dialogue wall=4642.550 ms`. The practical conclusion is that `ln1_cattn`
+reduces long-prompt prefill cost, but the current service path pays enough
+RKNN/ORT handoff and fixed sampler/codec cost that it does not beat the tuned
+short-prompt ORT fallback. The next high-performance route should therefore
+target one of two things before more service integration: reduce handoff and
+remaining attention suffix overhead inside prefill, or move a numerically stable
+sampler/decode subpath to NPU so the first-audio path improves beyond prefill
+alone.
 
 ## Remaining Work
 

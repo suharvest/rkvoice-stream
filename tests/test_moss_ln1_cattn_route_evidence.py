@@ -77,3 +77,32 @@ def test_ln1_cattn_service_smoke_streams_audio_on_rk3576():
     assert first["mode"] == "text_hybrid_rknn"
     assert first["hybrid"]["layers"][0]["attention_kind"] == "rknn_ln1_cattn_suffix_ort"
     assert all(layer["mlp_kind"] == "rknn_ln2_mlp" for layer in first["hybrid"]["layers"])
+
+
+def test_ln1_cattn_production_service_profile_streams_but_is_not_promoted_over_ort():
+    hybrid = _load("rk3576-moss-service-profile-ln1-cattn-production.json")
+    ort = _load("rk3576-moss-canonical-profile.json")
+
+    assert hybrid["gates"]["passed"] is True
+    assert hybrid["gates"]["errors"] == []
+    assert hybrid["health"]["tts_info"]["manifest"]["validated"] is True
+    assert hybrid["health"]["tts_info"]["profile"]["voice"] == "Junhao"
+    assert hybrid["health"]["tts_info"]["profile"]["seed"] == 314
+    assert hybrid["health"]["tts_info"]["profile"]["codec_batch_frames"] == 3
+    assert hybrid["health"]["tts_info"]["hybrid"]["enabled"] is True
+    assert hybrid["health"]["tts_info"]["hybrid"]["strict"] is True
+    assert hybrid["health"]["tts_info"]["hybrid"]["split"] == "ln1_cattn"
+    assert hybrid["health"]["tts_info"]["hybrid"]["layers"] == list(range(12))
+    assert hybrid["health_after"]["tts_info"]["streaming_stats"]["requests"] == 2
+    assert hybrid["health_after"]["tts_info"]["streaming_stats"]["completed"] == 2
+    assert hybrid["health_after"]["tts_info"]["streaming_stats"]["errors"] == 0
+
+    assert hybrid["tts_stream"]["first_payload_ms"] <= 1500
+    assert hybrid["dialogue"]["first_payload_ms"] <= 1500
+    assert hybrid["dialogue"]["max_payload_gap_ms"] <= 1500
+    assert hybrid["dialogue"]["binary_chunks"] >= 7
+
+    # Under the current short Junhao production prompt, RKNN prefill offload is
+    # service-safe but not a service-level win over the canonical full-ORT route.
+    assert hybrid["tts_stream"]["first_payload_ms"] > ort["tts_stream"]["first_payload_ms"]
+    assert hybrid["dialogue"]["wall_ms"] > ort["dialogue"]["wall_ms"]
