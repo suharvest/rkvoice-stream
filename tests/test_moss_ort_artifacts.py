@@ -12,6 +12,7 @@ from rkvoice_stream.backends.tts.moss_ort import (
     MossORTArtifactError,
     default_moss_hybrid_artifacts,
     default_moss_hybrid_fc_split_artifacts,
+    default_moss_hybrid_ln1_cattn_artifacts,
     default_moss_hybrid_mlp_only_artifacts,
     default_moss_ort_artifacts,
     validate_moss_hybrid_artifacts,
@@ -318,6 +319,66 @@ def test_validate_moss_hybrid_artifacts_accepts_dual_root_fc_out_manifest(tmp_pa
     assert parsed["split"] == "prefill_fc_out_only"
 
 
+def test_validate_moss_hybrid_artifacts_accepts_dual_root_ln1_cattn_manifest(tmp_path):
+    artifact_dir = tmp_path / "base"
+    rknn_dir = tmp_path / "ln1-cattn"
+    artifact_dir.mkdir()
+    rknn_dir.mkdir()
+    layers = set(range(12))
+    for name in (
+        "moss_embedding_prefix.s320.onnx",
+        "moss_final_norm.s320.onnx",
+    ):
+        (artifact_dir / name).write_bytes(name.encode("utf-8"))
+    for name in (
+        *[f"moss_block{layer}_attn_after_cattn.s320.onnx" for layer in layers],
+        *[f"moss_block{layer}_ln1_cattn.s320.fp16.rk3576.rknn" for layer in layers],
+        *[f"moss_block{layer}_ln2_mlp.s320.fp16.rk3576.rknn" for layer in layers],
+    ):
+        (rknn_dir / name).write_bytes(name.encode("utf-8"))
+
+    artifacts = []
+    for name in ("moss_embedding_prefix.s320.onnx", "moss_final_norm.s320.onnx"):
+        data = (artifact_dir / name).read_bytes()
+        artifacts.append({"path": name, "required": True, "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+    for name in (
+        *[f"moss_block{layer}_attn_after_cattn.s320.onnx" for layer in layers],
+        *[f"moss_block{layer}_ln1_cattn.s320.fp16.rk3576.rknn" for layer in layers],
+        *[f"moss_block{layer}_ln2_mlp.s320.fp16.rk3576.rknn" for layer in layers],
+    ):
+        data = (rknn_dir / name).read_bytes()
+        artifacts.append(
+            {
+                "root": "rknn_dir",
+                "path": name,
+                "required": True,
+                "size_bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            }
+        )
+    manifest = {
+        "model_id": "moss-tts-nano-hybrid-rknn",
+        "target_platform": "rk3576",
+        "seq_len": 320,
+        "split": "prefill_ln1_cattn",
+        "rknn_layers": sorted(layers),
+        "artifacts": artifacts,
+        "quality_status": {"production_default": False},
+    }
+    (artifact_dir / "moss-hybrid-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    parsed = validate_moss_hybrid_artifacts(
+        artifact_dir,
+        seq_len=320,
+        target="rk3576",
+        split="ln1_cattn",
+        layers=layers,
+        rknn_dir=rknn_dir,
+    )
+
+    assert parsed["split"] == "prefill_ln1_cattn"
+
+
 def test_mlp_only_artifact_contract_includes_ln2_and_mlp_files():
     artifacts = default_moss_hybrid_mlp_only_artifacts(seq_len=320, target="rk3576")
 
@@ -334,6 +395,15 @@ def test_fc_out_artifact_contract_names():
     assert "moss_block0_ln2.s320.onnx" in artifacts
     assert "moss_block0_fc_in_act.s320.onnx" in artifacts
     assert "moss_block0_fc_out.s320.fp16.rk3576.rknn" in artifacts
+
+
+def test_ln1_cattn_artifact_contract_names():
+    artifacts = default_moss_hybrid_ln1_cattn_artifacts(seq_len=320, target="rk3576")
+
+    assert "moss_block0_attn_after_cattn.s320.onnx" in artifacts
+    assert "moss_block0_ln1_cattn.s320.fp16.rk3576.rknn" in artifacts
+    assert "moss_block0_ln2_mlp.s320.fp16.rk3576.rknn" in artifacts
+    assert "moss_block0_attn_residual.s320.onnx" not in artifacts
 
 
 def test_moss_ort_config_maps_hybrid_manifest_env(monkeypatch):

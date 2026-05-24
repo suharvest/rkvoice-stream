@@ -12,6 +12,7 @@ from rkvoice_stream.backends.tts.moss_ort import (
     _parse_hybrid_layers,
     _trim_kv_to_length,
     default_moss_hybrid_fc_split_artifacts,
+    default_moss_hybrid_ln1_cattn_artifacts,
 )
 
 
@@ -273,6 +274,17 @@ def test_moss_hybrid_fc_split_artifact_contract():
     assert "moss_block0_fc_out.s320.onnx" in fc_in
 
 
+def test_moss_hybrid_ln1_cattn_artifact_contract():
+    artifacts = default_moss_hybrid_ln1_cattn_artifacts(seq_len=320, target="rk3576")
+
+    assert "moss_embedding_prefix.s320.onnx" in artifacts
+    assert "moss_final_norm.s320.onnx" in artifacts
+    assert "moss_block0_attn_after_cattn.s320.onnx" in artifacts
+    assert "moss_block0_ln1_cattn.s320.fp16.rk3576.rknn" in artifacts
+    assert "moss_block0_ln2_mlp.s320.fp16.rk3576.rknn" in artifacts
+    assert "moss_block0_attn_residual.s320.onnx" not in artifacts
+
+
 def test_moss_hybrid_prefill_accepts_fc_split(monkeypatch, tmp_path):
     monkeypatch.delenv("MOSS_ORT_HYBRID_MANIFEST", raising=False)
     layers = {0, 1, 4}
@@ -298,6 +310,34 @@ def test_moss_hybrid_prefill_accepts_fc_split(monkeypatch, tmp_path):
     )
 
     assert session._split == "fc_out_only"
+    assert session._rknn_layers == {0, 1, 4}
+
+
+def test_moss_hybrid_prefill_accepts_ln1_cattn_split(monkeypatch, tmp_path):
+    monkeypatch.delenv("MOSS_ORT_HYBRID_MANIFEST", raising=False)
+    layers = {0, 1, 4}
+    for name in (
+        "moss_embedding_prefix.s320.onnx",
+        "moss_final_norm.s320.onnx",
+        *[f"moss_block{layer}_attn_residual.s320.onnx" for layer in range(12) if layer not in layers],
+        *[f"moss_block{layer}_ln2_mlp.s320.onnx" for layer in range(12) if layer not in layers],
+        *[f"moss_block{layer}_attn_after_cattn.s320.onnx" for layer in layers],
+        *[f"moss_block{layer}_ln1_cattn.s320.fp16.rk3576.rknn" for layer in layers],
+        *[f"moss_block{layer}_ln2_mlp.s320.fp16.rk3576.rknn" for layer in layers],
+    ):
+        (tmp_path / name).write_bytes(b"x")
+
+    session = _HybridPrefillSession(
+        artifact_dir=tmp_path,
+        seq_len=320,
+        threads=1,
+        ort_module=object(),
+        split="ln1_cattn",
+        layers=layers,
+        rknn_dir=tmp_path,
+    )
+
+    assert session._split == "ln1_cattn"
     assert session._rknn_layers == {0, 1, 4}
 
 

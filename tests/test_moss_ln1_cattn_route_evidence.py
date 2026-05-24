@@ -62,3 +62,18 @@ def test_ln1_cattn_integrated_prefill_improves_the_route_but_still_needs_service
     assert ln1_cattn_ms < cattn_ms < baseline_ms
     assert baseline_ms / ln1_cattn_ms > 1.15
     assert cattn_ms / ln1_cattn_ms > 1.07
+
+
+def test_ln1_cattn_service_smoke_streams_audio_on_rk3576():
+    smoke = _load("rk3576-moss-service-smoke-ln1-cattn.json")
+    summary = smoke["summary"]
+    first = summary["first_meta"]
+
+    assert smoke["gates"]["passed"] is True
+    assert summary["chunks"] >= 2
+    assert summary["audio_frames"] >= 2
+    assert summary["ttfa_ms"] < 1300
+    assert summary["hybrid_prefill_ms"] < 1050
+    assert first["mode"] == "text_hybrid_rknn"
+    assert first["hybrid"]["layers"][0]["attention_kind"] == "rknn_ln1_cattn_suffix_ort"
+    assert all(layer["mlp_kind"] == "rknn_ln2_mlp" for layer in first["hybrid"]["layers"])

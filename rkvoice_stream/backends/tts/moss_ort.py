@@ -125,6 +125,10 @@ def default_moss_hybrid_fc_split_artifacts(seq_len: int = 320, target: str = "rk
     return artifacts
 
 
+def default_moss_hybrid_ln1_cattn_artifacts(seq_len: int = 320, target: str = "rk3576") -> list[str]:
+    return _required_hybrid_artifacts_for_split(seq_len, target, "ln1_cattn")
+
+
 def _parse_hybrid_layers(raw: str | None) -> set[int]:
     text = str(raw or "all").strip().lower()
     if text in {"", "all"}:
@@ -249,6 +253,8 @@ def _normalize_hybrid_split(value: Any) -> str:
         "fc_in_act_only": "fc_in_act_only",
         "prefill_fc_out_only": "fc_out_only",
         "fc_out_only": "fc_out_only",
+        "prefill_ln1_cattn": "ln1_cattn",
+        "ln1_cattn": "ln1_cattn",
     }
     if raw not in aliases:
         raise MossORTArtifactError(f"Unexpected hybrid split: {raw!r}")
@@ -278,12 +284,22 @@ def _required_hybrid_artifact_entries_for_split(
         ("artifact_dir", f"moss_final_norm.s{seq_len}.onnx"),
     ]
     for layer in range(12):
-        artifacts.append(("artifact_dir", f"moss_block{layer}_attn_residual.s{seq_len}.onnx"))
+        if split == "ln1_cattn" and layer in selected_layers:
+            artifacts.append((split_root, f"moss_block{layer}_attn_after_cattn.s{seq_len}.onnx"))
+        else:
+            artifacts.append(("artifact_dir", f"moss_block{layer}_attn_residual.s{seq_len}.onnx"))
         if layer not in selected_layers:
             artifacts.append(("artifact_dir", f"moss_block{layer}_ln2_mlp.s{seq_len}.onnx"))
             continue
         if split == "ln2_mlp":
             artifacts.append((split_root, f"moss_block{layer}_ln2_mlp.s{seq_len}.fp16.{target}.rknn"))
+        elif split == "ln1_cattn":
+            artifacts.extend(
+                [
+                    (split_root, f"moss_block{layer}_ln1_cattn.s{seq_len}.fp16.{target}.rknn"),
+                    (split_root, f"moss_block{layer}_ln2_mlp.s{seq_len}.fp16.{target}.rknn"),
+                ]
+            )
         elif split == "mlp_only":
             artifacts.extend(
                 [
@@ -448,6 +464,10 @@ def _attention_input_name(layer: int) -> str:
     return f"/Mul_{22 + (layer - 1) * 6}_output_0"
 
 
+def _layer_suffix(layer: int) -> str:
+    return "" if layer == 0 else f"_{layer}"
+
+
 def _trim_kv_to_length(value: np.ndarray, length: int) -> np.ndarray:
     arr = np.asarray(value, dtype=np.float32)
     if arr.ndim >= 3 and arr.shape[2] >= length:
@@ -481,7 +501,7 @@ class _HybridRknnSession:
 
 
 class _HybridPrefillSession:
-    """Composed MOSS prefill: ORT attention slices + RKNN MLP islands."""
+    """Composed MOSS prefill from ORT CPU slices and stable RKNN islands."""
 
     def __init__(
         self,
@@ -504,13 +524,15 @@ class _HybridPrefillSession:
         self._rknn_layers = set(range(12)) if layers is None else set(layers)
         self._embedding = None
         self._final_norm = None
-        self._attention: list[Any] = []
+        self._attention: dict[int, Any] = {}
+        self._attention_suffix: dict[int, Any] = {}
+        self._ln1_cattn_rknn: dict[int, _HybridRknnSession] = {}
         self._mlp_rknn: dict[int, _HybridRknnSession] = {}
         self._mlp_ort: dict[int, Any] = {}
         self._ln2: dict[int, Any] = {}
         self._fc_in_act_ort: dict[int, Any] = {}
         self._fc_out_ort: dict[int, Any] = {}
-        if self._split not in {"ln2_mlp", "mlp_only", "fc_in_act_only", "fc_out_only"}:
+        if self._split not in {"ln2_mlp", "ln1_cattn", "mlp_only", "fc_in_act_only", "fc_out_only"}:
             raise ValueError(f"Unsupported MOSS hybrid split: {self._split}")
         self._validate_artifacts()
 
@@ -572,6 +594,37 @@ class _HybridPrefillSession:
                     for layer in self._rknn_layers
                     if not (Path(self.rknn_dir) / f"moss_block{layer}_fc_out.s{self.seq_len}.fp16.rk3576.rknn").exists()
                 )
+        elif self._split == "ln1_cattn":
+            required = [
+                f"moss_embedding_prefix.s{self.seq_len}.onnx",
+                f"moss_final_norm.s{self.seq_len}.onnx",
+                *[
+                    f"moss_block{layer}_attn_residual.s{self.seq_len}.onnx"
+                    for layer in range(12)
+                    if layer not in self._rknn_layers
+                ],
+                *[
+                    f"moss_block{layer}_ln2_mlp.s{self.seq_len}.onnx"
+                    for layer in range(12)
+                    if layer not in self._rknn_layers
+                ],
+            ]
+            missing = [name for name in required if not (self.artifact_dir / name).exists()]
+            missing.extend(
+                str(Path(self.rknn_dir) / f"moss_block{layer}_attn_after_cattn.s{self.seq_len}.onnx")
+                for layer in self._rknn_layers
+                if not (Path(self.rknn_dir) / f"moss_block{layer}_attn_after_cattn.s{self.seq_len}.onnx").exists()
+            )
+            missing.extend(
+                str(Path(self.rknn_dir) / f"moss_block{layer}_ln1_cattn.s{self.seq_len}.fp16.rk3576.rknn")
+                for layer in self._rknn_layers
+                if not (Path(self.rknn_dir) / f"moss_block{layer}_ln1_cattn.s{self.seq_len}.fp16.rk3576.rknn").exists()
+            )
+            missing.extend(
+                str(Path(self.rknn_dir) / f"moss_block{layer}_ln2_mlp.s{self.seq_len}.fp16.rk3576.rknn")
+                for layer in self._rknn_layers
+                if not (Path(self.rknn_dir) / f"moss_block{layer}_ln2_mlp.s{self.seq_len}.fp16.rk3576.rknn").exists()
+            )
         else:
             required = [
                 f"moss_embedding_prefix.s{self.seq_len}.onnx",
@@ -602,10 +655,25 @@ class _HybridPrefillSession:
     def preload(self) -> None:
         self._embedding = self._make_ort_session(self.artifact_dir / f"moss_embedding_prefix.s{self.seq_len}.onnx")
         self._final_norm = self._make_ort_session(self.artifact_dir / f"moss_final_norm.s{self.seq_len}.onnx")
-        self._attention = [
-            self._make_ort_session(self.artifact_dir / f"moss_block{layer}_attn_residual.s{self.seq_len}.onnx")
-            for layer in range(12)
-        ]
+        if self._split == "ln1_cattn":
+            self._attention = {
+                layer: self._make_ort_session(self.artifact_dir / f"moss_block{layer}_attn_residual.s{self.seq_len}.onnx")
+                for layer in range(12)
+                if layer not in self._rknn_layers
+            }
+            self._attention_suffix = {
+                layer: self._make_ort_session(self.rknn_dir / f"moss_block{layer}_attn_after_cattn.s{self.seq_len}.onnx")
+                for layer in self._rknn_layers
+            }
+            self._ln1_cattn_rknn = {
+                layer: _HybridRknnSession(self.rknn_dir / f"moss_block{layer}_ln1_cattn.s{self.seq_len}.fp16.rk3576.rknn")
+                for layer in self._rknn_layers
+            }
+        else:
+            self._attention = {
+                layer: self._make_ort_session(self.artifact_dir / f"moss_block{layer}_attn_residual.s{self.seq_len}.onnx")
+                for layer in range(12)
+            }
         self._mlp_ort = {
             layer: self._make_ort_session(self.artifact_dir / f"moss_block{layer}_ln2_mlp.s{self.seq_len}.onnx")
             for layer in range(12)
@@ -646,7 +714,7 @@ class _HybridPrefillSession:
             }
 
     def run(self, input_ids: np.ndarray, attention_mask: np.ndarray) -> tuple[np.ndarray, dict[str, np.ndarray], dict[str, Any]]:
-        if self._embedding is None or self._final_norm is None or len(self._attention) != 12:
+        if self._embedding is None or self._final_norm is None:
             raise RuntimeError("MOSS hybrid prefill is not preloaded")
         actual_len = int(input_ids.shape[1])
         if actual_len > self.seq_len:
@@ -665,10 +733,21 @@ class _HybridPrefillSession:
         for layer in range(12):
             layer_start = time.perf_counter()
             attn_start = time.perf_counter()
-            attn_residual, key, value = self._attention[layer].run(
-                None,
-                {_attention_input_name(layer): hidden, "attention_mask": padded_mask},
-            )
+            if self._split == "ln1_cattn" and layer in self._rknn_layers:
+                qkv = self._ln1_cattn_rknn[layer].run(np.asarray(hidden * mask3, dtype=np.float32))
+                suffix_inputs = {
+                    f"/c_attn{_layer_suffix(layer)}/Add_output_0": qkv,
+                    _attention_input_name(layer): hidden,
+                    "attention_mask": padded_mask,
+                }
+                attn_residual, key, value = self._attention_suffix[layer].run(None, suffix_inputs)
+                attention_kind = "rknn_ln1_cattn_suffix_ort"
+            else:
+                attn_residual, key, value = self._attention[layer].run(
+                    None,
+                    {_attention_input_name(layer): hidden, "attention_mask": padded_mask},
+                )
+                attention_kind = "ort_attn_residual"
             attn_ms = (time.perf_counter() - attn_start) * 1000.0
             mlp_start = time.perf_counter()
             if layer in self._rknn_layers:
@@ -705,6 +784,7 @@ class _HybridPrefillSession:
             timings["layers"].append(
                 {
                     "layer": layer,
+                    "attention_kind": attention_kind,
                     "attention_ms": round(attn_ms, 3),
                     "mlp_kind": mlp_kind,
                     "mlp_ms": round(mlp_ms, 3),
@@ -732,10 +812,17 @@ class _HybridPrefillSession:
                 logger.exception("Failed to release MOSS hybrid RKNN session")
         self._mlp_rknn = {}
         self._mlp_ort = {}
+        self._attention_suffix = {}
+        for session in self._ln1_cattn_rknn.values():
+            try:
+                session.release()
+            except Exception:
+                logger.exception("Failed to release MOSS ln1_cattn RKNN session")
+        self._ln1_cattn_rknn = {}
         self._ln2 = {}
         self._fc_in_act_ort = {}
         self._fc_out_ort = {}
-        self._attention = []
+        self._attention = {}
         self._embedding = None
         self._final_norm = None
 
