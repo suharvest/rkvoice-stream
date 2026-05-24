@@ -1,0 +1,221 @@
+{
+  "onnx": "/home/harve/models/moss-rknn-rk3576-codec-castfix-probe/moss_audio_tokenizer_decode_step.f1.xorfix.sim.int64offsets.onnx",
+  "out_dir": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch",
+  "target": "rk3576",
+  "precision": "fp16",
+  "layers": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "available_layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "disable_rules": [
+    "merge_conv_channel_inner_perm"
+  ],
+  "elapsed_s": 2.132,
+  "passed": true,
+  "results": [
+    {
+      "spec": {
+        "layer": 0,
+        "out_proj_node": "/out_proj_16/MatMul",
+        "inputs": [
+          "/Reshape_3_output_0",
+          "/input_proj/MatMul_output_0"
+        ],
+        "output": "/Add_20_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch/_fixed_onnx/codec_suffix_layer0_outproj_ffn.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch/codec_suffix_layer0_outproj_ffn.fp16.rk3576.rknn",
+      "onnx_size_bytes": 2366344,
+      "onnx_sha256": "e99fc54d39a9dfb975ce5efc5f9efbf84c99726076b5e9e1b65f20ba3cf09059",
+      "rknn_build": {
+        "name": "codec_suffix_layer0_outproj_ffn.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.185,
+        "input_names": [
+          "/Reshape_3_output_0",
+          "/input_proj/MatMul_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            4,
+            256
+          ],
+          [
+            1,
+            4,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float",
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 1317886,
+        "sha256": "582727281d8eaef0795b83449230264fb167c1208f23afbf08b76eb4d2c0893b"
+      },
+      "status": "OK",
+      "elapsed_s": 1.105
+    },
+    {
+      "spec": {
+        "layer": 1,
+        "out_proj_node": "/out_proj_17/MatMul",
+        "inputs": [
+          "/Reshape_7_output_0",
+          "/Add_20_output_0"
+        ],
+        "output": "/Add_25_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch/_fixed_onnx/codec_suffix_layer1_outproj_ffn.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch/codec_suffix_layer1_outproj_ffn.fp16.rk3576.rknn",
+      "onnx_size_bytes": 2366393,
+      "onnx_sha256": "13892345d5ca629a46715f71596e17339689cbb3bc55d8f3cccc207d39436e72",
+      "rknn_build": {
+        "name": "codec_suffix_layer1_outproj_ffn.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.124,
+        "input_names": [
+          "/Reshape_7_output_0",
+          "/Add_20_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            4,
+            256
+          ],
+          [
+            1,
+            4,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float",
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 1317747,
+        "sha256": "bcb1103a1a342e59badf48853258aca94586cfa88c072bf7127003a1f4d9d118"
+      },
+      "status": "OK",
+      "elapsed_s": 0.303
+    },
+    {
+      "spec": {
+        "layer": 2,
+        "out_proj_node": "/out_proj_18/MatMul",
+        "inputs": [
+          "/Reshape_11_output_0",
+          "/Add_25_output_0"
+        ],
+        "output": "/Add_30_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch/_fixed_onnx/codec_suffix_layer2_outproj_ffn.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch/codec_suffix_layer2_outproj_ffn.fp16.rk3576.rknn",
+      "onnx_size_bytes": 2366396,
+      "onnx_sha256": "ba9c977f17d624c1cc7a218ed63eb9c6c76ee39a6b188180ba9751b872b469f7",
+      "rknn_build": {
+        "name": "codec_suffix_layer2_outproj_ffn.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.127,
+        "input_names": [
+          "/Reshape_11_output_0",
+          "/Add_25_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            4,
+            256
+          ],
+          [
+            1,
+            4,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float",
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 1317748,
+        "sha256": "c25e2c5dd9eb925f226d4f1eeaa67af44caceb41acacbceb5ad851d27ee176a6"
+      },
+      "status": "OK",
+      "elapsed_s": 0.286
+    },
+    {
+      "spec": {
+        "layer": 3,
+        "out_proj_node": "/out_proj_19/MatMul",
+        "inputs": [
+          "/Reshape_15_output_0",
+          "/Add_30_output_0"
+        ],
+        "output": "/Add_35_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch/_fixed_onnx/codec_suffix_layer3_outproj_ffn.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch/codec_suffix_layer3_outproj_ffn.fp16.rk3576.rknn",
+      "onnx_size_bytes": 2366396,
+      "onnx_sha256": "1c1672896dc2f1ea251869b9bf2a79e5becf34e72e54a7836fe720d558711e0f",
+      "rknn_build": {
+        "name": "codec_suffix_layer3_outproj_ffn.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.128,
+        "input_names": [
+          "/Reshape_15_output_0",
+          "/Add_30_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            4,
+            256
+          ],
+          [
+            1,
+            4,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float",
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 1317748,
+        "sha256": "3a942949e25b7abfd6ac6e3f62c41da3305f7ee90e54eed06324036ef8330dc8"
+      },
+      "status": "OK",
+      "elapsed_s": 0.247
+    }
+  ]
+}

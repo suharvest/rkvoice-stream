@@ -29,7 +29,8 @@ def test_probe_infers_moss_cases_from_filename():
     assert _case_from_name(Path("moss_sampler_mlp0.fp16.rk3576.rknn"), "auto") == "sampler_island_float"
     assert _case_from_name(Path("moss_sampler_mlps0.fp16.rk3576.rknn"), "auto") == "sampler_mlps"
     assert _case_from_name(Path("moss_sampler_audio_heads0.fp16.rk3576.rknn"), "auto") == "sampler_audio_heads"
-    assert _case_from_name(Path("codec_suffix_layer0_outproj_ffn.fp16.rk3576.rknn"), "auto") == "codec_suffix_layer0_outproj_ffn"
+    assert _case_from_name(Path("codec_suffix_layer0_outproj_ffn.fp16.rk3576.rknn"), "auto") == "codec_suffix_outproj_ffn"
+    assert _case_from_name(Path("codec_suffix_layer11_outproj_ffn.fp16.rk3576.rknn"), "auto") == "codec_suffix_outproj_ffn"
     assert _case_from_name(Path("codec_decode_step.f4.fp16.rk3576.rknn"), "auto") == "codec"
 
 
@@ -144,11 +145,15 @@ def test_probe_codec_int64offset_uses_int64_for_offset_and_position_inputs():
     assert inputs["attn_cached_keys_0"].dtype == np.dtype("float32")
 
 
-def test_probe_codec_suffix_layer0_outproj_ffn_uses_two_float_inputs():
-    inputs = _inputs_for_case("codec_suffix_layer0_outproj_ffn", Path("codec_suffix_layer0_outproj_ffn.fp16.rknn"))
+def test_probe_codec_suffix_outproj_ffn_uses_two_float_inputs():
+    first = _inputs_for_case("codec_suffix_outproj_ffn", Path("codec_suffix_layer0_outproj_ffn.fp16.rknn"))
+    mid = _inputs_for_case("codec_suffix_outproj_ffn", Path("codec_suffix_layer6_outproj_ffn.fp16.rknn"))
+    late = _inputs_for_case("codec_suffix_outproj_ffn", Path("codec_suffix_layer11_outproj_ffn.fp16.rknn"))
 
-    assert [x.shape for x in inputs] == [(1, 4, 256), (1, 4, 256)]
-    assert [x.dtype for x in inputs] == [np.dtype("float32"), np.dtype("float32")]
+    assert [x.shape for x in first] == [(1, 4, 256), (1, 4, 256)]
+    assert [x.shape for x in mid] == [(1, 16, 256), (1, 16, 256)]
+    assert [x.shape for x in late] == [(1, 32, 256), (1, 32, 256)]
+    assert [x.dtype for x in late] == [np.dtype("float32"), np.dtype("float32")]
 
 
 def test_probe_attention_residual_inputs_include_mask():

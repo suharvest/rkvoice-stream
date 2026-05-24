@@ -1,0 +1,563 @@
+{
+  "summary": {
+    "total": 12,
+    "ok": 12,
+    "crash": 0,
+    "timeout": 0,
+    "missing": 0
+  },
+  "results": [
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer0_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer0_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          4,
+          256
+        ],
+        [
+          1,
+          4,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 2.024,
+      "load_ret": 0,
+      "init_ms": 119.935,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 2.606,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            4,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.4990234375,
+          "max": 0.58349609375,
+          "mean": 0.0010949745774269104
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1219.019,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer10_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer10_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          32,
+          256
+        ],
+        [
+          1,
+          32,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 1.962,
+      "load_ret": 0,
+      "init_ms": 134.63,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 3.071,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            32,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.51318359375,
+          "max": 0.5087890625,
+          "mean": 0.0001784786581993103
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1244.901,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer11_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer11_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          32,
+          256
+        ],
+        [
+          1,
+          32,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 1.907,
+      "load_ret": 0,
+      "init_ms": 133.742,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 2.977,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            32,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.5029296875,
+          "max": 0.5009765625,
+          "mean": 0.00022432208061218262
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1247.417,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer1_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer1_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          4,
+          256
+        ],
+        [
+          1,
+          4,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 1.992,
+      "load_ret": 0,
+      "init_ms": 136.021,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 2.685,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            4,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.546875,
+          "max": 0.7109375,
+          "mean": 0.00015191733837127686
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1253.333,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer2_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer2_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          4,
+          256
+        ],
+        [
+          1,
+          4,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 1.967,
+      "load_ret": 0,
+      "init_ms": 116.698,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 2.471,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            4,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.564453125,
+          "max": 0.60498046875,
+          "mean": -0.002070583403110504
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1226.396,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer3_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer3_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          4,
+          256
+        ],
+        [
+          1,
+          4,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 2.003,
+      "load_ret": 0,
+      "init_ms": 116.235,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 2.526,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            4,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.78076171875,
+          "max": 0.5771484375,
+          "mean": -0.004145197570323944
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1298.991,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer4_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer4_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          8,
+          256
+        ],
+        [
+          1,
+          8,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 2.069,
+      "load_ret": 0,
+      "init_ms": 134.046,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 3.426,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            8,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.5205078125,
+          "max": 0.51416015625,
+          "mean": -0.00046196579933166504
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1268.265,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer5_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer5_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          8,
+          256
+        ],
+        [
+          1,
+          8,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 2.138,
+      "load_ret": 0,
+      "init_ms": 134.352,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 2.513,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            8,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.70947265625,
+          "max": 0.52294921875,
+          "mean": -0.006356954574584961
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1221.461,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer6_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer6_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          16,
+          256
+        ],
+        [
+          1,
+          16,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 2.086,
+      "load_ret": 0,
+      "init_ms": 130.442,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 2.706,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            16,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.61474609375,
+          "max": 0.578125,
+          "mean": 0.00032632797956466675
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1191.534,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer7_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer7_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          16,
+          256
+        ],
+        [
+          1,
+          16,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 1.896,
+      "load_ret": 0,
+      "init_ms": 132.446,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 2.937,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            16,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -2.390625,
+          "max": 2.517578125,
+          "mean": 0.049685053527355194
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1314.954,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer8_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer8_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          32,
+          256
+        ],
+        [
+          1,
+          32,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 1.861,
+      "load_ret": 0,
+      "init_ms": 133.216,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 3.015,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            32,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.7080078125,
+          "max": 0.6396484375,
+          "mean": 0.0001458674669265747
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1272.691,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    },
+    {
+      "path": "/home/cat/moss-rknn-codec-suffix-batch/codec_suffix_layer9_outproj_ffn.fp16.rk3576.rknn",
+      "name": "codec_suffix_layer9_outproj_ffn.fp16.rk3576.rknn",
+      "case": "codec_suffix_outproj_ffn",
+      "pass_through": "auto",
+      "input_shapes": [
+        [
+          1,
+          32,
+          256
+        ],
+        [
+          1,
+          32,
+          256
+        ]
+      ],
+      "input_dtypes": [
+        "float32",
+        "float32"
+      ],
+      "status": "OK",
+      "load_ms": 1.991,
+      "load_ret": 0,
+      "init_ms": 135.842,
+      "init_ret": 0,
+      "phase": "inference",
+      "infer_ms": 3.332,
+      "outputs": [
+        {
+          "shape": [
+            1,
+            32,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "min": -0.51708984375,
+          "max": 0.501953125,
+          "mean": 0.00019815564155578613
+        }
+      ],
+      "returncode": 0,
+      "elapsed_ms": 1276.683,
+      "stderr_tail": "W rknn-toolkit-lite2 version: 2.3.2\nW Query dynamic range failed. Ret code: RKNN_ERR_MODEL_INVALID. (If it is a static shape RKNN model, please ignore the above warning message.)\n"
+    }
+  ]
+}
