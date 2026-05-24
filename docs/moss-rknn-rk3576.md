@@ -352,6 +352,12 @@ Codec RKNN status as of the RK3576 `f1` probes:
   12 codec transformer layers. All 12 `codec_suffix_layer*_outproj_ffn` RKNNs
   build from the fixed `f1` codec graph and run on RK3576 with finite output;
   single-island `infer_ms` ranges from `2.471` to `3.426`.
+  `verify_moss_codec_split_layer_pipeline.py` now validates each codec
+  transformer layer as `front ORT -> middle ORT -> suffix ORT` against a full
+  extracted layer subgraph. All 12 layers pass with `max_abs=0`,
+  `max_rel_l2=0`, and `min_cosine=0.999999893`; WSL2 summed layer timing is
+  `16.803 ms` for full-layer ORT versus `17.473 ms` for split ORT before
+  replacing front/suffix with RKNN.
 
 Evidence:
 
@@ -373,6 +379,7 @@ Evidence:
 - `docs/evidence/moss/wsl2-moss-codec-front-layers0-11-build.json`
 - `docs/evidence/moss/rk3576-moss-codec-front-layers0-11-runtime-probe-auto.json`
 - `docs/evidence/moss/wsl2-moss-codec-middle-layers0-11-extract-ort.json`
+- `docs/evidence/moss/wsl2-moss-codec-split-layer-pipeline-parity-layers0-11.json`
 
 ## Gates
 
@@ -2581,8 +2588,10 @@ target is a sampler/decode/codec path that reduces the fixed first-audio cost.
 - Continue codec split implementation from the verified boundaries: front RKNN
   through Q/K/V, CPU RoPE/attention, suffix RKNN for out-projection + FFN. The
   12 front islands, 12 CPU attention bridges, and 12 suffix islands are
-  extracted/verified as standalone pieces; the next step is to implement the
-  streaming pipeline runner and prove ORT parity plus end-to-end codec latency.
+  extracted/verified as standalone pieces, and the ORT-level per-layer split
+  pipeline is exact against full-layer subgraphs; the next step is to implement
+  the streaming runner with RKNN front/suffix and prove full codec audio/cache
+  parity plus end-to-end codec latency.
 - Split sampler/decode further before RKNN conversion. The current monolithic sampler/decode graphs load but crash on RK3576 inference.
 - Convert fixed-shape RKNN buckets and generate `moss-rknn-manifest.json` only after single-bucket RK3576 inference is stable.
 - Implement and compile `/opt/rkvoice-workers/moss_rknn_worker` against RKNN C API.

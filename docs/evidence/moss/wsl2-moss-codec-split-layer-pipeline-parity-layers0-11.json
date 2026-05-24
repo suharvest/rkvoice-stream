@@ -1,0 +1,1880 @@
+{
+  "source_onnx": "/home/harve/models/moss-rknn-rk3576-codec-xorfix-sim/moss_audio_tokenizer_decode_step.f1.xorfix.sim.onnx",
+  "front_dir": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all",
+  "middle_dir": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all",
+  "suffix_dir": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all",
+  "out_dir": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline",
+  "layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "available_layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "gates": {
+    "max_rel_l2": 1e-05,
+    "max_abs": 0.0001,
+    "min_cosine": 0.999999
+  },
+  "elapsed_s": 3.412,
+  "passed": true,
+  "results": [
+    {
+      "layer": 0,
+      "spec": {
+        "full_inputs": [
+          "/input_proj/MatMul_output_0",
+          "attn_offset_0",
+          "attn_cached_keys_0",
+          "attn_cached_values_0",
+          "attn_cached_positions_0"
+        ],
+        "full_outputs": [
+          "/Add_20_output_0",
+          "attn_offset_out_0",
+          "attn_cached_keys_out_0",
+          "attn_cached_values_out_0",
+          "attn_cached_positions_out_0"
+        ],
+        "front": {
+          "layer": 0,
+          "in_proj_node": "/in_proj/MatMul",
+          "input": "/input_proj/MatMul_output_0",
+          "output": "/Transpose_18_output_0"
+        },
+        "middle": {
+          "layer": 0,
+          "front_output": "/Transpose_18_output_0",
+          "inputs": [
+            "/Transpose_18_output_0",
+            "attn_offset_0",
+            "attn_cached_keys_0",
+            "attn_cached_values_0",
+            "attn_cached_positions_0"
+          ],
+          "outputs": [
+            "/Reshape_3_output_0",
+            "attn_offset_out_0",
+            "attn_cached_keys_out_0",
+            "attn_cached_values_out_0",
+            "attn_cached_positions_out_0"
+          ]
+        },
+        "suffix": {
+          "layer": 0,
+          "out_proj_node": "/out_proj_16/MatMul",
+          "inputs": [
+            "/Reshape_3_output_0",
+            "/input_proj/MatMul_output_0"
+          ],
+          "output": "/Add_20_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer0_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer0_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer0_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer0_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 0.673,
+        "front": 0.072,
+        "middle": 0.366,
+        "suffix": 0.119,
+        "split_total": 0.558
+      },
+      "metrics": {
+        "/Add_20_output_0": {
+          "shape": [
+            1,
+            4,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999614673319,
+          "ref_min": -0.541265606880188,
+          "ref_max": 0.7482355833053589,
+          "got_min": -0.541265606880188,
+          "got_max": 0.7482355833053589
+        },
+        "attn_offset_out_0": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999999999376,
+          "ref_min": 4.0,
+          "ref_max": 4.0,
+          "got_min": 4.0,
+          "got_max": 4.0
+        },
+        "attn_cached_keys_out_0": {
+          "shape": [
+            1,
+            4,
+            500,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000491944567,
+          "ref_min": -1.9670177698135376,
+          "ref_max": 2.2423112392425537,
+          "got_min": -1.9670177698135376,
+          "got_max": 2.2423112392425537
+        },
+        "attn_cached_values_out_0": {
+          "shape": [
+            1,
+            4,
+            500,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000960974882,
+          "ref_min": -1.242749571800232,
+          "ref_max": 1.149389386177063,
+          "got_min": -1.242749571800232,
+          "got_max": 1.149389386177063
+        },
+        "attn_cached_positions_out_0": {
+          "shape": [
+            1,
+            500
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000095111012,
+          "ref_min": -1.0,
+          "ref_max": 3.0,
+          "got_min": -1.0,
+          "got_max": 3.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "b8ae48a7c4941326f07ee2e8e868e36419a7b0f031678bf9bfd3b72326fabd5a"
+    },
+    {
+      "layer": 1,
+      "spec": {
+        "full_inputs": [
+          "/Add_20_output_0",
+          "attn_offset_1",
+          "attn_cached_keys_1",
+          "attn_cached_values_1",
+          "attn_cached_positions_1"
+        ],
+        "full_outputs": [
+          "/Add_25_output_0",
+          "attn_offset_out_1",
+          "attn_cached_keys_out_1",
+          "attn_cached_values_out_1",
+          "attn_cached_positions_out_1"
+        ],
+        "front": {
+          "layer": 1,
+          "in_proj_node": "/in_proj_1/MatMul",
+          "input": "/Add_20_output_0",
+          "output": "/Transpose_21_output_0"
+        },
+        "middle": {
+          "layer": 1,
+          "front_output": "/Transpose_21_output_0",
+          "inputs": [
+            "/Transpose_21_output_0",
+            "attn_offset_1",
+            "attn_cached_keys_1",
+            "attn_cached_values_1",
+            "attn_cached_positions_1"
+          ],
+          "outputs": [
+            "/Reshape_7_output_0",
+            "attn_offset_out_1",
+            "attn_cached_keys_out_1",
+            "attn_cached_values_out_1",
+            "attn_cached_positions_out_1"
+          ]
+        },
+        "suffix": {
+          "layer": 1,
+          "out_proj_node": "/out_proj_17/MatMul",
+          "inputs": [
+            "/Reshape_7_output_0",
+            "/Add_20_output_0"
+          ],
+          "output": "/Add_25_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer1_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer1_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer1_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer1_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 1.411,
+        "front": 0.144,
+        "middle": 0.977,
+        "suffix": 0.264,
+        "split_total": 1.384
+      },
+      "metrics": {
+        "/Add_25_output_0": {
+          "shape": [
+            1,
+            4,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999597479116,
+          "ref_min": -0.5767568349838257,
+          "ref_max": 0.5107009410858154,
+          "got_min": -0.5767568349838257,
+          "got_max": 0.5107009410858154
+        },
+        "attn_offset_out_1": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999999999376,
+          "ref_min": 4.0,
+          "ref_max": 4.0,
+          "got_min": 4.0,
+          "got_max": 4.0
+        },
+        "attn_cached_keys_out_1": {
+          "shape": [
+            1,
+            4,
+            500,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000306319596,
+          "ref_min": -2.4769129753112793,
+          "ref_max": 1.9146263599395752,
+          "got_min": -2.4769129753112793,
+          "got_max": 1.9146263599395752
+        },
+        "attn_cached_values_out_1": {
+          "shape": [
+            1,
+            4,
+            500,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999751910044,
+          "ref_min": -1.7341033220291138,
+          "ref_max": 1.485094428062439,
+          "got_min": -1.7341033220291138,
+          "got_max": 1.485094428062439
+        },
+        "attn_cached_positions_out_1": {
+          "shape": [
+            1,
+            500
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000095111012,
+          "ref_min": -1.0,
+          "ref_max": 3.0,
+          "got_min": -1.0,
+          "got_max": 3.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "d9e3936184321c49abeaf75d7e7c5f0c54c06cc69769b9208c909f2e671ba774"
+    },
+    {
+      "layer": 2,
+      "spec": {
+        "full_inputs": [
+          "/Add_25_output_0",
+          "attn_offset_2",
+          "attn_cached_keys_2",
+          "attn_cached_values_2",
+          "attn_cached_positions_2"
+        ],
+        "full_outputs": [
+          "/Add_30_output_0",
+          "attn_offset_out_2",
+          "attn_cached_keys_out_2",
+          "attn_cached_values_out_2",
+          "attn_cached_positions_out_2"
+        ],
+        "front": {
+          "layer": 2,
+          "in_proj_node": "/in_proj_2/MatMul",
+          "input": "/Add_25_output_0",
+          "output": "/Transpose_24_output_0"
+        },
+        "middle": {
+          "layer": 2,
+          "front_output": "/Transpose_24_output_0",
+          "inputs": [
+            "/Transpose_24_output_0",
+            "attn_offset_2",
+            "attn_cached_keys_2",
+            "attn_cached_values_2",
+            "attn_cached_positions_2"
+          ],
+          "outputs": [
+            "/Reshape_11_output_0",
+            "attn_offset_out_2",
+            "attn_cached_keys_out_2",
+            "attn_cached_values_out_2",
+            "attn_cached_positions_out_2"
+          ]
+        },
+        "suffix": {
+          "layer": 2,
+          "out_proj_node": "/out_proj_18/MatMul",
+          "inputs": [
+            "/Reshape_11_output_0",
+            "/Add_25_output_0"
+          ],
+          "output": "/Add_30_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer2_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer2_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer2_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer2_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 0.633,
+        "front": 0.074,
+        "middle": 0.356,
+        "suffix": 0.129,
+        "split_total": 0.559
+      },
+      "metrics": {
+        "/Add_30_output_0": {
+          "shape": [
+            1,
+            4,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000281192023,
+          "ref_min": -0.5060073733329773,
+          "ref_max": 0.7030351161956787,
+          "got_min": -0.5060073733329773,
+          "got_max": 0.7030351161956787
+        },
+        "attn_offset_out_2": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999999999376,
+          "ref_min": 4.0,
+          "ref_max": 4.0,
+          "got_min": 4.0,
+          "got_max": 4.0
+        },
+        "attn_cached_keys_out_2": {
+          "shape": [
+            1,
+            4,
+            500,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999610966951,
+          "ref_min": -2.454965591430664,
+          "ref_max": 2.966787815093994,
+          "got_min": -2.454965591430664,
+          "got_max": 2.966787815093994
+        },
+        "attn_cached_values_out_2": {
+          "shape": [
+            1,
+            4,
+            500,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000001004176884,
+          "ref_min": -2.062947988510132,
+          "ref_max": 1.7897999286651611,
+          "got_min": -2.062947988510132,
+          "got_max": 1.7897999286651611
+        },
+        "attn_cached_positions_out_2": {
+          "shape": [
+            1,
+            500
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000095111012,
+          "ref_min": -1.0,
+          "ref_max": 3.0,
+          "got_min": -1.0,
+          "got_max": 3.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "a9577b9214e27cdc6bb82c76f74607d0c509f408c25a657638cdabb4e0c7714e"
+    },
+    {
+      "layer": 3,
+      "spec": {
+        "full_inputs": [
+          "/Add_30_output_0",
+          "attn_offset_3",
+          "attn_cached_keys_3",
+          "attn_cached_values_3",
+          "attn_cached_positions_3"
+        ],
+        "full_outputs": [
+          "/Add_35_output_0",
+          "attn_offset_out_3",
+          "attn_cached_keys_out_3",
+          "attn_cached_values_out_3",
+          "attn_cached_positions_out_3"
+        ],
+        "front": {
+          "layer": 3,
+          "in_proj_node": "/in_proj_3/MatMul",
+          "input": "/Add_30_output_0",
+          "output": "/Transpose_27_output_0"
+        },
+        "middle": {
+          "layer": 3,
+          "front_output": "/Transpose_27_output_0",
+          "inputs": [
+            "/Transpose_27_output_0",
+            "attn_offset_3",
+            "attn_cached_keys_3",
+            "attn_cached_values_3",
+            "attn_cached_positions_3"
+          ],
+          "outputs": [
+            "/Reshape_15_output_0",
+            "attn_offset_out_3",
+            "attn_cached_keys_out_3",
+            "attn_cached_values_out_3",
+            "attn_cached_positions_out_3"
+          ]
+        },
+        "suffix": {
+          "layer": 3,
+          "out_proj_node": "/out_proj_19/MatMul",
+          "inputs": [
+            "/Reshape_15_output_0",
+            "/Add_30_output_0"
+          ],
+          "output": "/Add_35_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer3_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer3_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer3_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer3_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 0.779,
+        "front": 0.095,
+        "middle": 0.479,
+        "suffix": 0.202,
+        "split_total": 0.776
+      },
+      "metrics": {
+        "/Add_35_output_0": {
+          "shape": [
+            1,
+            4,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999642135557,
+          "ref_min": -0.6469002962112427,
+          "ref_max": 0.6801077127456665,
+          "got_min": -0.6469002962112427,
+          "got_max": 0.6801077127456665
+        },
+        "attn_offset_out_3": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999999999376,
+          "ref_min": 4.0,
+          "ref_max": 4.0,
+          "got_min": 4.0,
+          "got_max": 4.0
+        },
+        "attn_cached_keys_out_3": {
+          "shape": [
+            1,
+            4,
+            500,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999221628881,
+          "ref_min": -3.156013250350952,
+          "ref_max": 4.151144981384277,
+          "got_min": -3.156013250350952,
+          "got_max": 4.151144981384277
+        },
+        "attn_cached_values_out_3": {
+          "shape": [
+            1,
+            4,
+            500,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999016101456,
+          "ref_min": -2.0341715812683105,
+          "ref_max": 2.1402573585510254,
+          "got_min": -2.0341715812683105,
+          "got_max": 2.1402573585510254
+        },
+        "attn_cached_positions_out_3": {
+          "shape": [
+            1,
+            500
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000095111012,
+          "ref_min": -1.0,
+          "ref_max": 3.0,
+          "got_min": -1.0,
+          "got_max": 3.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "06eef2ad56d16e07b1ef6c83d27d7444b3daaa97bcc314b7d60e0a54bc134ce0"
+    },
+    {
+      "layer": 4,
+      "spec": {
+        "full_inputs": [
+          "/input_proj_1/MatMul_output_0",
+          "attn_offset_4",
+          "attn_cached_keys_4",
+          "attn_cached_values_4",
+          "attn_cached_positions_4"
+        ],
+        "full_outputs": [
+          "/Add_41_output_0",
+          "attn_offset_out_4",
+          "attn_cached_keys_out_4",
+          "attn_cached_values_out_4",
+          "attn_cached_positions_out_4"
+        ],
+        "front": {
+          "layer": 4,
+          "in_proj_node": "/in_proj_4/MatMul",
+          "input": "/input_proj_1/MatMul_output_0",
+          "output": "/Transpose_32_output_0"
+        },
+        "middle": {
+          "layer": 4,
+          "front_output": "/Transpose_32_output_0",
+          "inputs": [
+            "/Transpose_32_output_0",
+            "attn_offset_4",
+            "attn_cached_keys_4",
+            "attn_cached_values_4",
+            "attn_cached_positions_4"
+          ],
+          "outputs": [
+            "/Reshape_19_output_0",
+            "attn_offset_out_4",
+            "attn_cached_keys_out_4",
+            "attn_cached_values_out_4",
+            "attn_cached_positions_out_4"
+          ]
+        },
+        "suffix": {
+          "layer": 4,
+          "out_proj_node": "/out_proj_20/MatMul",
+          "inputs": [
+            "/Reshape_19_output_0",
+            "/input_proj_1/MatMul_output_0"
+          ],
+          "output": "/Add_41_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer4_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer4_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer4_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer4_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 0.867,
+        "front": 0.092,
+        "middle": 0.568,
+        "suffix": 0.184,
+        "split_total": 0.844
+      },
+      "metrics": {
+        "/Add_41_output_0": {
+          "shape": [
+            1,
+            8,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999998932901369,
+          "ref_min": -0.7214046120643616,
+          "ref_max": 0.744185745716095,
+          "got_min": -0.7214046120643616,
+          "got_max": 0.744185745716095
+        },
+        "attn_offset_out_4": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999999999845,
+          "ref_min": 8.0,
+          "ref_max": 8.0,
+          "got_min": 8.0,
+          "got_max": 8.0
+        },
+        "attn_cached_keys_out_4": {
+          "shape": [
+            1,
+            4,
+            800,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000396336026,
+          "ref_min": -7.810357093811035,
+          "ref_max": 5.045423984527588,
+          "got_min": -7.810357093811035,
+          "got_max": 5.045423984527588
+        },
+        "attn_cached_values_out_4": {
+          "shape": [
+            1,
+            4,
+            800,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999832724908,
+          "ref_min": -2.369483470916748,
+          "ref_max": 1.8151816129684448,
+          "got_min": -2.369483470916748,
+          "got_max": 1.8151816129684448
+        },
+        "attn_cached_positions_out_4": {
+          "shape": [
+            1,
+            800
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999977464974,
+          "ref_min": -1.0,
+          "ref_max": 7.0,
+          "got_min": -1.0,
+          "got_max": 7.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "9163dba64eb81cfc5eea4a5b47c897bc29ae7ea20d962ce25f7386f5c210f945"
+    },
+    {
+      "layer": 5,
+      "spec": {
+        "full_inputs": [
+          "/Add_41_output_0",
+          "attn_offset_5",
+          "attn_cached_keys_5",
+          "attn_cached_values_5",
+          "attn_cached_positions_5"
+        ],
+        "full_outputs": [
+          "/Add_46_output_0",
+          "attn_offset_out_5",
+          "attn_cached_keys_out_5",
+          "attn_cached_values_out_5",
+          "attn_cached_positions_out_5"
+        ],
+        "front": {
+          "layer": 5,
+          "in_proj_node": "/in_proj_5/MatMul",
+          "input": "/Add_41_output_0",
+          "output": "/Transpose_35_output_0"
+        },
+        "middle": {
+          "layer": 5,
+          "front_output": "/Transpose_35_output_0",
+          "inputs": [
+            "/Transpose_35_output_0",
+            "attn_offset_5",
+            "attn_cached_keys_5",
+            "attn_cached_values_5",
+            "attn_cached_positions_5"
+          ],
+          "outputs": [
+            "/Reshape_23_output_0",
+            "attn_offset_out_5",
+            "attn_cached_keys_out_5",
+            "attn_cached_values_out_5",
+            "attn_cached_positions_out_5"
+          ]
+        },
+        "suffix": {
+          "layer": 5,
+          "out_proj_node": "/out_proj_21/MatMul",
+          "inputs": [
+            "/Reshape_23_output_0",
+            "/Add_41_output_0"
+          ],
+          "output": "/Add_46_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer5_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer5_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer5_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer5_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 0.857,
+        "front": 0.088,
+        "middle": 0.575,
+        "suffix": 0.182,
+        "split_total": 0.844
+      },
+      "metrics": {
+        "/Add_46_output_0": {
+          "shape": [
+            1,
+            8,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999384772283,
+          "ref_min": -0.7035163044929504,
+          "ref_max": 0.7033900618553162,
+          "got_min": -0.7035163044929504,
+          "got_max": 0.7033900618553162
+        },
+        "attn_offset_out_5": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999999999845,
+          "ref_min": 8.0,
+          "ref_max": 8.0,
+          "got_min": 8.0,
+          "got_max": 8.0
+        },
+        "attn_cached_keys_out_5": {
+          "shape": [
+            1,
+            4,
+            800,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000006948688,
+          "ref_min": -6.428747653961182,
+          "ref_max": 5.673851490020752,
+          "got_min": -6.428747653961182,
+          "got_max": 5.673851490020752
+        },
+        "attn_cached_values_out_5": {
+          "shape": [
+            1,
+            4,
+            800,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999675790462,
+          "ref_min": -2.4526216983795166,
+          "ref_max": 2.331106424331665,
+          "got_min": -2.4526216983795166,
+          "got_max": 2.331106424331665
+        },
+        "attn_cached_positions_out_5": {
+          "shape": [
+            1,
+            800
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999977464974,
+          "ref_min": -1.0,
+          "ref_max": 7.0,
+          "got_min": -1.0,
+          "got_max": 7.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "bb0296a0a5bcafb42c6cfedf8f267373f6498df4e6dbffd9a417227b98c35272"
+    },
+    {
+      "layer": 6,
+      "spec": {
+        "full_inputs": [
+          "/input_proj_2/MatMul_output_0",
+          "attn_offset_6",
+          "attn_cached_keys_6",
+          "attn_cached_values_6",
+          "attn_cached_positions_6"
+        ],
+        "full_outputs": [
+          "/Add_52_output_0",
+          "attn_offset_out_6",
+          "attn_cached_keys_out_6",
+          "attn_cached_values_out_6",
+          "attn_cached_positions_out_6"
+        ],
+        "front": {
+          "layer": 6,
+          "in_proj_node": "/in_proj_6/MatMul",
+          "input": "/input_proj_2/MatMul_output_0",
+          "output": "/Transpose_40_output_0"
+        },
+        "middle": {
+          "layer": 6,
+          "front_output": "/Transpose_40_output_0",
+          "inputs": [
+            "/Transpose_40_output_0",
+            "attn_offset_6",
+            "attn_cached_keys_6",
+            "attn_cached_values_6",
+            "attn_cached_positions_6"
+          ],
+          "outputs": [
+            "/Reshape_27_output_0",
+            "attn_offset_out_6",
+            "attn_cached_keys_out_6",
+            "attn_cached_values_out_6",
+            "attn_cached_positions_out_6"
+          ]
+        },
+        "suffix": {
+          "layer": 6,
+          "out_proj_node": "/out_proj_22/MatMul",
+          "inputs": [
+            "/Reshape_27_output_0",
+            "/input_proj_2/MatMul_output_0"
+          ],
+          "output": "/Add_52_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer6_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer6_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer6_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer6_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 1.259,
+        "front": 0.112,
+        "middle": 0.941,
+        "suffix": 0.272,
+        "split_total": 1.325
+      },
+      "metrics": {
+        "/Add_52_output_0": {
+          "shape": [
+            1,
+            16,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999769140511,
+          "ref_min": -0.7730311155319214,
+          "ref_max": 0.6523823738098145,
+          "got_min": -0.7730311155319214,
+          "got_max": 0.6523823738098145
+        },
+        "attn_offset_out_6": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.999999999999996,
+          "ref_min": 16.0,
+          "ref_max": 16.0,
+          "got_min": 16.0,
+          "got_max": 16.0
+        },
+        "attn_cached_keys_out_6": {
+          "shape": [
+            1,
+            4,
+            1200,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999478761824,
+          "ref_min": -7.048984050750732,
+          "ref_max": 6.48505973815918,
+          "got_min": -7.048984050750732,
+          "got_max": 6.48505973815918
+        },
+        "attn_cached_values_out_6": {
+          "shape": [
+            1,
+            4,
+            1200,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000055289557,
+          "ref_min": -2.7138137817382812,
+          "ref_max": 2.602018356323242,
+          "got_min": -2.7138137817382812,
+          "got_max": 2.602018356323242
+        },
+        "attn_cached_positions_out_6": {
+          "shape": [
+            1,
+            1200
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999929436115,
+          "ref_min": -1.0,
+          "ref_max": 15.0,
+          "got_min": -1.0,
+          "got_max": 15.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "43c4405791fdeb58aa7ff863170adf99bf06f4fad4a3c47404343b95b39efa49"
+    },
+    {
+      "layer": 7,
+      "spec": {
+        "full_inputs": [
+          "/Add_52_output_0",
+          "attn_offset_7",
+          "attn_cached_keys_7",
+          "attn_cached_values_7",
+          "attn_cached_positions_7"
+        ],
+        "full_outputs": [
+          "/Add_57_output_0",
+          "attn_offset_out_7",
+          "attn_cached_keys_out_7",
+          "attn_cached_values_out_7",
+          "attn_cached_positions_out_7"
+        ],
+        "front": {
+          "layer": 7,
+          "in_proj_node": "/in_proj_7/MatMul",
+          "input": "/Add_52_output_0",
+          "output": "/Transpose_43_output_0"
+        },
+        "middle": {
+          "layer": 7,
+          "front_output": "/Transpose_43_output_0",
+          "inputs": [
+            "/Transpose_43_output_0",
+            "attn_offset_7",
+            "attn_cached_keys_7",
+            "attn_cached_values_7",
+            "attn_cached_positions_7"
+          ],
+          "outputs": [
+            "/Reshape_31_output_0",
+            "attn_offset_out_7",
+            "attn_cached_keys_out_7",
+            "attn_cached_values_out_7",
+            "attn_cached_positions_out_7"
+          ]
+        },
+        "suffix": {
+          "layer": 7,
+          "out_proj_node": "/out_proj_23/MatMul",
+          "inputs": [
+            "/Reshape_31_output_0",
+            "/Add_52_output_0"
+          ],
+          "output": "/Add_57_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer7_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer7_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer7_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer7_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 1.321,
+        "front": 0.132,
+        "middle": 1.005,
+        "suffix": 0.295,
+        "split_total": 1.432
+      },
+      "metrics": {
+        "/Add_57_output_0": {
+          "shape": [
+            1,
+            16,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999721261621,
+          "ref_min": -2.2367193698883057,
+          "ref_max": 3.0969223976135254,
+          "got_min": -2.2367193698883057,
+          "got_max": 3.0969223976135254
+        },
+        "attn_offset_out_7": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.999999999999996,
+          "ref_min": 16.0,
+          "ref_max": 16.0,
+          "got_min": 16.0,
+          "got_max": 16.0
+        },
+        "attn_cached_keys_out_7": {
+          "shape": [
+            1,
+            4,
+            1200,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.000000055709992,
+          "ref_min": -4.481836795806885,
+          "ref_max": 4.609865188598633,
+          "got_min": -4.481836795806885,
+          "got_max": 4.609865188598633
+        },
+        "attn_cached_values_out_7": {
+          "shape": [
+            1,
+            4,
+            1200,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000145970545,
+          "ref_min": -2.622375249862671,
+          "ref_max": 2.6715495586395264,
+          "got_min": -2.622375249862671,
+          "got_max": 2.6715495586395264
+        },
+        "attn_cached_positions_out_7": {
+          "shape": [
+            1,
+            1200
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999929436115,
+          "ref_min": -1.0,
+          "ref_max": 15.0,
+          "got_min": -1.0,
+          "got_max": 15.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "af190acc777473f5a8dd9761b15096a60c8a7d7a4427c5ea4b27fdf4c9d22ed9"
+    },
+    {
+      "layer": 8,
+      "spec": {
+        "full_inputs": [
+          "/input_proj_3/MatMul_output_0",
+          "attn_offset_8",
+          "attn_cached_keys_8",
+          "attn_cached_values_8",
+          "attn_cached_positions_8"
+        ],
+        "full_outputs": [
+          "/Add_63_output_0",
+          "attn_offset_out_8",
+          "attn_cached_keys_out_8",
+          "attn_cached_values_out_8",
+          "attn_cached_positions_out_8"
+        ],
+        "front": {
+          "layer": 8,
+          "in_proj_node": "/in_proj_8/MatMul",
+          "input": "/input_proj_3/MatMul_output_0",
+          "output": "/Transpose_48_output_0"
+        },
+        "middle": {
+          "layer": 8,
+          "front_output": "/Transpose_48_output_0",
+          "inputs": [
+            "/Transpose_48_output_0",
+            "attn_offset_8",
+            "attn_cached_keys_8",
+            "attn_cached_values_8",
+            "attn_cached_positions_8"
+          ],
+          "outputs": [
+            "/Reshape_35_output_0",
+            "attn_offset_out_8",
+            "attn_cached_keys_out_8",
+            "attn_cached_values_out_8",
+            "attn_cached_positions_out_8"
+          ]
+        },
+        "suffix": {
+          "layer": 8,
+          "out_proj_node": "/out_proj_24/MatMul",
+          "inputs": [
+            "/Reshape_35_output_0",
+            "/input_proj_3/MatMul_output_0"
+          ],
+          "output": "/Add_63_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer8_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer8_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer8_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer8_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 2.171,
+        "front": 0.173,
+        "middle": 2.152,
+        "suffix": 0.463,
+        "split_total": 2.788
+      },
+      "metrics": {
+        "/Add_63_output_0": {
+          "shape": [
+            1,
+            32,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999917996873,
+          "ref_min": -0.6795387864112854,
+          "ref_max": 0.6598415374755859,
+          "got_min": -0.6795387864112854,
+          "got_max": 0.6598415374755859
+        },
+        "attn_offset_out_8": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999999999991,
+          "ref_min": 32.0,
+          "ref_max": 32.0,
+          "got_min": 32.0,
+          "got_max": 32.0
+        },
+        "attn_cached_keys_out_8": {
+          "shape": [
+            1,
+            4,
+            1600,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000154089874,
+          "ref_min": -9.973737716674805,
+          "ref_max": 12.628503799438477,
+          "got_min": -9.973737716674805,
+          "got_max": 12.628503799438477
+        },
+        "attn_cached_values_out_8": {
+          "shape": [
+            1,
+            4,
+            1600,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000006186582,
+          "ref_min": -2.452134370803833,
+          "ref_max": 2.674609899520874,
+          "got_min": -2.452134370803833,
+          "got_max": 2.674609899520874
+        },
+        "attn_cached_positions_out_8": {
+          "shape": [
+            1,
+            1600
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999823181943,
+          "ref_min": -1.0,
+          "ref_max": 31.0,
+          "got_min": -1.0,
+          "got_max": 31.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "8ac27a43e85626d010b785f7813a8172417df34c5bc2a10756575baf5bdbd2aa"
+    },
+    {
+      "layer": 9,
+      "spec": {
+        "full_inputs": [
+          "/Add_63_output_0",
+          "attn_offset_9",
+          "attn_cached_keys_9",
+          "attn_cached_values_9",
+          "attn_cached_positions_9"
+        ],
+        "full_outputs": [
+          "/Add_68_output_0",
+          "attn_offset_out_9",
+          "attn_cached_keys_out_9",
+          "attn_cached_values_out_9",
+          "attn_cached_positions_out_9"
+        ],
+        "front": {
+          "layer": 9,
+          "in_proj_node": "/in_proj_9/MatMul",
+          "input": "/Add_63_output_0",
+          "output": "/Transpose_51_output_0"
+        },
+        "middle": {
+          "layer": 9,
+          "front_output": "/Transpose_51_output_0",
+          "inputs": [
+            "/Transpose_51_output_0",
+            "attn_offset_9",
+            "attn_cached_keys_9",
+            "attn_cached_values_9",
+            "attn_cached_positions_9"
+          ],
+          "outputs": [
+            "/Reshape_39_output_0",
+            "attn_offset_out_9",
+            "attn_cached_keys_out_9",
+            "attn_cached_values_out_9",
+            "attn_cached_positions_out_9"
+          ]
+        },
+        "suffix": {
+          "layer": 9,
+          "out_proj_node": "/out_proj_25/MatMul",
+          "inputs": [
+            "/Reshape_39_output_0",
+            "/Add_63_output_0"
+          ],
+          "output": "/Add_68_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer9_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer9_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer9_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer9_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 2.269,
+        "front": 0.181,
+        "middle": 1.641,
+        "suffix": 0.448,
+        "split_total": 2.271
+      },
+      "metrics": {
+        "/Add_68_output_0": {
+          "shape": [
+            1,
+            32,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000538156986,
+          "ref_min": -0.7040233016014099,
+          "ref_max": 0.6985259056091309,
+          "got_min": -0.7040233016014099,
+          "got_max": 0.6985259056091309
+        },
+        "attn_offset_out_9": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999999999991,
+          "ref_min": 32.0,
+          "ref_max": 32.0,
+          "got_min": 32.0,
+          "got_max": 32.0
+        },
+        "attn_cached_keys_out_9": {
+          "shape": [
+            1,
+            4,
+            1600,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999707729638,
+          "ref_min": -11.299925804138184,
+          "ref_max": 10.544757843017578,
+          "got_min": -11.299925804138184,
+          "got_max": 10.544757843017578
+        },
+        "attn_cached_values_out_9": {
+          "shape": [
+            1,
+            4,
+            1600,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000467054981,
+          "ref_min": -2.1366944313049316,
+          "ref_max": 1.9412319660186768,
+          "got_min": -2.1366944313049316,
+          "got_max": 1.9412319660186768
+        },
+        "attn_cached_positions_out_9": {
+          "shape": [
+            1,
+            1600
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999823181943,
+          "ref_min": -1.0,
+          "ref_max": 31.0,
+          "got_min": -1.0,
+          "got_max": 31.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "947b20043154c51d878bab62a68198bc8b0bb874a365e1b31439295ab539e632"
+    },
+    {
+      "layer": 10,
+      "spec": {
+        "full_inputs": [
+          "/Add_68_output_0",
+          "attn_offset_10",
+          "attn_cached_keys_10",
+          "attn_cached_values_10",
+          "attn_cached_positions_10"
+        ],
+        "full_outputs": [
+          "/Add_73_output_0",
+          "attn_offset_out_10",
+          "attn_cached_keys_out_10",
+          "attn_cached_values_out_10",
+          "attn_cached_positions_out_10"
+        ],
+        "front": {
+          "layer": 10,
+          "in_proj_node": "/in_proj_10/MatMul",
+          "input": "/Add_68_output_0",
+          "output": "/Transpose_54_output_0"
+        },
+        "middle": {
+          "layer": 10,
+          "front_output": "/Transpose_54_output_0",
+          "inputs": [
+            "/Transpose_54_output_0",
+            "attn_offset_10",
+            "attn_cached_keys_10",
+            "attn_cached_values_10",
+            "attn_cached_positions_10"
+          ],
+          "outputs": [
+            "/Reshape_43_output_0",
+            "attn_offset_out_10",
+            "attn_cached_keys_out_10",
+            "attn_cached_values_out_10",
+            "attn_cached_positions_out_10"
+          ]
+        },
+        "suffix": {
+          "layer": 10,
+          "out_proj_node": "/out_proj_26/MatMul",
+          "inputs": [
+            "/Reshape_43_output_0",
+            "/Add_68_output_0"
+          ],
+          "output": "/Add_73_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer10_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer10_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer10_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer10_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 2.424,
+        "front": 0.192,
+        "middle": 1.777,
+        "suffix": 0.492,
+        "split_total": 2.461
+      },
+      "metrics": {
+        "/Add_73_output_0": {
+          "shape": [
+            1,
+            32,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000888058638,
+          "ref_min": -0.8007659912109375,
+          "ref_max": 0.7926486730575562,
+          "got_min": -0.8007659912109375,
+          "got_max": 0.7926486730575562
+        },
+        "attn_offset_out_10": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999999999991,
+          "ref_min": 32.0,
+          "ref_max": 32.0,
+          "got_min": 32.0,
+          "got_max": 32.0
+        },
+        "attn_cached_keys_out_10": {
+          "shape": [
+            1,
+            4,
+            1600,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.0000000494876986,
+          "ref_min": -11.41370677947998,
+          "ref_max": 12.074019432067871,
+          "got_min": -11.41370677947998,
+          "got_max": 12.074019432067871
+        },
+        "attn_cached_values_out_10": {
+          "shape": [
+            1,
+            4,
+            1600,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999969438275,
+          "ref_min": -1.6560906171798706,
+          "ref_max": 1.6567957401275635,
+          "got_min": -1.6560906171798706,
+          "got_max": 1.6567957401275635
+        },
+        "attn_cached_positions_out_10": {
+          "shape": [
+            1,
+            1600
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999823181943,
+          "ref_min": -1.0,
+          "ref_max": 31.0,
+          "got_min": -1.0,
+          "got_max": 31.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "83691d03a7295578be12c52d8e2acfbdad5912eec99a987b48585e2b006a6259"
+    },
+    {
+      "layer": 11,
+      "spec": {
+        "full_inputs": [
+          "/Add_73_output_0",
+          "attn_offset_11",
+          "attn_cached_keys_11",
+          "attn_cached_values_11",
+          "attn_cached_positions_11"
+        ],
+        "full_outputs": [
+          "/Add_78_output_0",
+          "attn_offset_out_11",
+          "attn_cached_keys_out_11",
+          "attn_cached_values_out_11",
+          "attn_cached_positions_out_11"
+        ],
+        "front": {
+          "layer": 11,
+          "in_proj_node": "/in_proj_11/MatMul",
+          "input": "/Add_73_output_0",
+          "output": "/Transpose_57_output_0"
+        },
+        "middle": {
+          "layer": 11,
+          "front_output": "/Transpose_57_output_0",
+          "inputs": [
+            "/Transpose_57_output_0",
+            "attn_offset_11",
+            "attn_cached_keys_11",
+            "attn_cached_values_11",
+            "attn_cached_positions_11"
+          ],
+          "outputs": [
+            "/Reshape_47_output_0",
+            "attn_offset_out_11",
+            "attn_cached_keys_out_11",
+            "attn_cached_values_out_11",
+            "attn_cached_positions_out_11"
+          ]
+        },
+        "suffix": {
+          "layer": 11,
+          "out_proj_node": "/out_proj_27/MatMul",
+          "inputs": [
+            "/Reshape_47_output_0",
+            "/Add_73_output_0"
+          ],
+          "output": "/Add_78_output_0"
+        }
+      },
+      "artifacts": {
+        "full_layer_onnx": "/home/harve/models/moss-rknn-rk3576-codec-split-layer-pipeline/_fixed_onnx/codec_layer11_full.onnx",
+        "front_onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer11_qkv.onnx",
+        "middle_onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer11_attention.onnx",
+        "suffix_onnx": "/home/harve/models/moss-rknn-rk3576-codec-suffix-batch-all/_fixed_onnx/codec_suffix_layer11_outproj_ffn.onnx"
+      },
+      "latency_ms": {
+        "full": 2.139,
+        "front": 0.182,
+        "middle": 1.595,
+        "suffix": 0.453,
+        "split_total": 2.231
+      },
+      "metrics": {
+        "/Add_78_output_0": {
+          "shape": [
+            1,
+            32,
+            256
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.000000025963484,
+          "ref_min": -0.7409820556640625,
+          "ref_max": 0.6599525213241577,
+          "got_min": -0.7409820556640625,
+          "got_max": 0.6599525213241577
+        },
+        "attn_offset_out_11": {
+          "shape": [
+            1
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999999999991,
+          "ref_min": 32.0,
+          "ref_max": 32.0,
+          "got_min": 32.0,
+          "got_max": 32.0
+        },
+        "attn_cached_keys_out_11": {
+          "shape": [
+            1,
+            4,
+            1600,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999911521812,
+          "ref_min": -12.529816627502441,
+          "ref_max": 14.605998992919922,
+          "got_min": -12.529816627502441,
+          "got_max": 14.605998992919922
+        },
+        "attn_cached_values_out_11": {
+          "shape": [
+            1,
+            4,
+            1600,
+            64
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 1.000000004919098,
+          "ref_min": -1.4651761054992676,
+          "ref_max": 1.5751558542251587,
+          "got_min": -1.4651761054992676,
+          "got_max": 1.5751558542251587
+        },
+        "attn_cached_positions_out_11": {
+          "shape": [
+            1,
+            1600
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "max_abs": 0.0,
+          "mean_abs": 0.0,
+          "rel_l2": 0.0,
+          "cosine": 0.9999999823181943,
+          "ref_min": -1.0,
+          "ref_max": 31.0,
+          "got_min": -1.0,
+          "got_max": 31.0
+        }
+      },
+      "passed": true,
+      "full_layer_sha256": "8debdc1db15eff17a7716bef2266dea71e11682a59500717c047ec4174707938"
+    }
+  ]
+}
