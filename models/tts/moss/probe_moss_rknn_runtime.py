@@ -27,7 +27,7 @@ def _parse_bucket(pattern: str, text: str, default: int) -> int:
 
 
 def _codec_suffix_seq_len(name: str) -> int:
-    layer = _parse_bucket(r"codec_suffix_layer(\d+)_", name, 0)
+    layer = _parse_bucket(r"codec_(?:suffix|front)_layer(\d+)_", name, 0)
     if layer < 4:
         return 4
     if layer < 6:
@@ -53,6 +53,8 @@ def _case_from_name(path: Path, explicit: str) -> str:
         return "sampler_island_float"
     if re.search(r"block\d+_attn_residual", name):
         return "attn_residual"
+    if re.search(r"codec_front_layer\d+_qkv", name):
+        return "codec_front_qkv"
     if re.search(r"codec_suffix_layer\d+_outproj_ffn", name):
         return "codec_suffix_outproj_ffn"
     if "codec_decode_step" in name or "audio_tokenizer_decode" in name:
@@ -138,6 +140,11 @@ def _inputs_for_case(case: str, path: Path) -> list[np.ndarray]:
         return [
             np.linspace(-0.25, 0.25, num=seq * 256, dtype=np.float32).reshape(1, seq, 256),
             np.linspace(-0.5, 0.5, num=seq * 256, dtype=np.float32).reshape(1, seq, 256),
+        ]
+    if case == "codec_front_qkv":
+        seq = _codec_suffix_seq_len(name)
+        return [
+            np.linspace(-0.25, 0.25, num=seq * 256, dtype=np.float32).reshape(1, seq, 256),
         ]
     if case == "codec":
         frames = _parse_bucket(r"\.f(\d+)", name, 1)

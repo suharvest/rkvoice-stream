@@ -1,0 +1,485 @@
+{
+  "onnx": "/home/harve/models/moss-rknn-rk3576-codec-castfix-probe/moss_audio_tokenizer_decode_step.f1.xorfix.sim.int64offsets.onnx",
+  "out_dir": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all",
+  "target": "rk3576",
+  "precision": "fp16",
+  "layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "available_layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "disable_rules": [
+    "merge_conv_channel_inner_perm"
+  ],
+  "elapsed_s": 2.918,
+  "passed": true,
+  "results": [
+    {
+      "spec": {
+        "layer": 0,
+        "in_proj_node": "/in_proj/MatMul",
+        "input": "/input_proj/MatMul_output_0",
+        "output": "/Transpose_18_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer0_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer0_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789707,
+      "onnx_sha256": "e92b77f5ebfed375964c8c5521d5bc0f1d717c43644b184c3afefe4096be6956",
+      "rknn_build": {
+        "name": "codec_front_layer0_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.121,
+        "input_names": [
+          "/input_proj/MatMul_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            4,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 489751,
+        "sha256": "2661007ad2471ee436c444eec81224fb69f2cefdd41ddee849a4f9e70a3e9d13"
+      },
+      "status": "OK",
+      "elapsed_s": 1.046
+    },
+    {
+      "spec": {
+        "layer": 1,
+        "in_proj_node": "/in_proj_1/MatMul",
+        "input": "/Add_20_output_0",
+        "output": "/Transpose_21_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer1_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer1_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789650,
+      "onnx_sha256": "57d7f102f83b91557c7e9b5c94d9b22adae911ab7c7380196a1403e3a6e60d5a",
+      "rknn_build": {
+        "name": "codec_front_layer1_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.061,
+        "input_names": [
+          "/Add_20_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            4,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 489612,
+        "sha256": "5fae4e02c5f87c54a3d52da8e4a6e6428e4ebac0a179f750e667e37bdca4471f"
+      },
+      "status": "OK",
+      "elapsed_s": 0.193
+    },
+    {
+      "spec": {
+        "layer": 2,
+        "in_proj_node": "/in_proj_2/MatMul",
+        "input": "/Add_25_output_0",
+        "output": "/Transpose_24_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer2_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer2_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789650,
+      "onnx_sha256": "e665d3f6a28e0e92bfc82e03ef2f2bf485ddc0e24f5e722b991c32cc04e348a4",
+      "rknn_build": {
+        "name": "codec_front_layer2_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.059,
+        "input_names": [
+          "/Add_25_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            4,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 489612,
+        "sha256": "e7505ac3b8a102de4ddb9215b51c5f631cdf997426484e0eb49ea8d757780cc4"
+      },
+      "status": "OK",
+      "elapsed_s": 0.152
+    },
+    {
+      "spec": {
+        "layer": 3,
+        "in_proj_node": "/in_proj_3/MatMul",
+        "input": "/Add_30_output_0",
+        "output": "/Transpose_27_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer3_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer3_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789654,
+      "onnx_sha256": "883bb47f8d4aa16f519bc1810e81c04640665cb41cf6b09a60e5cd231bf5fac4",
+      "rknn_build": {
+        "name": "codec_front_layer3_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.085,
+        "input_names": [
+          "/Add_30_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            4,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 489612,
+        "sha256": "c4859259ebd5299f3c8ef47f5aa5e17eac8638695ad638b77f2d781980d3ea0d"
+      },
+      "status": "OK",
+      "elapsed_s": 0.164
+    },
+    {
+      "spec": {
+        "layer": 4,
+        "in_proj_node": "/in_proj_4/MatMul",
+        "input": "/input_proj_1/MatMul_output_0",
+        "output": "/Transpose_32_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer4_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer4_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789693,
+      "onnx_sha256": "0e54d4ab85f56a59bda669a05a606ba09268d4d91cbe931eb643ce165d0457cd",
+      "rknn_build": {
+        "name": "codec_front_layer4_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.057,
+        "input_names": [
+          "/input_proj_1/MatMul_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            8,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 484249,
+        "sha256": "7b8111e618ba8495294ecb31f0587374d4037c2dcffc5c74ca89a11f4f1edf4e"
+      },
+      "status": "OK",
+      "elapsed_s": 0.14
+    },
+    {
+      "spec": {
+        "layer": 5,
+        "in_proj_node": "/in_proj_5/MatMul",
+        "input": "/Add_41_output_0",
+        "output": "/Transpose_35_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer5_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer5_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789654,
+      "onnx_sha256": "43ebfc3077de7849fd3640657404c0fc2502bb40f8071064ce890994596413d2",
+      "rknn_build": {
+        "name": "codec_front_layer5_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.054,
+        "input_names": [
+          "/Add_41_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            8,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 484044,
+        "sha256": "e07b7435301dc1d4ce1ab78da0386405454a9dd1261d30c4235f5237840b7c4a"
+      },
+      "status": "OK",
+      "elapsed_s": 0.14
+    },
+    {
+      "spec": {
+        "layer": 6,
+        "in_proj_node": "/in_proj_6/MatMul",
+        "input": "/input_proj_2/MatMul_output_0",
+        "output": "/Transpose_40_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer6_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer6_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789693,
+      "onnx_sha256": "ab82293f9e15605d61d0aea62d3710978717a365fc498a67503e2283fc39d276",
+      "rknn_build": {
+        "name": "codec_front_layer6_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.07,
+        "input_names": [
+          "/input_proj_2/MatMul_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            16,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 486235,
+        "sha256": "a5fb1b6836e97ecdc090aa1ae0457c0ac7c28101cbd9dc1c3368f56e6b900ca2"
+      },
+      "status": "OK",
+      "elapsed_s": 0.151
+    },
+    {
+      "spec": {
+        "layer": 7,
+        "in_proj_node": "/in_proj_7/MatMul",
+        "input": "/Add_52_output_0",
+        "output": "/Transpose_43_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer7_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer7_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789654,
+      "onnx_sha256": "ba644ec74531acb2d28520d19836f8077fea9fce1d4cc82334285badb0c0b157",
+      "rknn_build": {
+        "name": "codec_front_layer7_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.055,
+        "input_names": [
+          "/Add_52_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            16,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 485966,
+        "sha256": "412afb06a70e68c5432e56051065b180d0bae2829eba7ece5d628a72a551506c"
+      },
+      "status": "OK",
+      "elapsed_s": 0.135
+    },
+    {
+      "spec": {
+        "layer": 8,
+        "in_proj_node": "/in_proj_8/MatMul",
+        "input": "/input_proj_3/MatMul_output_0",
+        "output": "/Transpose_48_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer8_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer8_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789693,
+      "onnx_sha256": "8303d2027e4e030026277cb3985fcb74bb298fe66beb50a1aebbe76c9ff51db7",
+      "rknn_build": {
+        "name": "codec_front_layer8_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.069,
+        "input_names": [
+          "/input_proj_3/MatMul_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            32,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 486491,
+        "sha256": "28e6b8f613d7942e1ba065985f76f222eb2ff93be2de4d56daaba5fc141371bb"
+      },
+      "status": "OK",
+      "elapsed_s": 0.158
+    },
+    {
+      "spec": {
+        "layer": 9,
+        "in_proj_node": "/in_proj_9/MatMul",
+        "input": "/Add_63_output_0",
+        "output": "/Transpose_51_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer9_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer9_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789654,
+      "onnx_sha256": "38c612be13cec7e63e2f7b102a78c51e221727f24c3376aa4d950def111bd40b",
+      "rknn_build": {
+        "name": "codec_front_layer9_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.062,
+        "input_names": [
+          "/Add_63_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            32,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 486222,
+        "sha256": "ff4307138c1fd22dbc8bcbd27da32dbe07583e7502a69a74008d500181d8a02d"
+      },
+      "status": "OK",
+      "elapsed_s": 0.159
+    },
+    {
+      "spec": {
+        "layer": 10,
+        "in_proj_node": "/in_proj_10/MatMul",
+        "input": "/Add_68_output_0",
+        "output": "/Transpose_54_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer10_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer10_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789662,
+      "onnx_sha256": "b483bbc23db071aabeba8aff87814181f7926ff79835c56b974269df15814e8a",
+      "rknn_build": {
+        "name": "codec_front_layer10_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.072,
+        "input_names": [
+          "/Add_68_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            32,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 486286,
+        "sha256": "42ed65b7a167cdafeaaf91389a4cc6f2fa87ae0450b3241ec222b4e9e81195b3"
+      },
+      "status": "OK",
+      "elapsed_s": 0.159
+    },
+    {
+      "spec": {
+        "layer": 11,
+        "in_proj_node": "/in_proj_11/MatMul",
+        "input": "/Add_73_output_0",
+        "output": "/Transpose_57_output_0"
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/_fixed_onnx/codec_front_layer11_qkv.onnx",
+      "rknn": "/home/harve/models/moss-rknn-rk3576-codec-front-batch-all/codec_front_layer11_qkv.fp16.rk3576.rknn",
+      "onnx_size_bytes": 789662,
+      "onnx_sha256": "99bdd0064e3764b8eba0782de90e5e3747a4c86d501c74e71f6bfa23f3cd8074",
+      "rknn_build": {
+        "name": "codec_front_layer11_qkv.fp16.rk3576.rknn",
+        "status": "OK",
+        "elapsed_s": 0.057,
+        "input_names": [
+          "/Add_73_output_0"
+        ],
+        "input_shapes": [
+          [
+            1,
+            32,
+            256
+          ]
+        ],
+        "input_dtypes": [
+          "float"
+        ],
+        "disable_rules": [
+          "merge_conv_channel_inner_perm"
+        ],
+        "size_bytes": 486286,
+        "sha256": "55d1ce9d468961a9bc9d46f76be4dda8e836d25a12cb2d8d2b9e8bc6404083a2"
+      },
+      "status": "OK",
+      "elapsed_s": 0.136
+    }
+  ]
+}
