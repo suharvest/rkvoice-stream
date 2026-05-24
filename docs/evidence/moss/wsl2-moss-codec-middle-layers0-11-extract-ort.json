@@ -1,0 +1,1513 @@
+{
+  "onnx": "/home/harve/models/moss-rknn-rk3576-codec-xorfix-sim/moss_audio_tokenizer_decode_step.f1.xorfix.sim.onnx",
+  "out_dir": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all",
+  "layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "available_layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "verify_ort": true,
+  "elapsed_s": 2.762,
+  "passed": true,
+  "results": [
+    {
+      "spec": {
+        "layer": 0,
+        "front_output": "/Transpose_18_output_0",
+        "inputs": [
+          "/Transpose_18_output_0",
+          "attn_offset_0",
+          "attn_cached_keys_0",
+          "attn_cached_values_0",
+          "attn_cached_positions_0"
+        ],
+        "outputs": [
+          "/Reshape_3_output_0",
+          "attn_offset_out_0",
+          "attn_cached_keys_out_0",
+          "attn_cached_values_out_0",
+          "attn_cached_positions_out_0"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer0_attention.onnx",
+      "onnx_size_bytes": 11037,
+      "onnx_sha256": "520ed9532b2e4a72412478c4ebf90213e3c4f20506c61ab35792116e4e5f015d",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 0.573,
+        "inputs": [
+          {
+            "name": "/Transpose_18_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              4,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_0",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_0",
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_0",
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_0",
+            "shape": [
+              1,
+              500
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              4,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              500
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.251
+    },
+    {
+      "spec": {
+        "layer": 1,
+        "front_output": "/Transpose_21_output_0",
+        "inputs": [
+          "/Transpose_21_output_0",
+          "attn_offset_1",
+          "attn_cached_keys_1",
+          "attn_cached_values_1",
+          "attn_cached_positions_1"
+        ],
+        "outputs": [
+          "/Reshape_7_output_0",
+          "attn_offset_out_1",
+          "attn_cached_keys_out_1",
+          "attn_cached_values_out_1",
+          "attn_cached_positions_out_1"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer1_attention.onnx",
+      "onnx_size_bytes": 11373,
+      "onnx_sha256": "4d09d66f2818544d70c503e01065795bbd43e238c9c2a16de4266828b98f76e5",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 0.454,
+        "inputs": [
+          {
+            "name": "/Transpose_21_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              4,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_1",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_1",
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_1",
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_1",
+            "shape": [
+              1,
+              500
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              4,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              500
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.223
+    },
+    {
+      "spec": {
+        "layer": 2,
+        "front_output": "/Transpose_24_output_0",
+        "inputs": [
+          "/Transpose_24_output_0",
+          "attn_offset_2",
+          "attn_cached_keys_2",
+          "attn_cached_values_2",
+          "attn_cached_positions_2"
+        ],
+        "outputs": [
+          "/Reshape_11_output_0",
+          "attn_offset_out_2",
+          "attn_cached_keys_out_2",
+          "attn_cached_values_out_2",
+          "attn_cached_positions_out_2"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer2_attention.onnx",
+      "onnx_size_bytes": 11256,
+      "onnx_sha256": "aa6da59de3eddfc3b2ab924a5b54745ac50347f22303d86e66e9de4aa773ab1a",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 0.52,
+        "inputs": [
+          {
+            "name": "/Transpose_24_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              4,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_2",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_2",
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_2",
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_2",
+            "shape": [
+              1,
+              500
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              4,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              500
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.197
+    },
+    {
+      "spec": {
+        "layer": 3,
+        "front_output": "/Transpose_27_output_0",
+        "inputs": [
+          "/Transpose_27_output_0",
+          "attn_offset_3",
+          "attn_cached_keys_3",
+          "attn_cached_values_3",
+          "attn_cached_positions_3"
+        ],
+        "outputs": [
+          "/Reshape_15_output_0",
+          "attn_offset_out_3",
+          "attn_cached_keys_out_3",
+          "attn_cached_values_out_3",
+          "attn_cached_positions_out_3"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer3_attention.onnx",
+      "onnx_size_bytes": 11265,
+      "onnx_sha256": "c800eb323442e9c23ab5e69d78b048d18b8bc8ca702539503241eaeef4217ec0",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 0.502,
+        "inputs": [
+          {
+            "name": "/Transpose_27_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              4,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_3",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_3",
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_3",
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_3",
+            "shape": [
+              1,
+              500
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              4,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              500,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              500
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.196
+    },
+    {
+      "spec": {
+        "layer": 4,
+        "front_output": "/Transpose_32_output_0",
+        "inputs": [
+          "/Transpose_32_output_0",
+          "attn_offset_4",
+          "attn_cached_keys_4",
+          "attn_cached_values_4",
+          "attn_cached_positions_4"
+        ],
+        "outputs": [
+          "/Reshape_19_output_0",
+          "attn_offset_out_4",
+          "attn_cached_keys_out_4",
+          "attn_cached_values_out_4",
+          "attn_cached_positions_out_4"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer4_attention.onnx",
+      "onnx_size_bytes": 11341,
+      "onnx_sha256": "c9c8c02e6a36855619792ab267d682073b582e6c6eb79c1c5273c5d79c984af2",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 0.636,
+        "inputs": [
+          {
+            "name": "/Transpose_32_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              8,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_4",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_4",
+            "shape": [
+              1,
+              4,
+              800,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_4",
+            "shape": [
+              1,
+              4,
+              800,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_4",
+            "shape": [
+              1,
+              800
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              8,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              800,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              800,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              800
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.196
+    },
+    {
+      "spec": {
+        "layer": 5,
+        "front_output": "/Transpose_35_output_0",
+        "inputs": [
+          "/Transpose_35_output_0",
+          "attn_offset_5",
+          "attn_cached_keys_5",
+          "attn_cached_values_5",
+          "attn_cached_positions_5"
+        ],
+        "outputs": [
+          "/Reshape_23_output_0",
+          "attn_offset_out_5",
+          "attn_cached_keys_out_5",
+          "attn_cached_values_out_5",
+          "attn_cached_positions_out_5"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer5_attention.onnx",
+      "onnx_size_bytes": 11365,
+      "onnx_sha256": "7fec86b0a115001ed6de59e859cb213f2dbe4fec04c2f0d648d95f3f0248fd15",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 0.677,
+        "inputs": [
+          {
+            "name": "/Transpose_35_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              8,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_5",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_5",
+            "shape": [
+              1,
+              4,
+              800,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_5",
+            "shape": [
+              1,
+              4,
+              800,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_5",
+            "shape": [
+              1,
+              800
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              8,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              800,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              800,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              800
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.267
+    },
+    {
+      "spec": {
+        "layer": 6,
+        "front_output": "/Transpose_40_output_0",
+        "inputs": [
+          "/Transpose_40_output_0",
+          "attn_offset_6",
+          "attn_cached_keys_6",
+          "attn_cached_values_6",
+          "attn_cached_positions_6"
+        ],
+        "outputs": [
+          "/Reshape_27_output_0",
+          "attn_offset_out_6",
+          "attn_cached_keys_out_6",
+          "attn_cached_values_out_6",
+          "attn_cached_positions_out_6"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer6_attention.onnx",
+      "onnx_size_bytes": 11463,
+      "onnx_sha256": "d4949358be5f6ccc2057a8deda37418d5e1d12589fb563f06823a99d9d68da71",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 0.912,
+        "inputs": [
+          {
+            "name": "/Transpose_40_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              16,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_6",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_6",
+            "shape": [
+              1,
+              4,
+              1200,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_6",
+            "shape": [
+              1,
+              4,
+              1200,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_6",
+            "shape": [
+              1,
+              1200
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              16,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1200,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1200,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              1200
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.19
+    },
+    {
+      "spec": {
+        "layer": 7,
+        "front_output": "/Transpose_43_output_0",
+        "inputs": [
+          "/Transpose_43_output_0",
+          "attn_offset_7",
+          "attn_cached_keys_7",
+          "attn_cached_values_7",
+          "attn_cached_positions_7"
+        ],
+        "outputs": [
+          "/Reshape_31_output_0",
+          "attn_offset_out_7",
+          "attn_cached_keys_out_7",
+          "attn_cached_values_out_7",
+          "attn_cached_positions_out_7"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer7_attention.onnx",
+      "onnx_size_bytes": 11463,
+      "onnx_sha256": "011ad7b70bc3e9e1f5cb9a93d880e36b98b1a2a621f1fed5394be743259ca250",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 1.033,
+        "inputs": [
+          {
+            "name": "/Transpose_43_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              16,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_7",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_7",
+            "shape": [
+              1,
+              4,
+              1200,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_7",
+            "shape": [
+              1,
+              4,
+              1200,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_7",
+            "shape": [
+              1,
+              1200
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              16,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1200,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1200,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              1200
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.226
+    },
+    {
+      "spec": {
+        "layer": 8,
+        "front_output": "/Transpose_48_output_0",
+        "inputs": [
+          "/Transpose_48_output_0",
+          "attn_offset_8",
+          "attn_cached_keys_8",
+          "attn_cached_values_8",
+          "attn_cached_positions_8"
+        ],
+        "outputs": [
+          "/Reshape_35_output_0",
+          "attn_offset_out_8",
+          "attn_cached_keys_out_8",
+          "attn_cached_values_out_8",
+          "attn_cached_positions_out_8"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer8_attention.onnx",
+      "onnx_size_bytes": 11657,
+      "onnx_sha256": "b222543842ee4088b070d626805f4e17e7ce0bb067f64573d5bcd734211a6532",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 1.39,
+        "inputs": [
+          {
+            "name": "/Transpose_48_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              32,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_8",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_8",
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_8",
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_8",
+            "shape": [
+              1,
+              1600
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              32,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              1600
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.197
+    },
+    {
+      "spec": {
+        "layer": 9,
+        "front_output": "/Transpose_51_output_0",
+        "inputs": [
+          "/Transpose_51_output_0",
+          "attn_offset_9",
+          "attn_cached_keys_9",
+          "attn_cached_values_9",
+          "attn_cached_positions_9"
+        ],
+        "outputs": [
+          "/Reshape_39_output_0",
+          "attn_offset_out_9",
+          "attn_cached_keys_out_9",
+          "attn_cached_values_out_9",
+          "attn_cached_positions_out_9"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer9_attention.onnx",
+      "onnx_size_bytes": 11657,
+      "onnx_sha256": "2c92319197d0336cec95e51e25e27fbcd26ffca8024eb8f1a13350538ec0b9e2",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 1.463,
+        "inputs": [
+          {
+            "name": "/Transpose_51_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              32,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_9",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_9",
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_9",
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_9",
+            "shape": [
+              1,
+              1600
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              32,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              1600
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.204
+    },
+    {
+      "spec": {
+        "layer": 10,
+        "front_output": "/Transpose_54_output_0",
+        "inputs": [
+          "/Transpose_54_output_0",
+          "attn_offset_10",
+          "attn_cached_keys_10",
+          "attn_cached_values_10",
+          "attn_cached_positions_10"
+        ],
+        "outputs": [
+          "/Reshape_43_output_0",
+          "attn_offset_out_10",
+          "attn_cached_keys_out_10",
+          "attn_cached_values_out_10",
+          "attn_cached_positions_out_10"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer10_attention.onnx",
+      "onnx_size_bytes": 11836,
+      "onnx_sha256": "e8650e1628fa58458a51375546c39bab0e13d252d2c59cee44f67ca3bf9587a6",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 1.095,
+        "inputs": [
+          {
+            "name": "/Transpose_54_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              32,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_10",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_10",
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_10",
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_10",
+            "shape": [
+              1,
+              1600
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              32,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              1600
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.214
+    },
+    {
+      "spec": {
+        "layer": 11,
+        "front_output": "/Transpose_57_output_0",
+        "inputs": [
+          "/Transpose_57_output_0",
+          "attn_offset_11",
+          "attn_cached_keys_11",
+          "attn_cached_values_11",
+          "attn_cached_positions_11"
+        ],
+        "outputs": [
+          "/Reshape_47_output_0",
+          "attn_offset_out_11",
+          "attn_cached_keys_out_11",
+          "attn_cached_values_out_11",
+          "attn_cached_positions_out_11"
+        ]
+      },
+      "onnx": "/home/harve/models/moss-rknn-rk3576-codec-middle-bridges-all/codec_middle_layer11_attention.onnx",
+      "onnx_size_bytes": 11836,
+      "onnx_sha256": "8aa751b72bb82d05868ec49fa89df41c0424fab89d4e57570056ce8a2a751326",
+      "ort_verify": {
+        "status": "OK",
+        "elapsed_ms": 1.328,
+        "inputs": [
+          {
+            "name": "/Transpose_57_output_0",
+            "shape": [
+              3,
+              1,
+              4,
+              32,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_offset_11",
+            "shape": [
+              1
+            ],
+            "dtype": "int32"
+          },
+          {
+            "name": "attn_cached_keys_11",
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_values_11",
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32"
+          },
+          {
+            "name": "attn_cached_positions_11",
+            "shape": [
+              1,
+              1600
+            ],
+            "dtype": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "shape": [
+              1,
+              32,
+              256
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1
+            ],
+            "dtype": "int32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              4,
+              1600,
+              64
+            ],
+            "dtype": "float32",
+            "finite": true
+          },
+          {
+            "shape": [
+              1,
+              1600
+            ],
+            "dtype": "int32",
+            "finite": true
+          }
+        ]
+      },
+      "status": "OK",
+      "elapsed_s": 0.191
+    }
+  ]
+}

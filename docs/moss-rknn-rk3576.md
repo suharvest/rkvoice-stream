@@ -341,6 +341,13 @@ Codec RKNN status as of the RK3576 `f1` probes:
   `codec_front_layer*_qkv` RKNNs build from the fixed `f1` codec graph and run
   on RK3576 with finite `[3, 1, 4, seq, 64]` output; single-island `infer_ms`
   ranges from `1.953` to `2.860`.
+  `build_moss_codec_middle_bridges.py` extracts the CPU bridge for all 12
+  codec transformer layers: packed Q/K/V plus the layer cache/offset go in, and
+  attention hidden plus updated cache/offset come out. The bridge must be taken
+  from the int32-offset xorfixed graph; the RKNN-specific `int64offsets` graph
+  exposes an ORT-invalid `Add(int64, int32)` inside the single-layer bridge.
+  All 12 bridge ONNX files load and run with finite output in ORT; isolated
+  `elapsed_ms` ranges from `0.454` to `1.463` on WSL2.
   `build_moss_codec_suffix_islands.py` now extracts the suffix pattern for all
   12 codec transformer layers. All 12 `codec_suffix_layer*_outproj_ffn` RKNNs
   build from the fixed `f1` codec graph and run on RK3576 with finite output;
@@ -365,6 +372,7 @@ Evidence:
 - `docs/evidence/moss/rk3576-moss-codec-suffix-layers0-11-runtime-probe-auto.json`
 - `docs/evidence/moss/wsl2-moss-codec-front-layers0-11-build.json`
 - `docs/evidence/moss/rk3576-moss-codec-front-layers0-11-runtime-probe-auto.json`
+- `docs/evidence/moss/wsl2-moss-codec-middle-layers0-11-extract-ort.json`
 
 ## Gates
 
@@ -2572,9 +2580,9 @@ target is a sampler/decode/codec path that reduces the fixed first-audio cost.
 - Fix or replace the experimental voice-prefix KV cache path. Current TTFA improves but quality fails, so it remains opt-in only.
 - Continue codec split implementation from the verified boundaries: front RKNN
   through Q/K/V, CPU RoPE/attention, suffix RKNN for out-projection + FFN. The
-  12 front islands and 12 suffix islands are verified on RK3576; the next step
-  is to implement the streaming pipeline runner and prove ORT parity plus
-  end-to-end codec latency.
+  12 front islands, 12 CPU attention bridges, and 12 suffix islands are
+  extracted/verified as standalone pieces; the next step is to implement the
+  streaming pipeline runner and prove ORT parity plus end-to-end codec latency.
 - Split sampler/decode further before RKNN conversion. The current monolithic sampler/decode graphs load but crash on RK3576 inference.
 - Convert fixed-shape RKNN buckets and generate `moss-rknn-manifest.json` only after single-bucket RK3576 inference is stable.
 - Implement and compile `/opt/rkvoice-workers/moss_rknn_worker` against RKNN C API.
