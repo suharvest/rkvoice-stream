@@ -70,6 +70,10 @@ class Qwen3ASREngine:
                  compact_suffix: bool = True,
                  decoder_type: str = "rkllm",
                  decoder_exec_mode: str = "dual_core",
+                 final_stop_on_punctuation: bool = False,
+                 final_stop_punctuation: str = "。！？.!?",
+                 final_stop_min_chars: int = 0,
+                 final_stop_min_chunks: int = 0,
                  decoder_callback: Callable = None,
                  verbose: bool = True):
         """
@@ -97,6 +101,13 @@ class Qwen3ASREngine:
             compact_suffix: Use compact suffix prompt (saves ~120ms)
             decoder_type: "rkllm" (default) or "matmul" (no RKLLM conflict)
             decoder_exec_mode: "single_core" or "dual_core" (matmul only)
+            final_stop_on_punctuation: RKLLM final-decode policy. When true,
+                stop after sentence-ending punctuation once min thresholds are
+                satisfied. Default false; validate with WER/CER before profile
+                rollout.
+            final_stop_punctuation: Characters treated as final punctuation.
+            final_stop_min_chars: Minimum decoded characters before stopping.
+            final_stop_min_chunks: Minimum callback chunks before stopping.
             decoder_callback: Optional callback(text, is_finish) for streaming
             verbose: Print loading progress
         """
@@ -140,20 +151,10 @@ class Qwen3ASREngine:
         if self.vad_model_path and verbose:
             print(f"  VAD model: {vad_path}")
 
-        # Decoder model: check decoder/ then rkllm/ directory (only for rkllm type)
-        decoder_dir = model_dir / "decoder"
-        if not decoder_dir.exists():
-            decoder_dir = model_dir / "rkllm"
         if decoder_type != "matmul":
-            decoder_path = self._find_file(
-                decoder_dir, f"*qwen3*{decoder_quant}*{platform}*rkllm",
-                "decoder model", required=False
+            decoder_path = self._find_rkllm_decoder_model(
+                model_dir, decoder_quant, platform
             )
-            if decoder_path is None:
-                decoder_path = self._find_file(
-                    decoder_dir, f"*{decoder_quant}*{platform}*rkllm",
-                    "decoder model"
-                )
         else:
             decoder_path = None
 
@@ -247,6 +248,10 @@ class Qwen3ASREngine:
                 enabled_cpus=enabled_cpus,
                 embed_flash=embed_flash,
                 n_keep=n_keep,
+                final_stop_on_punctuation=final_stop_on_punctuation,
+                final_stop_punctuation=final_stop_punctuation,
+                final_stop_min_chars=final_stop_min_chars,
+                final_stop_min_chunks=final_stop_min_chunks,
                 callback_fn=decoder_callback,
             )
 
@@ -524,6 +529,49 @@ class Qwen3ASREngine:
             print("[Engine] Released.")
 
     # ---- File finding helpers ----
+
+    @classmethod
+    def _find_rkllm_decoder_model(
+        cls,
+        model_dir: Path,
+        decoder_quant: str,
+        platform: str,
+    ) -> Path:
+        """Find an RKLLM decoder in either supported artifact layout.
+
+        RKLLM artifacts have existed in both:
+          - model_dir/decoder/*.rkllm
+          - model_dir/rkllm/*.rkllm
+
+        A decoder/ directory can also contain matmul weights only. In that
+        case it must not mask the rkllm/ fallback.
+        """
+        model_dir = Path(model_dir)
+        for decoder_dir in (model_dir / "decoder", model_dir / "rkllm"):
+            if not decoder_dir.exists():
+                continue
+            matches = [
+                p for p in sorted(decoder_dir.glob("*.rkllm"))
+                if cls._rkllm_name_matches(p, decoder_quant, platform)
+            ]
+            if matches:
+                matches.sort(key=lambda p: (0 if "qwen3" in p.name else 1, p.name))
+                return matches[0]
+        raise FileNotFoundError(
+            "decoder model: no match for "
+            f"quant={decoder_quant!r} platform={platform!r} in "
+            f"{model_dir / 'decoder'} or {model_dir / 'rkllm'}"
+        )
+
+    @staticmethod
+    def _rkllm_name_matches(path: Path, decoder_quant: str, platform: str) -> bool:
+        """Return true when filename has exact quant/platform tokens.
+
+        Avoid substring matches such as ``w4a16`` accidentally selecting
+        ``w4a16_g128`` or ``w8a8`` selecting ``w8a8_g128``.
+        """
+        tokens = path.name.removesuffix(".rkllm").split(".")
+        return decoder_quant in tokens and platform in tokens
 
     @staticmethod
     def _find_file(directory: Path, pattern: str, desc: str,

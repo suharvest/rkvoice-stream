@@ -9,10 +9,38 @@ Critical settings for correct operation:
   - model must be exported as model_type="qwen3" (not qwen3_vl)
 """
 
-import ctypes
 import threading
+import ctypes
+import logging
 import numpy as np
 from .config import CPU_MASKS
+
+logger = logging.getLogger(__name__)
+
+
+DEFAULT_STOP_PUNCTUATION = "。！？.!?"
+
+
+def should_stop_after_punctuation(
+    text: str,
+    *,
+    enabled: bool,
+    punctuation: str = DEFAULT_STOP_PUNCTUATION,
+    min_chars: int = 0,
+) -> bool:
+    """Return True when generated ASR text has reached a sentence boundary.
+
+    This is intentionally conservative and opt-in. It is used only as a
+    low-latency final-decode policy for ASR decoders whose runtime otherwise
+    keeps generating after a complete sentence. Callers should gate it with
+    real WER/CER measurements before enabling in a profile.
+    """
+    if not enabled:
+        return False
+    s = (text or "").strip()
+    if len(s) < min_chars:
+        return False
+    return bool(s) and s[-1] in punctuation
 
 
 # ==================== ctypes struct definitions ====================
@@ -202,6 +230,10 @@ class RKLLMDecoder:
                  enabled_cpus: int = 2,
                  embed_flash: int = 1,
                  n_keep: int = -1,
+                 final_stop_on_punctuation: bool = False,
+                 final_stop_punctuation: str = DEFAULT_STOP_PUNCTUATION,
+                 final_stop_min_chars: int = 0,
+                 final_stop_min_chunks: int = 0,
                  callback_fn=None):
         """
         Initialize RKLLM decoder.
@@ -220,6 +252,13 @@ class RKLLMDecoder:
             enabled_cpus: Number of CPU cores (2 or 4)
             embed_flash: Enable flash embedding (1 = yes)
             n_keep: Prefix KV cache length for keep_system_prompt
+            final_stop_on_punctuation: Abort final decode after sentence-ending
+                punctuation. Default off; enable only behind an accuracy gate.
+            final_stop_punctuation: Characters that count as final punctuation.
+            final_stop_min_chars: Minimum decoded characters before punctuation
+                can stop generation.
+            final_stop_min_chunks: Minimum callback chunks before punctuation
+                can stop generation.
             callback_fn: Optional callback(text, is_finish) for streaming output
         """
         self.lib = ctypes.CDLL(str(lib_path))
@@ -230,7 +269,12 @@ class RKLLMDecoder:
         self._repeat_buf = []
         self._max_repeat = 6  # Abort after 6 repeated patterns
         self._aborted = False
+        self._abort_reason = ""
         self._early_stop_tokens = 0  # 0 = disabled; >0 = abort after N generated tokens
+        self._final_stop_on_punctuation = final_stop_on_punctuation
+        self._final_stop_punctuation = final_stop_punctuation
+        self._final_stop_min_chars = max(0, int(final_stop_min_chars))
+        self._final_stop_min_chunks = max(0, int(final_stop_min_chunks))
 
         # Setup callback
         @RKLLM_CALLBACK
@@ -247,6 +291,7 @@ class RKLLMDecoder:
                         self._repeat_buf.append(text)
                         buf = self._repeat_buf
                         should_abort = False
+                        abort_reason = ""
                         # Check n-gram patterns (n=1,2,3)
                         for n in (1, 2, 3):
                             need = n * self._max_repeat
@@ -256,14 +301,28 @@ class RKLLMDecoder:
                                 if all(tuple(tail[i:i+n]) == pattern
                                        for i in range(0, need, n)):
                                     should_abort = True
+                                    abort_reason = "repeat"
                                     break
                         # Early stop: abort after N tokens for intermediate chunks
                         if (not should_abort
                                 and self._early_stop_tokens > 0
                                 and len(self._output_chunks) >= self._early_stop_tokens):
                             should_abort = True
+                            abort_reason = "early_stop_tokens"
+                        if (not should_abort
+                                and self._early_stop_tokens == 0
+                                and len(self._output_chunks) >= self._final_stop_min_chunks
+                                and should_stop_after_punctuation(
+                                    "".join(self._output_chunks),
+                                    enabled=self._final_stop_on_punctuation,
+                                    punctuation=self._final_stop_punctuation,
+                                    min_chars=self._final_stop_min_chars,
+                                )):
+                            should_abort = True
+                            abort_reason = "final_punctuation"
                         if should_abort:
                             self._aborted = True
+                            self._abort_reason = abort_reason
                             self.lib.rkllm_abort(self.handle)
             elif state == LLM_RUN_FINISH:
                 if result:
@@ -375,8 +434,26 @@ class RKLLMDecoder:
         self._n_keep = n_keep
         self._prefix_kv_ready = False
 
-        print(f"[Decoder] Loaded. cpus={enabled_cpus} max_ctx={max_context_len} "
-              f"max_new_tokens={max_new_tokens} top_k={top_k} n_keep={n_keep}")
+        logger.info(
+            "RKLLM decoder loaded: cpus=%d max_ctx=%d max_new_tokens=%d "
+            "top_k=%d top_p=%.3f temperature=%.3f repeat_penalty=%.3f "
+            "freq_penalty=%.3f presence_penalty=%.3f n_keep=%d "
+            "final_stop_on_punct=%s final_stop_min_chars=%d "
+            "final_stop_min_chunks=%d",
+            enabled_cpus,
+            max_context_len,
+            max_new_tokens,
+            top_k,
+            top_p,
+            temperature,
+            repeat_penalty,
+            frequency_penalty,
+            presence_penalty,
+            n_keep,
+            final_stop_on_punctuation,
+            self._final_stop_min_chars,
+            self._final_stop_min_chunks,
+        )
 
     def precompute_prefix_kv(self, prefix_embed: np.ndarray,
                              cache_path: str = "/tmp/rkllm_prefix_cache.bin") -> float:
@@ -463,6 +540,7 @@ class RKLLMDecoder:
             self._perf = {}
             self._repeat_buf = []
             self._aborted = False
+            self._abort_reason = ""
 
             # Clear KV cache
             if keep_prefix and self._prefix_kv_ready:
@@ -528,10 +606,12 @@ class RKLLMDecoder:
                 "n_tokens_generated": len(self._output_chunks),
                 "ret_code": ret,
                 "aborted": self._aborted,
+                "abort_reason": self._abort_reason,
             }
 
     def abort(self):
         """Abort current generation."""
+        self._abort_reason = self._abort_reason or "external"
         self.lib.rkllm_abort(self.handle)
 
     def release(self):

@@ -33,6 +33,25 @@ class TranscriptionResult:
 class ASRStream(ABC):
     """A streaming ASR session that accumulates audio and produces text."""
 
+    prefer_backend_endpoint_vad: bool = False
+    """Whether backend endpointing should own VAD finalization.
+
+    Front-end VAD can still provide speech start/end events, but callers should
+    wait for the backend's ``get_partial(..., is_endpoint=True)`` signal before
+    finalizing when this flag is set.
+    """
+
+    allow_frontend_eou_finalize: bool = False
+    """Whether frontend VAD speech_end may finalize this stream even when
+    backend endpointing is preferred."""
+
+    frontend_eou_min_audio_s: float = 0.0
+    """Minimum accepted audio duration before frontend EOU can finalize a
+    backend-owned endpoint stream."""
+
+    immediate_client_eos_cancel_safe: bool = False
+    """Whether partial abort can run outside normal ASR serialization."""
+
     @abstractmethod
     def accept_waveform(self, sample_rate: int, samples: np.ndarray) -> None:
         """Feed audio samples (float32, [-1,1]) into the stream."""
@@ -59,12 +78,31 @@ class ASRStream(ABC):
         """
         pass
 
+    def abort_partial_decode(self) -> None:
+        """Best-effort abort of an in-flight partial decode only.
+
+        This must not enter finalizing mode or drop future audio. Backends that
+        cannot distinguish partial abort from final cancel should leave the
+        default no-op in place.
+        """
+        pass
+
     def get_partial(self) -> tuple[str, bool]:
         """Return (partial_text, is_endpoint). Default: no partial results."""
         return "", False
 
 
 class ASRBackend(ABC):
+    prefer_backend_endpoint_vad: bool = False
+    """Whether streams from this backend should receive audio before frontend
+    VAD speech_start and rely on backend endpointing for finalization."""
+
+    allow_frontend_eou_finalize: bool = False
+    """Whether frontend VAD speech_end may finalize streams from this backend
+    even when backend endpointing is preferred."""
+
+    frontend_eou_min_audio_s: float = 0.0
+    """Minimum accepted audio duration before frontend EOU can finalize."""
 
     @property
     @abstractmethod
@@ -87,8 +125,17 @@ class ASRBackend(ABC):
     @abstractmethod
     def transcribe(self, audio_bytes: bytes, language: str = "auto") -> TranscriptionResult: ...
 
-    def create_stream(self, language: str = "auto") -> ASRStream:
-        """Create a streaming ASR session. Requires STREAMING capability."""
+    def create_stream(
+        self,
+        language: str = "auto",
+        stream_options: Optional[dict] = None,
+    ) -> ASRStream:
+        """Create a streaming ASR session. Requires STREAMING capability.
+
+        ``stream_options`` is optional and session-scoped; legacy backends can
+        ignore it and keep their existing ``create_stream(language=...)``
+        implementation.
+        """
         raise NotImplementedError(f"{self.name} does not support streaming")
 
     def has_capability(self, cap: ASRCapability) -> bool:
