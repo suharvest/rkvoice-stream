@@ -72,6 +72,11 @@ DEC_CORE_MASK = os.environ.get("PARAFORMER_RKNN_DEC_CORE", "NPU_CORE_1")
 DEC_MAX_ENC_FRAMES = _env_int("PARAFORMER_RKNN_DEC_ENC_FRAMES", 400)
 DEC_MAX_TOKENS = _env_int("PARAFORMER_RKNN_DEC_TOKENS", 40)
 PREROLL_MS = max(0, _env_int("PARAFORMER_PREROLL_MS", 100))
+STREAM_MODE_ENV = os.environ.get("PARAFORMER_STREAM_MODE", "incremental").lower()
+FBANK_CMVN_ENV = os.environ.get("PARAFORMER_FBANK_CMVN", "utterance").lower()
+STREAM_DECODE_ENV = os.environ.get("PARAFORMER_STREAM_DECODE", "incremental").lower()
+ORT_INTRA_OP_THREADS = _env_int("PARAFORMER_ORT_INTRA_OP_THREADS", 0)
+ORT_INTER_OP_THREADS = _env_int("PARAFORMER_ORT_INTER_OP_THREADS", 0)
 
 SAMPLE_RATE = 16000
 FFT_SIZE = 512
@@ -84,7 +89,7 @@ PRE_EMPH = 0.97
 LOW_FREQ = 20
 HIGH_FREQ = 8000
 
-CHUNK_SIZE_SEC = 0.67
+CHUNK_SIZE_SEC = max(0.1, float(os.environ.get("PARAFORMER_STREAM_PROCESS_SEC", "0.67")))
 LEFT_CONTEXT_SEC = 2.68
 RIGHT_LOOKAHEAD_LFR = 15
 CIF_THRESHOLD = 1.0
@@ -139,6 +144,8 @@ def compute_fbank(audio: np.ndarray) -> np.ndarray:
     power = (spectrum.real ** 2 + spectrum.imag ** 2) / FFT_SIZE
     mel_feats = power @ _get_mel_filterbank().T
     mel_feats = np.log(np.maximum(mel_feats, 1e-10))
+    if FBANK_CMVN_ENV in ("none", "off", "false", "0"):
+        return mel_feats.astype(np.float32)
     mean = mel_feats.mean(axis=0, keepdims=True)
     std = np.maximum(mel_feats.std(axis=0, keepdims=True), 1e-10)
     return ((mel_feats - mean) / std).astype(np.float32)
@@ -202,19 +209,60 @@ def load_tokens(path: str) -> list[str]:
     return tokens
 
 
+def _is_ascii_word_piece(token: str) -> bool:
+    return bool(re.search(r"[A-Za-z0-9]", token)) and all(ord(ch) < 128 for ch in token)
+
+
+def _append_decoded_word(parts: list[str], word: str) -> None:
+    if not word:
+        return
+    if parts and parts[-1] and re.search(r"[A-Za-z0-9.,!?;:]$", parts[-1]):
+        parts.append(" ")
+    parts.append(word)
+
+
 def decode_ids(token_ids: list[int], tokens: list[str]) -> str:
     pieces = []
+    pending_word = ""
     for tid in token_ids:
         if tid in (BLANK_ID, SOS_ID, EOS_ID):
             continue
-        if 0 <= tid < len(tokens):
-            token = tokens[tid]
-            if token.startswith("<") and token.endswith(">"):
-                continue
-            if token.endswith("@@"):
-                token = token[:-2]
+        if not 0 <= tid < len(tokens):
+            continue
+
+        token = tokens[tid]
+        explicit_word_boundary = token.startswith("▁") or token.startswith("Ġ")
+        token = token.replace("▁", "").replace("Ġ", "")
+        if token in ("<space>", "[space]"):
+            _append_decoded_word(pieces, pending_word)
+            pending_word = ""
+            if pieces and not pieces[-1].endswith(" "):
+                pieces.append(" ")
+            continue
+        if token.startswith("<") and token.endswith(">"):
+            continue
+
+        continues = token.endswith("@@")
+        if continues:
+            token = token[:-2]
+        if not token:
+            continue
+
+        if _is_ascii_word_piece(token):
+            if explicit_word_boundary and pending_word:
+                _append_decoded_word(pieces, pending_word)
+                pending_word = ""
+            pending_word += token
+            if not continues:
+                _append_decoded_word(pieces, pending_word)
+                pending_word = ""
+        else:
+            _append_decoded_word(pieces, pending_word)
+            pending_word = ""
             pieces.append(token)
-    return "".join(pieces)
+
+    _append_decoded_word(pieces, pending_word)
+    return "".join(pieces).strip()
 
 
 def add_preroll_silence(audio: np.ndarray) -> np.ndarray:
@@ -291,6 +339,17 @@ def _find_model_file(directory: Path, patterns: list[str], precision: str) -> Op
             if candidates:
                 return candidates[0]
     return None
+
+
+def _ort_session(path: Path):
+    import onnxruntime as ort
+
+    opts = ort.SessionOptions()
+    if ORT_INTRA_OP_THREADS > 0:
+        opts.intra_op_num_threads = ORT_INTRA_OP_THREADS
+    if ORT_INTER_OP_THREADS > 0:
+        opts.inter_op_num_threads = ORT_INTER_OP_THREADS
+    return ort.InferenceSession(str(path), sess_options=opts, providers=["CPUExecutionProvider"])
 
 
 class ParaformerRKNNBackend(ASRBackend):
@@ -376,12 +435,10 @@ class ParaformerRKNNBackend(ASRBackend):
         suffix_path = Path(ENCODER_SUFFIX_ONNX)
         if not suffix_path.exists():
             raise FileNotFoundError(f"Paraformer encoder suffix ONNX not found: {suffix_path}")
-        import onnxruntime as ort
-
         for frames, path in sorted(encoder_files.items()):
             self._encoders[frames] = _RknnRuntime(str(path), ENC_CORE_MASK)
             logger.info("Loaded Paraformer hybrid encoder prefix bucket %d frames: %s", frames, path.name)
-        self._encoder_suffix = ort.InferenceSession(str(suffix_path), providers=["CPUExecutionProvider"])
+        self._encoder_suffix = _ort_session(suffix_path)
         self._encoder_suffix_cut_input = self._encoder_suffix.get_inputs()[0].name
         self._encoder_mode = "hybrid"
         logger.info("Loaded Paraformer encoder CPU suffix: %s", suffix_path)
@@ -413,9 +470,7 @@ class ParaformerRKNNBackend(ASRBackend):
         decoder_path = Path(DECODER_ONNX)
         if not decoder_path.exists():
             raise FileNotFoundError(f"Paraformer CPU decoder ONNX not found: {decoder_path}")
-        import onnxruntime as ort
-
-        self._decoder_ort = ort.InferenceSession(str(decoder_path), providers=["CPUExecutionProvider"])
+        self._decoder_ort = _ort_session(decoder_path)
         logger.info("Loaded Paraformer CPU decoder ONNX: %s", decoder_path)
 
     def _load_rknn_decoder(self, rknn_dir: Path) -> None:
@@ -456,7 +511,7 @@ class ParaformerRKNNBackend(ASRBackend):
         text = self._transcribe_audio(audio)
         return TranscriptionResult(text=text, language=language)
 
-    def create_stream(self, language: str = "auto") -> ASRStream:
+    def create_stream(self, language: str = "auto", stream_options: Optional[dict] = None) -> ASRStream:
         if not self.is_ready():
             raise RuntimeError("Paraformer RKNN backend not ready")
         return ParaformerRKNNStream(self)
@@ -684,8 +739,13 @@ class ParaformerRKNNBackend(ASRBackend):
 class ParaformerRKNNStream(ASRStream):
     def __init__(self, backend: ParaformerRKNNBackend):
         self._backend = backend
+        self._stream_mode = STREAM_MODE_ENV
+        self._stream_decode = STREAM_DECODE_ENV
         self._audio_buf = initial_preroll_audio()
         self._all_audio = np.array([], dtype=np.float32)
+        self._offline_audio = np.array([], dtype=np.float32)
+        self._pending_embeds: list[np.ndarray] = []
+        self._last_enc: Optional[np.ndarray] = None
         self._prev_total_frames = 0
         self._cif_processed_lfr = 0
         self._all_token_ids: list[int] = []
@@ -696,15 +756,19 @@ class ParaformerRKNNStream(ASRStream):
         self._cache = [np.zeros(CACHE_SHAPE, dtype=np.float32) for _ in range(CACHE_COUNT)]
         self._cancelled = False
         self._final_text_cache = ""
+        self._final_prepared = False
 
     def accept_waveform(self, sample_rate: int, samples: np.ndarray) -> None:
-        if self._cancelled:
+        if self._cancelled or self._final_prepared:
             return
         audio = samples.astype(np.float32)
         if audio.ndim > 1:
             audio = audio.mean(axis=1)
         if sample_rate != SAMPLE_RATE:
             audio = _resample(audio, sample_rate, SAMPLE_RATE)
+        if self._stream_mode == "offline_final":
+            self._offline_audio = np.concatenate([self._offline_audio, audio])
+            return
         self._audio_buf = np.concatenate([self._audio_buf, audio])
         self._process_chunks()
 
@@ -714,23 +778,57 @@ class ParaformerRKNNStream(ASRStream):
     def cancel_and_finalize(self) -> None:
         self._final_text_cache = self._partial_text
         self._cancelled = True
+        self._final_prepared = True
         self._audio_buf = np.array([], dtype=np.float32)
+        self._offline_audio = np.array([], dtype=np.float32)
+        self._pending_embeds = []
+        self._last_enc = None
+
+    def prepare_finalize(self) -> None:
+        if self._cancelled or self._final_prepared:
+            return
+        if self._stream_mode == "offline_final":
+            self._final_text_cache = self._backend._transcribe_audio(
+                add_preroll_silence(self._offline_audio)
+            )
+            self._final_prepared = True
+            return
+        self._compute_final_text()
+        self._final_text_cache = self._partial_text
+        self._final_prepared = True
 
     def finalize(self) -> str:
         if self._cancelled:
             return self._final_text_cache
+        if self._final_prepared:
+            text = self._final_text_cache
+            self._reset()
+            return text
+        if self._stream_mode == "offline_final":
+            text = self._backend._transcribe_audio(add_preroll_silence(self._offline_audio))
+            self._final_text_cache = text
+            self._reset()
+            return text
+        self._compute_final_text()
+        text = self._partial_text
+        self._reset()
+        return text
+
+    def _compute_final_text(self) -> None:
         if len(self._audio_buf) > 0:
             self._all_audio = np.concatenate([self._all_audio, self._audio_buf])
             self._audio_buf = np.array([], dtype=np.float32)
         self._drain_all_pending()
         self._flush_cif_tail()
-        text = self._partial_text
-        self._reset()
-        return text
+        if self._stream_decode == "batch_final":
+            self._decode_pending_embeds()
 
     def _reset(self) -> None:
         self._audio_buf = initial_preroll_audio()
         self._all_audio = np.array([], dtype=np.float32)
+        self._offline_audio = np.array([], dtype=np.float32)
+        self._pending_embeds = []
+        self._last_enc = None
         self._prev_total_frames = 0
         self._cif_processed_lfr = 0
         self._all_token_ids = []
@@ -739,6 +837,9 @@ class ParaformerRKNNStream(ASRStream):
         self._carry_weight = 0.0
         self._carry_embed = np.zeros(512, dtype=np.float32)
         self._cache = [np.zeros(CACHE_SHAPE, dtype=np.float32) for _ in range(CACHE_COUNT)]
+        self._cancelled = False
+        self._final_text_cache = ""
+        self._final_prepared = False
 
     def _process_chunks(self) -> None:
         chunk_samples = int(CHUNK_SIZE_SEC * SAMPLE_RATE)
@@ -764,6 +865,7 @@ class ParaformerRKNNStream(ASRStream):
         enc, alphas = self._backend._run_encoder(enc_input)
         if enc is None or alphas is None:
             return
+        self._last_enc = enc
 
         window_start_abs = cur_total_lfr - enc.shape[1]
         if final:
@@ -787,6 +889,9 @@ class ParaformerRKNNStream(ASRStream):
         )
         if len(acoustic_embeds) == 0:
             return
+        if self._stream_decode == "batch_final":
+            self._pending_embeds.append(acoustic_embeds)
+            return
 
         sample_ids = self._backend._run_decoder(
             enc,
@@ -804,6 +909,11 @@ class ParaformerRKNNStream(ASRStream):
         if self._carry_weight < CIF_TAIL_THRESHOLD:
             return
         acoustic_embeds = (self._carry_embed / self._carry_weight)[np.newaxis, :]
+        self._carry_weight = 0.0
+        self._carry_embed = np.zeros(512, dtype=np.float32)
+        if self._stream_decode == "batch_final":
+            self._pending_embeds.append(acoustic_embeds)
+            return
         sample_ids = self._backend._run_decoder(
             np.zeros((1, 1, 512), dtype=np.float32),
             1,
@@ -814,3 +924,25 @@ class ParaformerRKNNStream(ASRStream):
         if sample_ids is not None:
             self._all_token_ids.extend(sample_ids.tolist())
             self._partial_text = decode_ids(self._all_token_ids, self._backend._tokens)
+
+    def _decode_pending_embeds(self) -> None:
+        if not self._pending_embeds or self._last_enc is None:
+            return
+        acoustic = np.concatenate(self._pending_embeds, axis=0)
+        if len(acoustic) == 0:
+            return
+        cache = [np.zeros(CACHE_SHAPE, dtype=np.float32) for _ in range(CACHE_COUNT)]
+        token_ids: list[int] = []
+        for start in range(0, len(acoustic), DEC_MAX_TOKENS):
+            chunk = acoustic[start:start + DEC_MAX_TOKENS]
+            sample_ids = self._backend._run_decoder(
+                self._last_enc,
+                self._last_enc.shape[1],
+                chunk,
+                len(chunk),
+                cache,
+            )
+            if sample_ids is not None:
+                token_ids.extend(sample_ids.tolist())
+        self._all_token_ids = token_ids
+        self._partial_text = decode_ids(self._all_token_ids, self._backend._tokens)

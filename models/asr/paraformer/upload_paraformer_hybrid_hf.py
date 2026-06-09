@@ -22,6 +22,7 @@ DEFAULT_PATTERNS = (
     "encoder_suffix_from_block30.onnx",
     "manifest-*.json",
     "rknn/**/encoder_prefix_to_block30.*.fp16.rknn",
+    "rknn/**/decoder.*.rknn",
 )
 
 
