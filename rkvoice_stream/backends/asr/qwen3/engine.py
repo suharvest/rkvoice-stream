@@ -74,6 +74,9 @@ class Qwen3ASREngine:
                  final_stop_punctuation: str = "。！？.!?",
                  final_stop_min_chars: int = 0,
                  final_stop_min_chunks: int = 0,
+                 decoder_embed_cache_reuse: bool = False,
+                 decoder_async_mode: bool = False,
+                 decoder_async_timeout_s: float = 30.0,
                  decoder_callback: Callable = None,
                  verbose: bool = True):
         """
@@ -108,6 +111,12 @@ class Qwen3ASREngine:
             final_stop_punctuation: Characters treated as final punctuation.
             final_stop_min_chars: Minimum decoded characters before stopping.
             final_stop_min_chunks: Minimum callback chunks before stopping.
+            decoder_embed_cache_reuse: Enable RKLLM v1.2.3 automatic EMBED
+                prefix cache reuse by not clearing KV before keep_history=0
+                decoder runs.
+            decoder_async_mode: Initialize RKLLM async mode and call
+                rkllm_run_async internally.
+            decoder_async_timeout_s: Timeout for async decoder completion.
             decoder_callback: Optional callback(text, is_finish) for streaming
             verbose: Print loading progress
         """
@@ -252,6 +261,9 @@ class Qwen3ASREngine:
                 final_stop_punctuation=final_stop_punctuation,
                 final_stop_min_chars=final_stop_min_chars,
                 final_stop_min_chunks=final_stop_min_chunks,
+                embed_cache_reuse=decoder_embed_cache_reuse,
+                async_mode=decoder_async_mode,
+                async_timeout_s=decoder_async_timeout_s,
                 callback_fn=decoder_callback,
             )
 

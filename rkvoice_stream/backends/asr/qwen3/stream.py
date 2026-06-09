@@ -5,6 +5,7 @@ Separated from engine.py for modularity.  StreamSession is created by
 Qwen3ASREngine.create_stream() and should not be instantiated directly.
 """
 
+import ast
 import time
 import numpy as np
 from collections import deque
@@ -14,6 +15,27 @@ import re
 
 from .config import SAMPLE_RATE
 from .utils import apply_itn, parse_asr_output
+
+
+def _normalize_decoder_text(value) -> tuple[str, Optional[str]]:
+    """Return ``(text, language)`` from decoder text-like payloads."""
+    if isinstance(value, (tuple, list)):
+        text = value[0] if value else ""
+        lang = value[1] if len(value) > 1 else None
+        return str(text or ""), str(lang) if lang else None
+    if isinstance(value, str) and value[:1] in ("(", "["):
+        try:
+            parsed = ast.literal_eval(value)
+        except (SyntaxError, ValueError):
+            parsed = None
+        if (
+            isinstance(parsed, (tuple, list))
+            and 1 <= len(parsed) <= 2
+            and isinstance(parsed[0], str)
+        ):
+            lang = parsed[1] if len(parsed) > 1 else None
+            return parsed[0], str(lang) if isinstance(lang, str) and lang else None
+    return str(value or ""), None
 
 
 class StreamSession:
@@ -393,7 +415,7 @@ class StreamSession:
             full_embd, n_tokens, keep_history=0)
         self._total_llm_ms += (time.perf_counter() - t1) * 1000
 
-        raw_text = result["text"]
+        raw_text, decoded_language = _normalize_decoder_text(result["text"])
         was_aborted = result.get("aborted", False)
         self._was_aborted = was_aborted
 
@@ -401,6 +423,7 @@ class StreamSession:
             new_text, lang = raw_text, self.language
         else:
             lang, new_text = parse_asr_output(raw_text)
+            lang = lang or decoded_language
         new_text = self._strip_trailing_garbage(new_text)
         if was_aborted:
             # repetition abort → discard garbage
@@ -612,7 +635,7 @@ class StreamSession:
         self._total_llm_ms += llm_ms
 
         # 6. Parse output
-        raw_text = result["text"]
+        raw_text, decoded_language = _normalize_decoder_text(result["text"])
         was_aborted = result.get("aborted", False)
         self._was_aborted = was_aborted
 
@@ -620,6 +643,7 @@ class StreamSession:
             new_text, lang = raw_text, self.language
         else:
             lang, new_text = parse_asr_output(raw_text)
+            lang = lang or decoded_language
 
         # Strip trailing garbage tokens (weak EOS → extra 1-3 chars after punct)
         new_text = self._strip_trailing_garbage(new_text)

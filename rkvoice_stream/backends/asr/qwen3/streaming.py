@@ -27,9 +27,11 @@ The early-final-on-VAD overlap is the key V2V win: by the time the WebSocket
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import logging
 import os
+import re
 import threading
 import time
 from typing import Optional
@@ -86,6 +88,27 @@ def _array_fingerprint(arr: np.ndarray) -> dict:
     }
 
 
+def _normalize_decoder_text(value) -> tuple[str, Optional[str]]:
+    """Return ``(text, language)`` from decoder text-like payloads."""
+    if isinstance(value, (tuple, list)):
+        text = value[0] if value else ""
+        lang = value[1] if len(value) > 1 else None
+        return str(text or ""), str(lang) if lang else None
+    if isinstance(value, str) and value[:1] in ("(", "["):
+        try:
+            parsed = ast.literal_eval(value)
+        except (SyntaxError, ValueError):
+            parsed = None
+        if (
+            isinstance(parsed, (tuple, list))
+            and 1 <= len(parsed) <= 2
+            and isinstance(parsed[0], str)
+        ):
+            lang = parsed[1] if len(parsed) > 1 else None
+            return parsed[0], str(lang) if isinstance(lang, str) and lang else None
+    return str(value or ""), None
+
+
 def _is_cjk(ch: str) -> bool:
     if not ch:
         return False
@@ -95,6 +118,25 @@ def _is_cjk(ch: str) -> bool:
         or 0xF900 <= o <= 0xFAFF
         or 0x20000 <= o <= 0x2FFFF
     )
+
+
+_RE_PROMPT_LEAK_SUFFIX = re.compile(
+    r"(?:\s*(?:转录|請轉錄|请转录|transcribe|transcript)\s*[:：。.!?]*)+$",
+    re.IGNORECASE,
+)
+_RE_PROMPT_LEAK_PREFIX = re.compile(
+    r"^\s*(?:you are a helpful assistant\s*[\.\n]+)+",
+    re.IGNORECASE,
+)
+
+
+def _strip_prompt_leaks(text: str) -> str:
+    """Remove short prompt fragments that RKLLM may emit after weak EOS."""
+    if not text:
+        return text
+    cleaned = _RE_PROMPT_LEAK_PREFIX.sub("", str(text).strip())
+    cleaned = _RE_PROMPT_LEAK_SUFFIX.sub("", cleaned).strip()
+    return cleaned
 
 
 class Qwen3TrueStreamingASRStream:
@@ -139,6 +181,22 @@ class Qwen3TrueStreamingASRStream:
         self._debug_final_input = _env_bool("QWEN3_ASR_DEBUG_FINAL_INPUT", False)
         self._allow_auto_resume_after_endpoint = _env_bool(
             "QWEN3_ASR_ALLOW_AUTO_RESUME_AFTER_ENDPOINT", False
+        )
+        # Dictation/long-transcription mode: when a VAD endpoint fires inside a
+        # single stream, keep the finalized segment and append later segments
+        # after auto-resume.  V2V keeps this disabled because one stream maps to
+        # one dialogue turn.
+        self._accumulate_segments = _env_bool(
+            "QWEN3_ASR_ACCUMULATE_SEGMENTS", False
+        )
+        self._segment_context_prefix = _env_bool(
+            "QWEN3_ASR_SEGMENT_CONTEXT_PREFIX", False
+        )
+        self._segment_audio_carry_sec = max(
+            0.0, _env_float("QWEN3_ASR_SEGMENT_AUDIO_CARRY_SEC", 0.0)
+        )
+        self._segment_text_overlap_tokens = max(
+            0, _env_int("QWEN3_ASR_SEGMENT_TEXT_OVERLAP_TOKENS", 0)
         )
 
         self._vad_endpoint_silence_ms = (
@@ -428,10 +486,11 @@ class Qwen3TrueStreamingASRStream:
             self.prepare_finalize()
             if self._encoder_frames:
                 text = self._final_decode_text()
-                self._archive_text = text
+                self._commit_final_text(text)
             else:
                 # No audio buffered → empty result.
-                self._archive_text = ""
+                if not self._accumulate_segments:
+                    self._archive_text = ""
             self._episode_final = True
 
         finalize_ms = (time.perf_counter() - t0) * 1000
@@ -613,9 +672,16 @@ class Qwen3TrueStreamingASRStream:
         rms = float(np.sqrt(np.mean(np.square(samples, dtype=np.float64))))
         if rms <= 1e-3:
             return
-        # Full reset for a new utterance.
-        self._audio_buf = np.zeros(0, dtype=np.float32)
-        self._processed_samples = 0
+        # Full reset for a new utterance.  In dictation mode we can carry a
+        # short audio tail from the previous segment so the next final decode
+        # has acoustic context around the VAD boundary.
+        carry = np.zeros(0, dtype=np.float32)
+        if self._accumulate_segments and self._segment_audio_carry_sec > 0:
+            carry_n = int(self._segment_audio_carry_sec * SAMPLE_RATE)
+            if carry_n > 0 and len(self._audio_buf) > 0:
+                carry = self._audio_buf[-carry_n:].copy()
+        self._audio_buf = carry
+        self._processed_samples = len(carry)
         self._utterance_audio_buffer = []
         self._encoder_frames = []
         self._total_encoder_frames = 0
@@ -629,7 +695,8 @@ class Qwen3TrueStreamingASRStream:
         self._final_decode_in_progress = False
         self._finalizing = False
         self._partial_text = ""
-        self._archive_text = ""
+        if not self._accumulate_segments:
+            self._archive_text = ""
         self._episode_final = False
         self._vad_endpoint_detected = False
         if self._vad is not None:
@@ -710,7 +777,7 @@ class Qwen3TrueStreamingASRStream:
             language=self._language, context=self._context,
             skip_prefix=False)
         result = self._run_decoder(full_embd, n_tokens, self._partial_max_tokens)
-        raw = result.get("text", "") or ""
+        raw, decoded_language = _normalize_decoder_text(result.get("text", ""))
         was_aborted = result.get("aborted", False)
         early_stopped = True  # partial always runs with early_stop>0
         if was_aborted and not early_stopped:
@@ -718,15 +785,21 @@ class Qwen3TrueStreamingASRStream:
 
         if self._language:
             text = raw
+            if decoded_language:
+                self._current_language = decoded_language
         else:
             lang, text = parse_asr_output(raw)
-            if lang:
-                self._current_language = lang
+            self._current_language = lang or decoded_language or self._current_language
         return text or ""
 
     def _decode_final(self, all_frames: np.ndarray) -> str:
+        prefix_text = (
+            self._archive_text
+            if self._accumulate_segments and self._segment_context_prefix
+            else ""
+        )
         full_embd, n_tokens = self._engine.build_embed(
-            all_frames, prefix_text="",
+            all_frames, prefix_text=prefix_text,
             language=self._language, context=self._context,
             skip_prefix=False)
         if self._debug_final_input:
@@ -757,7 +830,7 @@ class Qwen3TrueStreamingASRStream:
                 self._processed_samples / SAMPLE_RATE,
             )
         result = self._run_decoder(full_embd, n_tokens, 0)
-        raw = result.get("text", "") or ""
+        raw, decoded_language = _normalize_decoder_text(result.get("text", ""))
         was_aborted = result.get("aborted", False)
         perf = result.get("perf") or {}
         logger.info(
@@ -776,10 +849,11 @@ class Qwen3TrueStreamingASRStream:
             pass
         if self._language:
             text = raw
+            if decoded_language:
+                self._current_language = decoded_language
         else:
             lang, text = parse_asr_output(raw)
-            if lang:
-                self._current_language = lang
+            self._current_language = lang or decoded_language or self._current_language
         return text or ""
 
     def _final_decode_text(self) -> str:
@@ -799,7 +873,7 @@ class Qwen3TrueStreamingASRStream:
             text = self._final_decode_text()
         finally:
             self._final_decode_in_progress = False
-        self._archive_text = text
+        self._commit_final_text(text)
         self._partial_text = ""
         self._episode_final = True
         logger.info("VAD endpoint: text=%r (silence=%.0fms speech=%.2fs)",
@@ -840,10 +914,57 @@ class Qwen3TrueStreamingASRStream:
 
     # ── Internal: helpers ────────────────────────────────────────────
 
+    def _text_units(self, text: str) -> list[str]:
+        if any(_is_cjk(ch) for ch in text):
+            return [ch for ch in re.sub(r"\s+", "", text) if ch]
+        return re.findall(r"[A-Za-z0-9']+|[^\w\s]", text.lower())
+
+    def _drop_overlapping_prefix(self, left: str, right: str) -> str:
+        max_units = self._segment_text_overlap_tokens
+        if max_units <= 0 or not left or not right:
+            return right
+        left_units = self._text_units(left)
+        right_units = self._text_units(right)
+        max_k = min(max_units, len(left_units), len(right_units))
+        best = 0
+        for k in range(max_k, 0, -1):
+            if left_units[-k:] == right_units[:k]:
+                best = k
+                break
+        if best <= 0:
+            return right
+
+        if any(_is_cjk(ch) for ch in right):
+            return "".join([ch for ch in right if ch][best:]).lstrip()
+
+        matches = list(re.finditer(r"[A-Za-z0-9']+|[^\w\s]", right))
+        if best >= len(matches):
+            return ""
+        return right[matches[best].start():].lstrip()
+
+    def _join_text(self, left: str, right: str) -> str:
+        left = (left or "").strip()
+        right = (right or "").strip()
+        if not left:
+            return right
+        if not right:
+            return left
+        right = self._drop_overlapping_prefix(left, right)
+        if not right:
+            return left
+        sep = "" if _is_cjk(left[-1]) or _is_cjk(right[0]) else " "
+        return (left + sep + right).strip()
+
+    def _commit_final_text(self, text: str) -> None:
+        text = _strip_prompt_leaks(text or "")
+        if self._accumulate_segments:
+            self._archive_text = self._join_text(self._archive_text, text)
+        else:
+            self._archive_text = text
+
     def _composed_text(self) -> str:
         if self._episode_final or not self._partial_text:
             return self._archive_text
         if not self._archive_text:
             return self._partial_text
-        sep = "" if _is_cjk(self._archive_text[-1]) else " "
-        return (self._archive_text + sep + self._partial_text).strip()
+        return self._join_text(self._archive_text, self._partial_text)

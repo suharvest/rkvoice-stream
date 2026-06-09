@@ -14,6 +14,7 @@ import io
 import logging
 import os
 import threading
+import time
 from typing import Optional
 
 import numpy as np
@@ -28,6 +29,32 @@ _npu_lock: Optional[threading.Lock] = None
 
 _TRUE_ENV = {"1", "true", "yes", "on"}
 _FALSE_ENV = {"0", "false", "no", "off"}
+
+
+def _validate_enabled_cpus(platform: str, enabled_cpus: int) -> int:
+    """Validate RKLLM CPU affinity before the runtime fails or silently slows down."""
+    supported = {2, 3, 4, 8}
+    if enabled_cpus not in supported:
+        raise ValueError(
+            f"Unsupported ASR_ENABLED_CPUS={enabled_cpus}; "
+            f"supported values for RK Qwen3-ASR are {sorted(supported)}"
+        )
+
+    platform_l = platform.lower()
+    min_enabled = 3 if "rk3588" in platform_l else 2 if "rk3576" in platform_l else 1
+    if enabled_cpus < min_enabled:
+        raise ValueError(
+            f"ASR_ENABLED_CPUS={enabled_cpus} is invalid for {platform}; "
+            f"RKLLM requires enabled CPUs >= NPU core count. Use ASR_ENABLED_CPUS=4 "
+            "for the current RK3576/RK3588 profiles."
+        )
+    if "rk3576" in platform_l and enabled_cpus == 2:
+        logger.warning(
+            "ASR_ENABLED_CPUS=2 is valid on RK3576 but was slower than 4 in "
+            "2026-06-09 high-performance Qwen3-ASR A/B; use 4 unless memory or "
+            "co-scheduling requires otherwise."
+        )
+    return enabled_cpus
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -183,14 +210,20 @@ class Qwen3ASRRKBackend(ASRBackend):
         if encoder_sizes_env:
             default_sizes = [int(x.strip()) for x in encoder_sizes_env.split(",")]
 
+        platform = os.environ.get("ASR_PLATFORM", "rk3576")
+        enabled_cpus = _validate_enabled_cpus(
+            platform,
+            _env_int("ASR_ENABLED_CPUS", 4),
+        )
+
         engine_kwargs = dict(
             model_dir=model_dir,
-            platform=os.environ.get("ASR_PLATFORM", "rk3576"),
+            platform=platform,
             decoder_type=decoder_type,
             decoder_exec_mode=os.environ.get("MATMUL_EXEC_MODE", "dual_core"),
             decoder_quant=os.environ.get("ASR_DECODER_QUANT", "w8a8"),
             encoder_sizes=default_sizes,
-            enabled_cpus=_env_int("ASR_ENABLED_CPUS", 2),
+            enabled_cpus=enabled_cpus,
             max_context_len=_env_int("RKLLM_MAX_CONTEXT_LEN", 512),
             max_new_tokens=_env_int("ASR_MAX_NEW_TOKENS", 64),
             top_k=_env_int("ASR_TOP_K", 1),
@@ -207,6 +240,13 @@ class Qwen3ASRRKBackend(ASRBackend):
             ),
             final_stop_min_chars=_env_int("ASR_FINAL_STOP_MIN_CHARS", 8),
             final_stop_min_chunks=_env_int("ASR_FINAL_STOP_MIN_CHUNKS", 2),
+            decoder_embed_cache_reuse=_env_bool(
+                "ASR_DECODER_EMBED_CACHE_REUSE", False
+            ),
+            decoder_async_mode=_env_bool("ASR_DECODER_ASYNC", False),
+            decoder_async_timeout_s=_env_float(
+                "ASR_DECODER_ASYNC_TIMEOUT_S", 30.0
+            ),
             verbose=True,
             npu_core_mask=os.environ.get("ASR_NPU_CORE_MASK", "NPU_CORE_1"),
         )
@@ -219,6 +259,50 @@ class Qwen3ASRRKBackend(ASRBackend):
             logger.info("NPU lock enabled for RKLLM decoder (shared with TTS).")
         self._ready = True
         logger.info("Qwen3-ASR RK backend ready.")
+
+    def warmup(self) -> None:
+        """Run one tiny real ASR pass to materialize RKNN/RKLLM runtime state.
+
+        ``preload()`` loads the model files, but RKNN/RKLLM still pay first-run
+        costs on the first inference.  Warmup intentionally uses the public
+        streaming path so it exercises the same encoder, decoder, locks, and
+        finalize policy as production requests.
+        """
+        if not self.is_ready():
+            raise RuntimeError("ASR backend not ready")
+
+        duration_s = max(0.1, _env_float("ASR_WARMUP_AUDIO_S", 0.8))
+        amplitude = max(0.0, _env_float("ASR_WARMUP_AMPLITUDE", 1e-4))
+        language = os.environ.get("ASR_WARMUP_LANGUAGE", "Chinese")
+        seed = _env_int("ASR_WARMUP_SEED", 7)
+
+        samples = int(round(duration_s * self.sample_rate))
+        rng = np.random.default_rng(seed)
+        audio = (rng.standard_normal(samples) * amplitude).astype(np.float32)
+
+        t0 = time.perf_counter()
+        stream = self.create_stream(language=language)
+        try:
+            stream.accept_waveform(self.sample_rate, audio)
+            prepare = getattr(stream, "prepare_finalize", None)
+            if callable(prepare):
+                prepare()
+            text, detected_language = stream.finalize()
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
+
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        logger.info(
+            "Qwen3-ASR RK warmup: mode=%s audio=%.2fs elapsed=%.0fms "
+            "text=%r language=%s",
+            _qwen3_stream_mode(),
+            duration_s,
+            elapsed_ms,
+            (text or "")[:40],
+            detected_language or language,
+        )
 
     def transcribe(self, audio_bytes: bytes, language: str = "auto") -> TranscriptionResult:
         if not self.is_ready():

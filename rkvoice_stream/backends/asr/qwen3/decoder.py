@@ -12,6 +12,7 @@ Critical settings for correct operation:
 import threading
 import ctypes
 import logging
+import time
 import numpy as np
 from .config import CPU_MASKS
 
@@ -234,6 +235,9 @@ class RKLLMDecoder:
                  final_stop_punctuation: str = DEFAULT_STOP_PUNCTUATION,
                  final_stop_min_chars: int = 0,
                  final_stop_min_chunks: int = 0,
+                 embed_cache_reuse: bool = False,
+                 async_mode: bool = False,
+                 async_timeout_s: float = 30.0,
                  callback_fn=None):
         """
         Initialize RKLLM decoder.
@@ -259,6 +263,11 @@ class RKLLMDecoder:
                 can stop generation.
             final_stop_min_chunks: Minimum callback chunks before punctuation
                 can stop generation.
+            embed_cache_reuse: Keep EMBED KV cache between keep_history=0
+                calls so RKLLM v1.2.3 can reuse matching embedding prefixes.
+            async_mode: Initialize RKLLM async mode and use rkllm_run_async
+                internally while preserving run_embed()'s blocking contract.
+            async_timeout_s: Timeout for waiting on async completion.
             callback_fn: Optional callback(text, is_finish) for streaming output
         """
         self.lib = ctypes.CDLL(str(lib_path))
@@ -275,6 +284,9 @@ class RKLLMDecoder:
         self._final_stop_punctuation = final_stop_punctuation
         self._final_stop_min_chars = max(0, int(final_stop_min_chars))
         self._final_stop_min_chunks = max(0, int(final_stop_min_chunks))
+        self._embed_cache_reuse = bool(embed_cache_reuse)
+        self._async_mode = bool(async_mode)
+        self._async_timeout_s = max(0.1, float(async_timeout_s))
 
         # Setup callback
         @RKLLM_CALLBACK
@@ -355,13 +367,18 @@ class RKLLMDecoder:
         param.mirostat_tau = 5.0
         param.mirostat_eta = 0.1
         param.skip_special_token = True
-        param.is_async = False
+        param.is_async = self._async_mode
         param.img_start = b""
         param.img_end = b""
         param.img_content = b""
 
         # CPU affinity
-        cpu_mask = CPU_MASKS.get(enabled_cpus, 0xC0)
+        if enabled_cpus not in CPU_MASKS:
+            raise ValueError(
+                f"Unsupported enabled_cpus={enabled_cpus}; "
+                f"supported values are {sorted(CPU_MASKS)}"
+            )
+        cpu_mask = CPU_MASKS[enabled_cpus]
         param.extend_param.base_domain_id = 1  # Domain 1 to coexist with RKNN models (domain 0)
         param.extend_param.embed_flash = embed_flash
         param.extend_param.enabled_cpus_num = enabled_cpus
@@ -391,6 +408,24 @@ class RKLLMDecoder:
             ctypes.POINTER(RKLLMInferParam), ctypes.c_void_p
         ]
         self.lib.rkllm_run.restype = ctypes.c_int
+
+        self._has_run_async = False
+        if self._async_mode:
+            try:
+                self.lib.rkllm_run_async.argtypes = [
+                    RKLLM_Handle_t, ctypes.POINTER(RKLLMInput),
+                    ctypes.POINTER(RKLLMInferParam), ctypes.c_void_p
+                ]
+                self.lib.rkllm_run_async.restype = ctypes.c_int
+                self.lib.rkllm_is_running.argtypes = [RKLLM_Handle_t]
+                self.lib.rkllm_is_running.restype = ctypes.c_int
+                self._has_run_async = True
+            except AttributeError:
+                logger.warning(
+                    "RKLLM async requested but runtime lacks async symbols; "
+                    "falling back to rkllm_run"
+                )
+                self._async_mode = False
 
         self.lib.rkllm_abort.argtypes = [RKLLM_Handle_t]
         self.lib.rkllm_abort.restype = ctypes.c_int
@@ -439,7 +474,7 @@ class RKLLMDecoder:
             "top_k=%d top_p=%.3f temperature=%.3f repeat_penalty=%.3f "
             "freq_penalty=%.3f presence_penalty=%.3f n_keep=%d "
             "final_stop_on_punct=%s final_stop_min_chars=%d "
-            "final_stop_min_chunks=%d",
+            "final_stop_min_chunks=%d embed_cache_reuse=%s async_mode=%s",
             enabled_cpus,
             max_context_len,
             max_new_tokens,
@@ -453,7 +488,39 @@ class RKLLMDecoder:
             final_stop_on_punctuation,
             self._final_stop_min_chars,
             self._final_stop_min_chunks,
+            self._embed_cache_reuse,
+            self._async_mode,
         )
+
+    def clear_embed_cache(self) -> None:
+        """Clear RKLLM KV cache used by EMBED input auto-reuse."""
+        with self._lock:
+            self.lib.rkllm_clear_kv_cache(self.handle, 0, None, None)
+
+    def _reset_run_state(self) -> None:
+        self._output_chunks = []
+        self._perf = {}
+        self._repeat_buf = []
+        self._aborted = False
+        self._abort_reason = ""
+
+    def _run_async_and_wait(self, rkllm_input: RKLLMInput,
+                            infer_param: RKLLMInferParam) -> int:
+        ret = self.lib.rkllm_run_async(
+            self.handle, ctypes.byref(rkllm_input),
+            ctypes.byref(infer_param), None
+        )
+        if ret != 0:
+            return ret
+
+        deadline = time.monotonic() + self._async_timeout_s
+        while not self._perf:
+            if time.monotonic() >= deadline:
+                self._abort_reason = self._abort_reason or "async_timeout"
+                self.lib.rkllm_abort(self.handle)
+                break
+            time.sleep(0.005)
+        return ret
 
     def precompute_prefix_kv(self, prefix_embed: np.ndarray,
                              cache_path: str = "/tmp/rkllm_prefix_cache.bin") -> float:
@@ -536,11 +603,7 @@ class RKLLMDecoder:
             dict with keys: text, perf, n_tokens_generated
         """
         with self._lock:
-            self._output_chunks = []
-            self._perf = {}
-            self._repeat_buf = []
-            self._aborted = False
-            self._abort_reason = ""
+            self._reset_run_state()
 
             # Clear KV cache
             if keep_prefix and self._prefix_kv_ready:
@@ -550,7 +613,7 @@ class RKLLMDecoder:
                 self.lib.rkllm_load_prompt_cache(
                     self.handle, self._prefix_cache_path.encode())
                 keep_history = 1  # Append new tokens after cached prefix
-            elif not keep_history:
+            elif not keep_history and not self._embed_cache_reuse:
                 self.lib.rkllm_clear_kv_cache(self.handle, 0, None, None)
 
             embed_array = np.ascontiguousarray(embed_array, dtype=np.float32)
@@ -573,10 +636,13 @@ class RKLLMDecoder:
             infer_param.prompt_cache_params = None
             infer_param.keep_history = keep_history
 
-            ret = self.lib.rkllm_run(
-                self.handle, ctypes.byref(rkllm_input),
-                ctypes.byref(infer_param), None
-            )
+            if self._async_mode and self._has_run_async:
+                ret = self._run_async_and_wait(rkllm_input, infer_param)
+            else:
+                ret = self.lib.rkllm_run(
+                    self.handle, ctypes.byref(rkllm_input),
+                    ctypes.byref(infer_param), None
+                )
 
             text = "".join(self._output_chunks)
             # Clean any leaked special tokens
