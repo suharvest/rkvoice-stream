@@ -12,8 +12,12 @@ services:
       # on RK3588, or /opt/asr/paraformer/rknn/rk3576 on RK3576.
       - PARAFORMER_RKNN_DIR=${PARAFORMER_CONTAINER_RKNN_DIR:-/opt/asr/paraformer/rknn/rk3576}
       - PARAFORMER_RKNN_ENCODER_MODE=hybrid
-      - PARAFORMER_RKNN_DECODER=cpu
+      - PARAFORMER_RKNN_DECODER=rknn
       - PARAFORMER_RKNN_ENC_PRECISION=fp16
+      - PARAFORMER_RKNN_DEC_PRECISION=fp16
       - PARAFORMER_ENCODER_SUFFIX_ONNX=/opt/asr/paraformer/encoder_suffix_from_block30.onnx
-      - PARAFORMER_DECODER_ONNX=/opt/asr/paraformer/decoder-rknn.onnx
       - PARAFORMER_RKNN_ENC_CORE=${PARAFORMER_RKNN_ENC_CORE:-NPU_CORE_1}
+      - PARAFORMER_RKNN_DEC_CORE=${PARAFORMER_RKNN_DEC_CORE:-NPU_CORE_0}
+      - PARAFORMER_FBANK_CMVN=none
+      - PARAFORMER_STREAM_DECODE=batch_final
+      - PARAFORMER_STREAM_PROCESS_SEC=2.0
