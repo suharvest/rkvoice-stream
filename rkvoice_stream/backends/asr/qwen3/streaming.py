@@ -121,7 +121,7 @@ def _is_cjk(ch: str) -> bool:
 
 
 _RE_PROMPT_LEAK_SUFFIX = re.compile(
-    r"(?:\s*(?:转录|請轉錄|请转录|transcribe|transcript)\s*[:：。.!?]*)+$",
+    r"(?:\s*(?:转录|轉錄|請轉錄|请转录|transcribe|transcript|transkribieren)\s*[:：。.!?]*)+$",
     re.IGNORECASE,
 )
 _RE_PROMPT_LEAK_PREFIX = re.compile(
