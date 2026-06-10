@@ -31,9 +31,33 @@ python convert_sensevoice_rknn.py --onnx sense-voice-encoder.fixed.onnx \
     --out sense-voice-encoder.rk3588.fp16.rknn --target rk3588 --precision fp16 --t-fixed 344
 ```
 
-fp16 is clean on real RK3576 silicon (no overflow). If a future SoC/model
-overflows, fall back to `--precision int8 --dataset <calib.txt>` (needs a
-representative dataset of LFR features).
+fp16 is clean on real **RK3576** silicon. **RK3588 is different**: plain fp16
+overflows the NPU on Chinese activations (8.6M inf → empty text; English is
+fine), and plain int8 collapses the 25055-way CTC projection (BLANK wins every
+frame → empty text). The fix that ships for RK3588 is a **math-exact fp16
+activation rescale** (zero quant loss), not quantization:
+
+```bash
+# 1) locate the overflowing tensors for a zh sample (max|.| > fp16 65504).
+python sv_overflow_locate.py zh.wav     # -> /tmp/sv_overflow_report.json
+# Overflow is the last encoder block's FFN 2nd linear (block 48 w_2) — the
+# residual stream grows monotonically 31→48 and block-48 FFN hits ~76064.
+
+# 2) rescale by K=8 (math-exact): divide block-48 w_2 weight+bias by K, and
+#    insert Div(K) on the residual (norm2 cast output) feeding the final
+#    after_norm. LayerNorm is scale-invariant so encoder_out is byte-identical
+#    (argmax all-equal, maxabsdiff ~1.5e-5 fp32 noise). All block-48 tensors
+#    drop 75k→~9.5k, under 65504.
+python sv_scale_surgery.py    # -> sense-voice-encoder.rk3588.scaled.fixed.onnx
+
+# 3) convert the rescaled ONNX (still fp16).
+python convert_sensevoice_rknn.py --onnx sense-voice-encoder.rk3588.scaled.fixed.onnx \
+    --out sense-voice-encoder.rk3588.fp16-scaled.rknn --target rk3588 --precision fp16 --t-fixed 344
+```
+
+Validated on real RK3588 NPU (radxa): zh + en n_inf=0, both correct. The
+backend globs `sense-voice-encoder.<platform>.*.rknn`, so the rk3588 file ships
+as `.fp16-scaled.rknn` transparently. Do NOT use plain int8 for SenseVoice.
 
 ## Deployment layout
 
