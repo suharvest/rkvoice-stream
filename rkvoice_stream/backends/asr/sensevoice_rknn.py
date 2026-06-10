@@ -79,6 +79,11 @@ def _resample_linear(audio: np.ndarray, src_sr: int, dst_sr: int = 16000) -> np.
 class SenseVoiceRKNNBackend(ASRBackend):
     """SenseVoice offline ASR on the Rockchip NPU (RK3576 / RK3588) via RKNNLite."""
 
+    # Opt into the generic offline→streaming adapter (OfflineAccumulateStream):
+    # accumulate audio, transcribe the whole utterance on finalize, endpointing
+    # via the OVS server-side VAD. Unlocks /asr/stream + /v2v/stream.
+    supports_offline_streaming = True
+
     def __init__(self) -> None:
         self._rknn = None
         self._cmvn_add: Optional[np.ndarray] = None
@@ -172,16 +177,9 @@ class SenseVoiceRKNNBackend(ASRBackend):
         if not self.is_ready():
             raise RuntimeError("ASR backend not ready — call preload() first")
         audio = self._decode_audio(audio_bytes)
-        return self._transcribe_array(audio, language)
+        return self.transcribe_array(audio, language)
 
-    def create_stream(self, language: str = "auto") -> ASRStream:
-        # Pseudo-streaming (VAD-segmented offline) can be layered later, mirroring
-        # SenseVoiceSherpaStream. The offline /asr path is the primary contract.
-        raise NotImplementedError(
-            "sensevoice_rknn is offline-only; use transcribe() / POST /asr."
-        )
-
-    def _transcribe_array(self, audio: np.ndarray, language: str = "auto") -> TranscriptionResult:
+    def transcribe_array(self, audio: np.ndarray, language: str = "auto") -> TranscriptionResult:
         tag = _map_language(language)
         speech, valid = self._build_speech(audio, lang=tag)
         out = self._rknn.inference(inputs=[speech.astype(np.float32)])
