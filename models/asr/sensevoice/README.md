@@ -82,7 +82,7 @@ are the load-bearing constants.
 |---|---|
 | fbank | kaldi 80-dim, 16 kHz, `dither=0`, `window=hamming`, `snip_edges=True`, samples scaled `*32768` |
 | LFR | `m=7, n=6` → 80×7 = **560**; left-pad `(m-1)//2` with first frame |
-| CMVN | `(lfr + add) * scale` (both 560-dim, from `am.mvn`) |
+| CMVN | **NOT applied** — the lovemefan encoder ONNX normalizes internally (first LayerNorm). Applying `am.mvn` on top double-normalizes (mean CER 0.048→0.032 across 5 zh samples when removed). `am.mvn` is kept in the bundle only as reference / for the sherpa CPU path. |
 | prompt prefix | 4 frames prepended: `[emb[LANG_IDS[lang]], emb[1], emb[2], emb[TEXTNORM[textnorm]]]` |
 | fixed length | `T_FIXED = 344` (pad zeros / truncate); track `valid` = real frame count |
 | logits | encoder output `[T_FIXED, 25055]`; decode only the first `valid` frames |
