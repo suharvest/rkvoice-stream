@@ -235,11 +235,13 @@ class SenseVoiceRKNNBackend(ASRBackend):
 
     def _build_speech(self, audio: np.ndarray, lang: str = "auto", textnorm: str = "withitn"):
         lfr = self._apply_lfr(self._compute_feats(audio))
-        # NOTE: do NOT apply external CMVN here. The lovemefan SenseVoice encoder
-        # ONNX normalizes internally (its first LayerNorm); applying am.mvn CMVN
-        # on top double-normalizes and degrades accuracy (verified: mean CER
-        # 0.048→0.032 across 5 zh samples when removed). am.mvn is retained in
-        # the bundle only as reference / for the sherpa CPU path.
+        # External am.mvn CMVN. NOTE: on FP32 onnxruntime removing this *looks*
+        # better (mean CER 0.048→0.032, lovemefan ONNX self-normalizes), BUT on
+        # the real RK3576 fp16 NPU it is NOT a clean win — noCMVN/CMVN each
+        # collapse on a different subset of short zh clips (per-sample fp16
+        # instability). Kept = the device-validated default (passed offline +
+        # streaming e2e). Revisit only with a proper on-device corpus CER.
+        lfr = (lfr + self._cmvn_add) * self._cmvn_scale
         prefix = np.stack([
             self._emb[_LANG_IDS.get(lang, 0)],
             self._emb[1],
