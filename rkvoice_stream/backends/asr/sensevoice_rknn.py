@@ -110,21 +110,24 @@ class SenseVoiceRKNNBackend(ASRBackend):
         explicit = os.environ.get("SENSEVOICE_RKNN_MODEL")
         if explicit:
             return explicit
-        platform = os.environ.get("RK_PLATFORM", "rk3576").lower()
-        candidate = os.path.join(model_dir, f"sense-voice-encoder.{platform}.fp16.rknn")
-        if os.path.isfile(candidate):
-            return candidate
-        # Fallback: any single sense-voice .rknn in the dir.
         import glob
-        hits = sorted(glob.glob(os.path.join(model_dir, "sense-voice-encoder.*.rknn")))
+        platform = os.environ.get("RK_PLATFORM", "rk3576").lower()
+        # Precision-agnostic: RK3576 ships fp16, RK3588 ships int8 (fp16 overflows
+        # the RK3588 NPU on Chinese activations) — pick whichever .rknn is present
+        # for this SoC.
+        hits = sorted(glob.glob(os.path.join(model_dir, f"sense-voice-encoder.{platform}.*.rknn")))
         if hits:
-            logger.warning(
-                "No .rknn for RK_PLATFORM=%s; falling back to %s", platform, hits[0]
-            )
             return hits[0]
+        # Last resort: any sense-voice .rknn in the dir.
+        any_hits = sorted(glob.glob(os.path.join(model_dir, "sense-voice-encoder.*.rknn")))
+        if any_hits:
+            logger.warning(
+                "No .rknn for RK_PLATFORM=%s; falling back to %s", platform, any_hits[0]
+            )
+            return any_hits[0]
         raise FileNotFoundError(
             f"No SenseVoice RKNN model for platform {platform!r} in {model_dir!r} "
-            f"(expected sense-voice-encoder.{platform}.fp16.rknn)."
+            f"(expected sense-voice-encoder.{platform}.*.rknn)."
         )
 
     def preload(self) -> None:
