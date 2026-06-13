@@ -417,6 +417,7 @@ class StreamSession:
 
         raw_text, decoded_language = _normalize_decoder_text(result["text"])
         was_aborted = result.get("aborted", False)
+        abort_reason = result.get("abort_reason", "")
         self._was_aborted = was_aborted
 
         if self.language:
@@ -425,8 +426,13 @@ class StreamSession:
             lang, new_text = parse_asr_output(raw_text)
             lang = lang or decoded_language
         new_text = self._strip_trailing_garbage(new_text)
-        if was_aborted:
-            # repetition abort → discard garbage
+        # Only a repetition-collapse abort yields garbage text. A
+        # ``final_punctuation`` abort (final_stop_on_punctuation=True stops
+        # cleanly after a sentence-ending 。) returns the COMPLETE, correct
+        # transcript — discarding it here was the cause of empty ASR finals.
+        # early_stop_tokens / async_timeout / external aborts likewise keep
+        # their decoded text.
+        if abort_reason == "repeat":
             new_text = ""
 
         self._current_text = new_text
@@ -637,6 +643,7 @@ class StreamSession:
         # 6. Parse output
         raw_text, decoded_language = _normalize_decoder_text(result["text"])
         was_aborted = result.get("aborted", False)
+        abort_reason = result.get("abort_reason", "")
         self._was_aborted = was_aborted
 
         if self.language:
@@ -648,7 +655,13 @@ class StreamSession:
         # Strip trailing garbage tokens (weak EOS → extra 1-3 chars after punct)
         new_text = self._strip_trailing_garbage(new_text)
 
-        if was_aborted and not was_early_stopped:
+        # Discard ONLY on a repetition-collapse abort, and only on the final
+        # chunk (``not was_early_stopped`` ≈ finalize; streaming chunks keep
+        # their text so rollback can refine it next hop — preserved below).
+        # A ``final_punctuation`` abort on the final chunk returns the complete
+        # correct transcript and must be kept — discarding it on any abort was
+        # the cause of empty ASR finals when final_stop_on_punctuation=True.
+        if was_aborted and not was_early_stopped and abort_reason == "repeat":
             # Repetition-abort: text is garbage, discard
             new_text = ""
         # Early-abort: keep partial text — rollback will refine it next chunk
