@@ -44,12 +44,50 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import struct
 import subprocess
 import threading
+import time
 from typing import Iterator, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# In-process start retry policy (RK1828 firmware load flakiness, regime ①).
+#
+# The gemma4 LLM load on RK1828 occasionally fails the firmware setup handshake
+# (``MODEL_SETUP fail, ack = ACK_FAIL`` → the worker process dies during Init,
+# or never signals ready).  This is a cold-start race that a quick respawn
+# usually clears (2-3 attempts).  We retry the *spawn* a few times with a short
+# backoff before giving up.
+#
+# This does NOT recover a *degraded* EP (regime ②: persistent ACK_FAIL where
+# every load fails) — that needs a clean host reboot to reflash firmware.  When
+# all attempts are exhausted we raise ``WorkerStartError`` with an actionable
+# message; the backend NEVER reboots the host itself.
+DEFAULT_START_ATTEMPTS = 3
+_START_ATTEMPTS_ENV = "RK1828_WORKER_START_ATTEMPTS"
+# Backoff (seconds) applied *between* attempts: 2s after the 1st failure, 4s
+# after the 2nd, then capped.  index = (attempt_number - 1).
+_START_BACKOFF_S = (2.0, 4.0, 4.0)
+
+
+def _resolve_start_attempts(explicit: Optional[int]) -> int:
+    """Resolve the number of start attempts (param > env > default)."""
+    if explicit is not None:
+        return max(1, int(explicit))
+    raw = os.environ.get(_START_ATTEMPTS_ENV)
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            logger.warning(
+                "Invalid %s=%r; falling back to default %d",
+                _START_ATTEMPTS_ENV,
+                raw,
+                DEFAULT_START_ATTEMPTS,
+            )
+    return DEFAULT_START_ATTEMPTS
 
 # Sentinel marking the end of one utterance in the TTS (Phase 1) stdout stream.
 END_OF_UTTERANCE = 0xFFFFFFFF
@@ -81,6 +119,17 @@ class WorkerCrashError(RuntimeError):
     """Raised when the worker process dies mid-request (stdout EOF)."""
 
 
+class WorkerStartError(RuntimeError):
+    """Raised when the worker fails to start after all retry attempts.
+
+    Distinct from :class:`WorkerCrashError` (which means a *single* spawn died /
+    timed out and is internally retried).  ``WorkerStartError`` is terminal: the
+    in-process retries are exhausted, which on RK1828 typically signals a
+    *degraded* EP (persistent firmware ACK_FAIL, regime ②) that a host reboot is
+    required to clear.  The backend surfaces this rather than rebooting itself.
+    """
+
+
 class ProtocolDesyncError(WorkerCrashError):
     """Raised when a decoded length prefix is implausibly large.
 
@@ -107,6 +156,7 @@ class RKNN3Worker:
         device_id: Optional[str] = None,
         extra_args: Optional[List[str]] = None,
         ready_timeout_s: float = 120.0,
+        start_attempts: Optional[int] = None,
     ) -> None:
         self._binary_path = binary_path
         self._model_dir = model_dir
@@ -114,6 +164,7 @@ class RKNN3Worker:
         self._device_id = device_id
         self._extra_args = list(extra_args) if extra_args else []
         self._ready_timeout_s = ready_timeout_s
+        self._start_attempts = _resolve_start_attempts(start_attempts)
 
         self._proc: Optional[subprocess.Popen] = None
         self._stderr_thread: Optional[threading.Thread] = None
@@ -154,15 +205,48 @@ class RKNN3Worker:
     # ── lifecycle ────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Spawn the worker and wait for the ready handshake.
+        """Spawn the worker (with retries) and wait for the ready handshake.
 
         Ready handshake: the binary prints a line containing ``READY`` on
         stderr once Init (decoder + talker load) completes.  We also treat an
         early process exit as a failed start.
+
+        Each spawn attempt that dies during Init / never signals ready raises
+        :class:`WorkerCrashError`; we clean up and retry up to ``start_attempts``
+        times with a short backoff (RK1828 firmware cold-start race, regime ①).
+        If every attempt fails the EP is likely degraded (regime ②) and we raise
+        :class:`WorkerStartError` — the backend must surface this, never reboot.
         """
         if self._proc is not None and self._proc.poll() is None:
             return  # already running
 
+        attempts = self._start_attempts
+        last_exc: Optional[BaseException] = None
+        for attempt in range(1, attempts + 1):
+            try:
+                self._start_once()
+                if attempt > 1:
+                    logger.info("RK1828 worker started on attempt %d/%d", attempt, attempts)
+                return
+            except WorkerCrashError as exc:
+                last_exc = exc
+                logger.warning(
+                    "RK1828 worker start attempt %d/%d failed: %s",
+                    attempt, attempts, exc,
+                )
+                self.stop()  # tear down the dead/half-started process
+                if attempt < attempts:
+                    backoff = _START_BACKOFF_S[min(attempt - 1, len(_START_BACKOFF_S) - 1)]
+                    logger.info("Retrying RK1828 worker start in %.1fs", backoff)
+                    time.sleep(backoff)
+        raise WorkerStartError(
+            f"RK1828 worker failed to start after {attempts} attempts; "
+            f"RK1828 EP may be degraded — a clean host reboot is likely required "
+            f"(last error: {last_exc})"
+        )
+
+    def _start_once(self) -> None:
+        """One spawn + ready-handshake attempt (raises WorkerCrashError on fail)."""
         args = self._build_args()
         logger.info("Spawning RK1828 worker: %s", " ".join(args))
         self._proc = subprocess.Popen(
@@ -335,6 +419,7 @@ class AudioLLMWorker:
         extra_args: Optional[List[str]] = None,
         ready_timeout_s: float = 180.0,
         protocol_version: int = AUDIO_LLM_PROTOCOL_VERSION,
+        start_attempts: Optional[int] = None,
     ) -> None:
         self._binary_path = binary_path
         self._model_dir = model_dir
@@ -342,6 +427,7 @@ class AudioLLMWorker:
         self._extra_args = list(extra_args) if extra_args else []
         self._ready_timeout_s = ready_timeout_s
         self._client_protocol_version = protocol_version
+        self._start_attempts = _resolve_start_attempts(start_attempts)
 
         self._proc: Optional[subprocess.Popen] = None
         self._stderr_thread: Optional[threading.Thread] = None
@@ -367,14 +453,53 @@ class AudioLLMWorker:
     # ── lifecycle ────────────────────────────────────────────────
 
     def start(self) -> None:
-        """Spawn the worker and wait for the ``READY <version>`` handshake.
+        """Spawn the worker (with retries) and wait for ``READY <version>``.
 
-        The negotiated protocol version is validated against the client's
-        supported version; a mismatch raises :class:`ProtocolMismatchError`.
+        Each spawn attempt that dies during Init / never signals ready raises
+        :class:`WorkerCrashError`; we clean up and retry up to ``start_attempts``
+        times with a short backoff (RK1828 firmware cold-start race, regime ①).
+        If every attempt fails the EP is likely degraded (regime ②) and we raise
+        :class:`WorkerStartError`.  A :class:`ProtocolMismatchError` is NOT a
+        flaky load — it is a deterministic version disagreement, so it is raised
+        immediately without retry.
         """
         if self._proc is not None and self._proc.poll() is None:
             return  # already running
 
+        attempts = self._start_attempts
+        last_exc: Optional[BaseException] = None
+        for attempt in range(1, attempts + 1):
+            try:
+                self._start_once()
+                if attempt > 1:
+                    logger.info(
+                        "RK1828 AudioLLM worker started on attempt %d/%d", attempt, attempts
+                    )
+                return
+            except WorkerCrashError as exc:
+                last_exc = exc
+                logger.warning(
+                    "RK1828 AudioLLM worker start attempt %d/%d failed: %s",
+                    attempt, attempts, exc,
+                )
+                self.stop()  # tear down the dead/half-started process
+                if attempt < attempts:
+                    backoff = _START_BACKOFF_S[min(attempt - 1, len(_START_BACKOFF_S) - 1)]
+                    logger.info("Retrying RK1828 AudioLLM worker start in %.1fs", backoff)
+                    time.sleep(backoff)
+            # ProtocolMismatchError deliberately NOT caught -> propagates (no retry).
+        raise WorkerStartError(
+            f"RK1828 AudioLLM worker failed to start after {attempts} attempts; "
+            f"RK1828 EP may be degraded — a clean host reboot is likely required "
+            f"(last error: {last_exc})"
+        )
+
+    def _start_once(self) -> None:
+        """One spawn + ready-handshake attempt.
+
+        Raises :class:`WorkerCrashError` if the process dies / never readies, or
+        :class:`ProtocolMismatchError` on a version disagreement (not retried).
+        """
         args = self._build_args()
         logger.info("Spawning RK1828 AudioLLM worker: %s", " ".join(args))
         self._proc = subprocess.Popen(

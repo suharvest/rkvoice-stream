@@ -19,13 +19,44 @@ Behaviour (spec §5, Phase 2):
 The fixed token sequence is non-empty so a streaming reader sees real text.
 ``--proto-version <n>`` overrides the advertised version (to exercise the
 mismatch path).
+
+Start-failure injection (exercises the in-process start retry path):
+  - ``MOCK_RK1828_FAIL_COUNT_FILE``: path to a counter file. On each spawn the
+    worker reads the integer in the file (default 0), and if it is > 0 it
+    DECREMENTS the file and exits non-zero *before* signalling READY — i.e. the
+    spawn "fails to start". Once the counter reaches 0 the worker starts
+    normally. This lets a test say "fail the first K starts, succeed on the
+    K+1th" by seeding the file with K.
 """
 
 import json
+import os
 import struct
 import sys
 
 END_OF_STREAM = 0xFFFFFFFE
+
+
+def _maybe_fail_start() -> None:
+    """Honor MOCK_RK1828_FAIL_COUNT_FILE: fail (exit) while counter > 0."""
+    path = os.environ.get("MOCK_RK1828_FAIL_COUNT_FILE")
+    if not path:
+        return
+    try:
+        with open(path, "r") as fh:
+            remaining = int((fh.read() or "0").strip() or "0")
+    except (FileNotFoundError, ValueError):
+        remaining = 0
+    if remaining > 0:
+        # Consume one failure and die during "Init" (before READY).
+        with open(path, "w") as fh:
+            fh.write(str(remaining - 1))
+        sys.stderr.write(
+            f"mock rk1828 gemma4 worker: injected start failure "
+            f"(MODEL_SETUP fail, {remaining - 1} remaining)\n"
+        )
+        sys.stderr.flush()
+        sys.exit(1)
 
 # Fixed token stream the mock emits per request (proves non-empty text flow).
 TOKENS = ["你", "好", "，", "这是", "一段", "测试", "转写", "。"]
@@ -47,6 +78,10 @@ def main() -> int:
             proto_version = int(argv[i + 1])
         except (IndexError, ValueError):
             pass
+
+    # Optionally inject a start failure (firmware ACK_FAIL simulation) before
+    # signalling readiness, to exercise the in-process start-retry path.
+    _maybe_fail_start()
 
     # Pretend to Init (LLM + audio encoder), then signal readiness + version.
     sys.stderr.write("mock rk1828 gemma4 worker: Init complete\n")

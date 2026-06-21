@@ -254,3 +254,114 @@ def test_protocol_version_mismatch():
     with pytest.raises(ProtocolMismatchError):
         w.start()
     w.stop()
+
+
+# ── in-process start retry (RK1828 firmware load flakiness, regime ①/②) ──
+
+@pytest.fixture
+def _fast_backoff(monkeypatch):
+    """Collapse the start-retry backoff so retry tests run instantly."""
+    from rkvoice_stream.runtime import rknn3_worker
+
+    monkeypatch.setattr(rknn3_worker, "_START_BACKOFF_S", (0.0, 0.0, 0.0))
+
+
+def _fail_count_file(tmp_path, count: int) -> str:
+    p = tmp_path / "fail_count.txt"
+    p.write_text(str(count))
+    return str(p)
+
+
+def test_audiollm_start_retries_then_succeeds(tmp_path, monkeypatch, _fast_backoff):
+    """Worker fails the first 2 starts (firmware ACK_FAIL) then succeeds on #3."""
+    from rkvoice_stream.runtime.rknn3_worker import AudioLLMWorker
+
+    fail_file = _fail_count_file(tmp_path, 2)  # fail twice, succeed on the 3rd
+    monkeypatch.setenv("MOCK_RK1828_FAIL_COUNT_FILE", fail_file)
+
+    w = AudioLLMWorker(
+        binary_path=MOCK_WORKER,
+        model_dir="/tmp/fake-model",
+        ready_timeout_s=10.0,
+        start_attempts=3,
+    )
+    try:
+        w.start()  # must NOT raise — recovered on attempt 3
+        assert w.is_ready() is True
+        # Counter exhausted (all 2 injected failures consumed).
+        assert open(fail_file).read().strip() == "0"
+        # Worker is functional after the retried start.
+        toks = list(w.generate_stream("/tmp/a.wav"))
+        assert toks == EXPECTED_TOKENS
+    finally:
+        w.stop()
+
+
+def test_audiollm_start_retry_success_at_limit(tmp_path, monkeypatch, _fast_backoff):
+    """Single retry budget (attempts=2) recovers a single injected failure."""
+    from rkvoice_stream.runtime.rknn3_worker import AudioLLMWorker
+
+    fail_file = _fail_count_file(tmp_path, 1)
+    monkeypatch.setenv("MOCK_RK1828_FAIL_COUNT_FILE", fail_file)
+
+    w = AudioLLMWorker(
+        binary_path=MOCK_WORKER,
+        model_dir="/tmp/fake-model",
+        ready_timeout_s=10.0,
+        start_attempts=2,
+    )
+    try:
+        w.start()
+        assert w.is_ready() is True
+    finally:
+        w.stop()
+
+
+def test_audiollm_start_retry_exhausted_raises(tmp_path, monkeypatch, _fast_backoff):
+    """Persistent failure (regime ②) exhausts retries -> WorkerStartError."""
+    from rkvoice_stream.runtime.rknn3_worker import AudioLLMWorker, WorkerStartError
+
+    # Fail more times than attempts -> every attempt dies during Init.
+    fail_file = _fail_count_file(tmp_path, 10)
+    monkeypatch.setenv("MOCK_RK1828_FAIL_COUNT_FILE", fail_file)
+
+    w = AudioLLMWorker(
+        binary_path=MOCK_WORKER,
+        model_dir="/tmp/fake-model",
+        ready_timeout_s=10.0,
+        start_attempts=3,
+    )
+    with pytest.raises(WorkerStartError) as ei:
+        w.start()
+    msg = str(ei.value)
+    assert "after 3 attempts" in msg
+    assert "reboot" in msg.lower()
+    assert w.is_ready() is False
+    w.stop()
+
+
+def test_start_attempts_env_override(monkeypatch):
+    """RK1828_WORKER_START_ATTEMPTS overrides the default attempt count."""
+    from rkvoice_stream.runtime.rknn3_worker import AudioLLMWorker, RKNN3Worker
+
+    monkeypatch.setenv("RK1828_WORKER_START_ATTEMPTS", "5")
+    assert AudioLLMWorker(binary_path="x", model_dir="x")._start_attempts == 5
+    assert RKNN3Worker(binary_path="x", model_dir="x")._start_attempts == 5
+    # Explicit param wins over env.
+    assert (
+        AudioLLMWorker(binary_path="x", model_dir="x", start_attempts=2)._start_attempts
+        == 2
+    )
+
+
+def test_default_start_attempts():
+    from rkvoice_stream.runtime.rknn3_worker import (
+        AudioLLMWorker,
+        DEFAULT_START_ATTEMPTS,
+    )
+
+    assert (
+        AudioLLMWorker(binary_path="x", model_dir="x")._start_attempts
+        == DEFAULT_START_ATTEMPTS
+    )
+    assert DEFAULT_START_ATTEMPTS == 3
