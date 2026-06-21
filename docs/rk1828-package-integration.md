@@ -157,6 +157,32 @@ C++ worker 输出 `[uint32 len][int16 PCM @24kHz]`;`TTSBackend.synthesize_stream
 - **采样率**:C++ 出 24kHz;若下游/现有 backend 统一某速率则在 Service 重采样,否则 `get_sample_rate()=24000` 透传。
 - 实施第一步**先读 `qwen3_tts.py` 的 `synthesize_stream` 确认确切 yield 类型**,再写转换,保证与 `matcha`/`qwen3_rknn` 对 app 暴露的契约逐位一致。
 
+## 12. Phase 2d:真机 V2V 端到端(实测落地)
+
+audio → gemma4 AudioLLM(RK1828,理解+回应)→ 文本 → Qwen3-TTS → 真语音。radxa(RK3588 host + RK1828 EP `0001:11:00.0`)实测跑通。
+
+### 12.1 单 EP 摆放结论(实测)
+V2V 需 AudioLLM + streaming TTS 同时可用,但二者在 RK1828 上的内存互斥(gemma4 ~4200MB + Qwen3-TTS ~1700MB > 5120MB EP 上限,见 §rk1828-gemma4 部署坑 5)。两条路径都调查过:
+
+- **路径 A(host RK3588 NPU TTS,真并发)— 实测不现成**:radxa host *有* RKNN2 runtime(`/usr/lib/librknnrt.so → 2.3.0`,实跑 2.3.2)+ `rknnlite` Python + host TTS 模型(`/home/radxa/models/tts/`:`matcha-icefall-zh-en`、`matcha-s64.rknn`、`vocos-16khz-600.rknn`、多个 kokoro bucket)。**但**:① host 上的 `matcha-s64.rknn` 与包 `backends/tts/matcha.py` 的 `run_matcha` 输入装配漂移(`input[3] need 3dims, got 1dims`,模型导出版本不匹配);② matcha/kokoro 的干净 fallback(ORT 声学模型 `model-steps-3.onnx`)需 `onnxruntime`,而生产 host 是 PEP-668 externally-managed + 磁盘 96%,装包属"大动干戈"。结论:Path A 原理可行(runtime+模型齐),但现成资产已漂移,**本次不强行修 RKNN 模型 I/O / 不污染生产 host python**。
+- **路径 B(单 EP 时分)— 实测采用**:顺序 gemma4(RK1828)→ 文本 → 释放 gemma4 worker → Qwen3-TTS(RK1828)。用全部已验证资产(gemma4 server-mode binary + 生产 tts_server)。代价是每次切模型 ~13s load,但端到端演示 V2V 能力可靠。
+
+### 12.2 实测链路与时序
+- 输入音频:用生产 `tts_server :8900` 的 `POST /tts`(int16 PCM @24k)合成 "今天天气怎么样"(1.98s,rms 0.050),resample 到 16k mono WAV 喂 gemma4。
+- **gemma4(RK1828)**:`create_audio_llm("gemma4_rk1828").generate(audio, prompt="...")`。preload **13.6s**(worker spawn + C++ Init),generate **0.56s**;输出文本语义正确:
+  - 输入 "今天天气怎么样" → gemma4 "请提供您所在的城市或地区，我才能告诉您今天的天气。"(理解了天气提问并要求补地点 — 贴原文语义)。
+- EP 在 gemma4 退出后干净释放(`rknn3_transfer_proxy devices` 仍报 `0001:11:00.0 ... PCIE`,无 wedge)。
+- **Qwen3-TTS**:两种驱动方式实测:
+  - 经生产 `tts_server :8900` 的 `POST /tts`(**推荐,已验证路径**):产出真语音(rms 0.059,有能量),tts_server 自身保持 health。
+  - 经包 `create_tts("qwen3_tts_rk1828")` 直驱 server-mode binary:worker Init 成功但 `rknn3_worker` 的 length-prefix 解析与该 binary 的 stdout 帧不同步(`wanted 1852143441 bytes` = ASCII 误读),把诊断行当成二进制长度前缀 →`WorkerCrashError`。**这是包 worker 协议解析 vs 该 binary 实际 stdout 帧的对齐 bug,非模型问题**(binary 确实吐了 ~4MB PCM)。生产路径走 tts_server HTTP 不受影响;若要包直驱需对齐 `rknn3_worker` 的 §5 Phase 1 帧解析与 binary 实际输出。
+
+### 12.3 已知问题:Qwen3-TTS 长句 runaway
+对较长回应文本(如上面 25 字的 gemma4 回复),Qwen3-TTS demo 出现 **runaway/garbled 合成**:输出 64.5s 持续能量但 ASR 回读为乱码 + "我們在這裡" 重复(faster-whisper 回读)。同一 server 对短句("今天天气怎么样")合成干净。这是 Qwen3-TTS talker 的 max_frames/EOS runaway(与主项目记忆里的 CJK 长度失控同源)。**V2V 演示用短回应 prompt 规避**(`prompt="用一句简短的话回答"`);根治需 talker EOS/分句层(超出 Phase 2d scope)。
+
+### 12.4 编排实现
+- 路径 A(若 host TTS 现成)经 `/audio_dialogue` WS:起 server,`AUDIO_LLM_BACKEND=gemma4_rk1828` + TTS backend = host(matcha_rknn/kokoro_rknn),真并发。
+- 路径 B 经脚本时分:stop tts_server(释放 EP)→ `create_audio_llm("gemma4_rk1828")` 出文本 → 释放 gemma4 → 重启 tts_server / `create_tts("qwen3_tts_rk1828")` 合成。**铁律:生产 tts_server :8900 测试动过必恢复 health**(脚本用 EXIT trap 保证 restore + EP 不 wedge)。
+
 ## 11. 测试策略(codex#6c)
 - **mock worker**:提供一个 Python 假 worker 脚本(说 §5 Phase 1 协议:读文本行 → 吐固定 `[len][int16 PCM]` + `0xFFFFFFFF`),`rknn3_worker` 可经 config `binary_path` 指向它 → **direct + HTTP dual-mode 测试无需真设备**(对齐 CLAUDE.md 包测试 dual-mode 约定)。
 - **真机 smoke**:radxa(RK3588 host + RK1828 EP)指向真二进制,能量/ASR 校验出真语音。
