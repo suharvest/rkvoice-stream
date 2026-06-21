@@ -137,6 +137,22 @@ def test_protocol_stdout_eof_crashes():
         list(w.generate_stream("/tmp/a.wav"))
 
 
+def test_protocol_desync_implausible_length():
+    from rkvoice_stream.runtime.rknn3_worker import (
+        ProtocolDesyncError,
+        WorkerCrashError,
+        MAX_FRAME_BYTES,
+    )
+
+    leaked = b"DIAG some diagnostic leaked to stdout\n"
+    assert struct.unpack("<I", leaked[:4])[0] > MAX_FRAME_BYTES
+    w = _make_worker_with_stream(leaked)
+    with pytest.raises(ProtocolDesyncError) as ei:
+        list(w.generate_stream("/tmp/a.wav"))
+    assert isinstance(ei.value, WorkerCrashError)
+    assert w._ready is False
+
+
 def test_generate_full_concat():
     stream = _tframe("foo") + _tframe("bar") + _eos()
     w = _make_worker_with_stream(stream)

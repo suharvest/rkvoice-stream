@@ -65,9 +65,31 @@ AUDIO_LLM_PROTOCOL_VERSION = 1
 _LEN_STRUCT = struct.Struct("<I")
 _LEN_BYTES = _LEN_STRUCT.size  # 4
 
+# Upper bound on a single (non-sentinel) frame length, in bytes.  A legitimate
+# TTS PCM chunk is at most a few hundred KB (24kHz int16 mono, one talker step);
+# an AudioLLM text-token frame is a handful of bytes.  If we ever decode a length
+# this large it is *not* a real frame — it means a stray non-frame byte
+# (e.g. a diagnostic line that leaked onto the binary's real stdout) was misread
+# as a length prefix and the stream is desynced.  Rather than block forever on a
+# multi-GB ``_read_exact`` (or silently emit garbage PCM/text), we surface a
+# clear protocol-desync error.  8 MiB is ~170s of 24kHz int16 audio — far above
+# any single chunk yet small enough to catch a misframed length immediately.
+MAX_FRAME_BYTES = 8 * 1024 * 1024
+
 
 class WorkerCrashError(RuntimeError):
     """Raised when the worker process dies mid-request (stdout EOF)."""
+
+
+class ProtocolDesyncError(WorkerCrashError):
+    """Raised when a decoded length prefix is implausibly large.
+
+    Subclass of :class:`WorkerCrashError` so existing callers that recover from
+    a worker crash also recover from a desync (both mean: tear the worker down
+    and respawn).  The distinct type lets callers/log-readers tell a true
+    process crash from a stdout-framing desync (stray non-frame text on the
+    binary's real stdout misread as a length prefix).
+    """
 
 
 class ProtocolMismatchError(RuntimeError):
@@ -103,18 +125,28 @@ class RKNN3Worker:
     def _build_args(self) -> List[str]:
         """Build the subprocess argv.
 
-        The existing TTS demo is invoked positionally::
+        The TTS demo is invoked positionally::
 
             rknn_qwen3_tts_demo <model_dir> <ref_speaker> -
 
-        where the trailing ``-`` selects server mode (read stdin loop).  The
-        device id is passed as ``--device-id <id>`` per spec §6 (the C++ side
-        is being regularised to accept this flag).  ``extra_args`` allows mock
-        workers / future binaries to receive additional positional args.
+        where the trailing ``-`` selects server mode (read stdin loop).
+
+        IMPORTANT — the TTS binary does **not** accept ``--device-id``.  Unlike
+        the gemma4 AudioLLM binary (which parses & ignores the flag), the TTS
+        demo treats the *4th positional arg* as an output target, so passing
+        ``--device-id <id>`` makes it (a) write to a bogus ``--device-id/...``
+        path, (b) dump model-load diagnostics (``Qwen3TTSTalker_...``) onto its
+        real stdout — which the framed reader then misdecodes as a giant length
+        prefix (ProtocolDesyncError) — and (c) run in batch (non-server) mode.
+        Device selection for this binary is via PCIe enumeration in the runtime
+        (a single EP), not a CLI flag, exactly as the production tts_server does
+        (``[binary, model_dir, ref_speaker, "-"]``).  ``device_id`` is kept as
+        metadata (capability / runtime_info) but never passed as argv here.
+
+        ``extra_args`` allows mock workers / future binaries to receive
+        additional positional args.
         """
         args: List[str] = [self._binary_path, self._model_dir, self._ref_speaker]
-        if self._device_id:
-            args += ["--device-id", str(self._device_id)]
         args += self._extra_args
         args.append("-")  # server mode sentinel (stdin loop)
         return args
@@ -175,7 +207,11 @@ class RKNN3Worker:
                 line = raw.decode("utf-8", errors="replace").rstrip()
                 if not line:
                     continue
-                if "READY" in line:
+                # Match case-insensitively: the TTS binary emits "[server] ready"
+                # (lowercase) while the AudioLLM binary emits "READY <ver>".  A
+                # case-sensitive "READY" match silently missed the TTS ready
+                # signal, forcing the full ready_timeout_s startup stall.
+                if "ready" in line.lower():
                     ready_event.set()
                 logger.debug("[rk1828-worker] %s", line)
 
@@ -261,6 +297,17 @@ class RKNN3Worker:
                 if length == 0:
                     # Empty (non-sentinel) frame: nothing to emit, keep reading.
                     continue
+                if length > MAX_FRAME_BYTES:
+                    # Implausible length -> the stream is desynced (a stray
+                    # non-frame byte was misread as a length prefix).  Tear the
+                    # worker down rather than block on a multi-GB read.
+                    self._ready = False
+                    raise ProtocolDesyncError(
+                        f"RK1828 worker stdout desync: implausible PCM frame "
+                        f"length {length} (0x{length:08x}) exceeds "
+                        f"MAX_FRAME_BYTES={MAX_FRAME_BYTES}; likely stray "
+                        f"non-frame text on the binary's stdout"
+                    )
                 yield self._read_exact(length)
 
     def synthesize(self, text: str) -> bytes:
@@ -496,6 +543,14 @@ class AudioLLMWorker:
                 if length == 0:
                     # Empty (non-sentinel) frame: nothing to emit, keep reading.
                     continue
+                if length > MAX_FRAME_BYTES:
+                    self._ready = False
+                    raise ProtocolDesyncError(
+                        f"RK1828 AudioLLM worker stdout desync: implausible text "
+                        f"frame length {length} (0x{length:08x}) exceeds "
+                        f"MAX_FRAME_BYTES={MAX_FRAME_BYTES}; likely stray "
+                        f"non-frame text on the binary's stdout"
+                    )
                 yield self._read_exact(length).decode("utf-8", errors="replace")
 
     def generate(

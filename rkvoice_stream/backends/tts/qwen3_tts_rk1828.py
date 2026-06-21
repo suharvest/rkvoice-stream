@@ -21,8 +21,9 @@ from __future__ import annotations
 import io
 import logging
 import os
+import re
 import time
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional
 
 import numpy as np
 
@@ -32,6 +33,63 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 24000
 _INT16_SCALE = 32768.0
+
+# ── sentence splitting (long-text runaway protection) ─────────────────────
+# Qwen3-TTS degrades / "runs away" (repeats, trails into hallucinated audio)
+# on long single utterances. The orchestrator (app/dialogue.py) already
+# chunks LLM token streams into sentences, but a *direct* caller of the
+# backend (synthesize / synthesize_stream with a whole paragraph) bypasses
+# that. So the Service splits here too, making every caller — not just the
+# orchestrator — safe. Mirrors the CJK ≤~48-char-per-sentence convention used
+# across the project's other TTS backends.
+_MAX_SENTENCE_CHARS = 48
+# Split *after* a sentence-ending punctuation mark (kept with the sentence).
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?;。！？；…\n])\s*")
+# Soft break points used when a single punctuation-bounded segment is still
+# longer than _MAX_SENTENCE_CHARS (long run-on with only commas / spaces).
+_SOFT_BREAK_CHARS = "，,、；; 　"
+
+
+def _split_for_tts(text: str, max_chars: int = _MAX_SENTENCE_CHARS) -> List[str]:
+    """Split ``text`` into TTS-sized sentences (≤ ~``max_chars`` each).
+
+    Two passes:
+      1. Split on sentence-ending punctuation (kept with the preceding text).
+      2. Any resulting segment still longer than ``max_chars`` is further
+         broken at the last soft delimiter (comma / space) before the cap,
+         falling back to a hard character-count cut if no delimiter exists
+         (e.g. an unpunctuated CJK run).
+
+    Short / already-bounded text returns a single-element list, so the common
+    case (a short utterance) is a no-op passed straight through to the worker.
+    """
+    text = (text or "").strip()
+    if not text:
+        return []
+    if len(text) <= max_chars and not _SENTENCE_SPLIT_RE.search(text):
+        return [text]
+
+    out: List[str] = []
+    for seg in _SENTENCE_SPLIT_RE.split(text):
+        seg = seg.strip()
+        if not seg:
+            continue
+        while len(seg) > max_chars:
+            # Prefer breaking at the last soft delimiter at/under the cap.
+            cut = -1
+            for i in range(min(max_chars, len(seg) - 1), 0, -1):
+                if seg[i] in _SOFT_BREAK_CHARS:
+                    cut = i + 1  # keep the delimiter with the left piece
+                    break
+            if cut <= 0:
+                cut = max_chars  # no delimiter: hard cut at the cap
+            piece = seg[:cut].strip()
+            if piece:
+                out.append(piece)
+            seg = seg[cut:].strip()
+        if seg:
+            out.append(seg)
+    return out
 
 
 def _pcm16_to_float32(pcm: bytes) -> np.ndarray:
@@ -81,12 +139,21 @@ class Qwen3TTSRK1828Service:
         return SAMPLE_RATE
 
     def synthesize(self, text: str, **_kwargs) -> tuple[bytes, dict]:
-        """Synthesize the whole utterance and return (WAV bytes, meta)."""
+        """Synthesize the whole utterance and return (WAV bytes, meta).
+
+        Long text is split into ≤~48-char sentences (runaway protection) and
+        each sentence is synthesized as a separate worker request; the PCM is
+        concatenated back into one utterance for the caller.
+        """
         if self._worker is None:
             raise RuntimeError("RK1828 TTS service not loaded — call load() first")
 
         t0 = time.perf_counter()
-        pcm = self._worker.synthesize(text)
+        sentences = _split_for_tts(text)
+        if not sentences:
+            pcm = b""
+        else:
+            pcm = b"".join(self._worker.synthesize(s) for s in sentences)
         audio = _pcm16_to_float32(pcm)
         elapsed = time.perf_counter() - t0
 
@@ -101,23 +168,32 @@ class Qwen3TTSRK1828Service:
         return wav_bytes, meta
 
     def synthesize_stream(self, text: str, **_kwargs) -> Iterator[tuple[np.ndarray, dict]]:
-        """Stream float32 chunks as the worker emits int16 PCM frames."""
+        """Stream float32 chunks as the worker emits int16 PCM frames.
+
+        Long text is split into ≤~48-char sentences (runaway protection); each
+        sentence is streamed sequentially through the worker so a long paragraph
+        never becomes one runaway request. ``chunk_index`` is continuous across
+        sentence boundaries; ``sentence_index`` marks which sentence a chunk
+        belongs to.
+        """
         if self._worker is None:
             raise RuntimeError("RK1828 TTS service not loaded — call load() first")
 
         t0 = time.perf_counter()
         chunk_index = 0
-        for pcm in self._worker.synthesize_stream(text):
-            audio = _pcm16_to_float32(pcm)
-            if len(audio) == 0:
-                continue
-            meta = {
-                "chunk_index": chunk_index,
-                "samples": int(len(audio)),
-                "elapsed": round(time.perf_counter() - t0, 3),
-            }
-            chunk_index += 1
-            yield audio, meta
+        for sentence_index, sentence in enumerate(_split_for_tts(text)):
+            for pcm in self._worker.synthesize_stream(sentence):
+                audio = _pcm16_to_float32(pcm)
+                if len(audio) == 0:
+                    continue
+                meta = {
+                    "chunk_index": chunk_index,
+                    "sentence_index": sentence_index,
+                    "samples": int(len(audio)),
+                    "elapsed": round(time.perf_counter() - t0, 3),
+                }
+                chunk_index += 1
+                yield audio, meta
 
     def cleanup(self) -> None:
         if self._worker is not None:
