@@ -1,0 +1,17 @@
+# RK1828 Gemma-4 AudioLLM profile (RKNN3 PCIe coprocessor).
+#
+# Gemma-4 is a multimodal model that takes audio (+ optional text prompt) and
+# produces text — collapsing ASR + LLM into one model for V2V. It runs in an
+# on-device gemma4 C++ demo binary (server mode, Phase 2); the package drives it
+# via a subprocess worker speaking the Phase 2 text-token protocol. The binary
+# is built on the device (models/rk1828/gemma4-patches/) and is NOT shipped in
+# the pip package — `binary_path` locates it at runtime.
+name: "RK1828 Gemma-4 AudioLLM (PCIe coprocessor)"
+platform: rk1828
+
+audio_llm:
+  backend: gemma4_rk1828
+  binary_path: /opt/rk1828/rknn_gemma4_demo
+  model_dir: /opt/rk1828/models/gemma4
+  device_id: "0001:11:00.0"
+  max_new_tokens: 256
