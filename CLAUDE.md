@@ -2,16 +2,19 @@
 
 ## Project Overview
 
-Streaming speech AI service for Rockchip NPU platforms (RK3576/RK3588).
+Streaming speech AI service for Rockchip NPU platforms (RK3576/RK3588), plus the
+RK1828 PCIe NPU coprocessor (RKNN3 accelerator card attached to an RK3576/RK3588 host,
+`is_coprocessor=True`, addressed by PCIe BDF `0001:11:00.0`) for TTS and a multimodal
+AudioLLM (audio -> streaming text).
 Python package: `rkvoice_stream`. Three-layer architecture: app -> engine -> backends.
 
 ## Architecture
 
-- `rkvoice_stream/engine/` — Public API (ABCs + factories)
-- `rkvoice_stream/backends/` — Concrete implementations (ASR: qwen3, TTS: matcha/piper/qwen3)
+- `rkvoice_stream/engine/` — Public API (ABCs + factories: asr, tts, audio_llm)
+- `rkvoice_stream/backends/` — Concrete implementations (ASR: qwen3, TTS: matcha/piper/qwen3/qwen3_tts_rk1828, AudioLLM: gemma4_rk1828)
 - `rkvoice_stream/app/` — FastAPI server, dialogue orchestrator, capability detection
-- `rkvoice_stream/platform/` — Device config constants (RK3576, RK3588)
-- `rkvoice_stream/runtime/` — Low-level RKNN/RKLLM wrappers
+- `rkvoice_stream/platform/` — Device config constants (RK3576, RK3588, RK1828)
+- `rkvoice_stream/runtime/` — Low-level RKNN/RKLLM wrappers; `rknn3_worker` (RK1828 subprocess worker over PCIe)
 - `models/` — Model conversion scripts (not part of pip package)
 - `configs/` — Pre-validated YAML config profiles
 

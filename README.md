@@ -7,7 +7,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Python-3.10+-green.svg" alt="Python">
-  <img src="https://img.shields.io/badge/Platform-RK3576%20%7C%20RK3588-orange.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-RK3576%20%7C%20RK3588%20%7C%20RK1828%20(NPU%20coprocessor)-orange.svg" alt="Platform">
 </p>
 
 <p align="center">
@@ -24,9 +24,12 @@
 
 rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. It runs ASR and TTS entirely on-device via RKNN/RKLLM acceleration — no cloud, no GPU, no internet required. Ship it as a Python library or a Docker container.
 
+It also supports the **RK1828 PCIe NPU coprocessor** (an accelerator card attached to an RK3576/RK3588 host) for on-device TTS (`qwen3_tts_rk1828`) and a multimodal **AudioLLM** (`gemma4_rk1828`, Gemma-4) that takes audio and streams text — collapsing ASR + LLM into a single model.
+
 ## Table of Contents
 
 - [Performance](#performance)
+- [AudioLLM — Gemma-4 (RK1828)](#audiollm--gemma-4-rk1828)
 - [Features](#features)
 - [Supported Platforms](#supported-platforms)
 - [Quick Start](#quick-start)
@@ -50,7 +53,7 @@ rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. 
 | **SenseVoice** (NPU) | 50+ | RKNN encoder + CPU CTC | — | — |
 | **SenseVoice** (CPU) | 50+ | sherpa-onnx | 0.36 | 0.11 |
 
-### TTS — five backends
+### TTS — six backends
 
 | Backend | Languages | Type | RK3576 RTF | RK3588 RTF |
 |---------|-----------|------|:----------:|:----------:|
@@ -58,7 +61,12 @@ rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. 
 | **Piper VITS** | en, zh, de, fr, ja, … | Hybrid CPU + NPU | ~0.05 | ~0.03 |
 | **Kokoro** | en, zh | RKNN (NPU) | — | — |
 | **Qwen3-TTS** | zh, en | RKNN (NPU) | — | — |
+| **Qwen3-TTS (RK1828)** | zh, en | RKNN3 on RK1828 PCIe NPU coprocessor | — | — |
 | **MOSS-TTS-Nano** (experimental) | zh, en | ORT (CPU) / RKNN hybrid | — | — |
+
+> **Qwen3-TTS (RK1828)** — `qwen3_tts_rk1828` runs Qwen3-TTS (~1.7 GB) on the RK1828 PCIe
+> NPU coprocessor via the RKNN3 toolchain (driven by a subprocess worker over PCIe). See
+> [`docs/rk1828-qwen3-tts.md`](docs/rk1828-qwen3-tts.md).
 
 > **MOSS-TTS-Nano (experimental)** — supported via **ORT (CPU) and hybrid** routes only; the
 > ORT path is the production-correctness fallback. **NPU acceleration is not production-ready**
@@ -79,6 +87,28 @@ Audio streamed at real-time pace (simulating live microphone). Qwen3-ASR (NPU) +
 | Hello world (1.7s) | 1289 ms | **644 ms** |
 | **Average** | **1385 ms** | **1042 ms** |
 
+## AudioLLM — Gemma-4 (RK1828)
+
+A new engine type beyond ASR and TTS: an **AudioLLM** consumes audio (plus an optional
+text prompt) and **streams text** back, collapsing the ASR + LLM "understanding" steps of a
+voice-to-voice pipeline into a single multimodal model.
+
+| Backend | Input → Output | Type | Platform | Status |
+|---------|----------------|------|----------|--------|
+| **Gemma-4** (`gemma4_rk1828`) | audio (+ optional prompt) → streaming text | RKNN3 (subprocess worker over PCIe) | RK1828 PCIe NPU coprocessor (~4.2 GB) | experimental |
+
+Used by the `/audio_dialogue` WebSocket endpoint for V2V: audio in → AudioLLM streaming text
+→ TTS → audio out.
+
+> **Single-EP constraint** — the RK1828 has a single ~5 GB NPU. Gemma-4 (~4.2 GB) and
+> Qwen3-TTS (~1.7 GB) do not fit at the same time, so V2V runs Gemma-4 on the RK1828 with
+> TTS on the host SoC's NPU, or time-shares the coprocessor between them.
+
+> **Experimental — firmware flakiness.** Loading Gemma-4 on the RK1828 occasionally hits a
+> firmware `ACK_FAIL` during model setup (an RKNN3 V1.0.4 firmware-layer issue, mitigated by
+> worker-level retry). See [`docs/rk1828-upstream-modelsetup-ackfail.md`](docs/rk1828-upstream-modelsetup-ackfail.md)
+> and [`docs/rk1828-gemma4.md`](docs/rk1828-gemma4.md).
+
 ## Features
 
 - **ASR: Qwen3-ASR** — streaming + offline, 52 languages, RKNN encoder + RKLLM decoder on NPU
@@ -90,6 +120,8 @@ Audio streamed at real-time pace (simulating live microphone). Qwen3-ASR (NPU) +
 - **TTS: Piper VITS** — lightweight multi-language TTS (en, zh, de, fr, ja, …), hybrid CPU+NPU
 - **TTS: Kokoro RKNN** — multi-stage RKNN synthesis (en, zh), NPU-accelerated
 - **TTS: Qwen3-TTS** — RKNN streaming TTS (zh, en) on NPU
+- **TTS: Qwen3-TTS (RK1828)** — `qwen3_tts_rk1828`, Qwen3-TTS on the RK1828 PCIe NPU coprocessor (RKNN3)
+- **AudioLLM: Gemma-4 multimodal (audio→text) on RK1828 PCIe NPU** — `gemma4_rk1828`, streams text from audio (+ optional prompt), powering single-model V2V (experimental)
 - **TTS: MOSS-TTS-Nano** (experimental) — ORT (CPU) and RKNN-hybrid routes only; ORT is the
   production-correctness fallback, NPU path is not production-ready (see note above)
 - **Streaming everywhere** — WebSocket ASR (real-time partials), streaming TTS (sentence-by-sentence PCM)
@@ -104,6 +136,14 @@ Audio streamed at real-time pace (simulating live microphone). Qwen3-ASR (NPU) +
 |----------|-----|-----|-------------|:-----------:|--------|
 | RK3576 | 2 cores, 6 TOPS | 2x A72 + 4x A55 | W4A16 | ~1.1s | Tested |
 | RK3588 | 3 cores, 6 TOPS | 4x A76 + 4x A55 | FP16 | **~0.7s** | Tested |
+| RK1828 | PCIe NPU coprocessor (~5 GB, RKNN3), attached to RK3576/RK3588 host; device `0001:11:00.0` | host SoC | — | — | Experimental |
+
+> **RK1828** is a PCIe NPU coprocessor (accelerator card), **not** a standalone SoC. It plugs
+> into an RK3576/RK3588 host and uses a **different toolchain (RKNN3)** than the host's RKNN2;
+> it is driven by a subprocess worker over PCIe (C++ server-mode demo). Backends:
+> `qwen3_tts_rk1828` (TTS) and `gemma4_rk1828` (AudioLLM). See
+> [`docs/rk1828-package-integration.md`](docs/rk1828-package-integration.md) for the full
+> first-class-platform design.
 
 ## Quick Start
 
@@ -143,6 +183,14 @@ wav_bytes = tts.synthesize("Hello world")
 # Streaming TTS
 for chunk, meta in tts.synthesize_stream("Hello world"):
     play(chunk)
+
+# AudioLLM (Gemma-4 on RK1828): audio (+ optional prompt) -> streaming text
+from rkvoice_stream.engine.audio_llm import create_audio_llm
+
+audio_llm = create_audio_llm("gemma4_rk1828")  # or AUDIO_LLM_BACKEND env
+audio_llm.preload()
+for token in audio_llm.generate_stream(audio, sample_rate=16000, prompt="Reply in English."):
+    print(token, end="", flush=True)
 ```
 
 ### Option 3: Config profile
@@ -164,7 +212,8 @@ All endpoints are compatible with [jetson-voice](https://github.com/dusty-nv/jet
 | POST | `/tts/stream` | Streaming TTS (PCM chunks) |
 | POST | `/asr` | Transcribe audio file |
 | WS | `/asr/stream` | Streaming ASR (real-time partials) |
-| WS | `/dialogue` | Voice-to-voice dialogue pipeline |
+| WS | `/dialogue` | Voice-to-voice dialogue pipeline (ASR → LLM → TTS) |
+| WS | `/audio_dialogue` | Voice-to-voice via AudioLLM (audio → AudioLLM streaming text → TTS → audio) |
 | GET | `/health` | Service health + backend status |
 | GET | `/capabilities` | NPU resource usage + conflict info |
 
@@ -177,14 +226,17 @@ All endpoints are compatible with [jetson-voice](https://github.com/dusty-nv/jet
 │  capability/conflict detection                    │
 ├──────────────────────────────────────────────────┤
 │  Engine Layer (public API)                        │
-│  ASREngine ABC + TTSEngine ABC + factories        │
+│  ASREngine ABC + TTSEngine ABC + AudioLLM ABC     │
+│  + factories                                      │
 ├──────────────────────────────────────────────────┤
 │  Backend Layer                                    │
 │  Qwen3-ASR (RKNN + RKLLM)  │  Matcha+Vocos      │
 │  Piper VITS (RKNN)         │  Qwen3-TTS          │
+│  Gemma-4 (RK1828 AudioLLM) │  Qwen3-TTS (RK1828) │
 ├──────────────────────────────────────────────────┤
 │  Platform + Runtime                               │
-│  RK3576/RK3588 configs, RKNN/RKLLM wrappers     │
+│  RK3576/RK3588 configs, RKNN/RKLLM wrappers,    │
+│  RK1828 (RKNN3, subprocess worker over PCIe)      │
 └──────────────────────────────────────────────────┘
 ```
 
