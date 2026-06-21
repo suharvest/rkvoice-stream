@@ -67,9 +67,10 @@ MEL_FRAMES_30S = 3000          # 30s at 100 frames/s
 ENCODER_TOKENS_30S = 390       # Output tokens for 30s input
 MAX_AUDIO_SECONDS = 30.0       # Max chunk for static encoder
 
-# CPU mask mapping for RK3576
+# CPU mask mapping for RK3576/RK3588 big cores.
 CPU_MASKS = {
     2: 0xC0,   # CPU6, CPU7 (A72 big cores)
+    3: 0xE0,   # CPU5-7
     4: 0xF0,   # CPU4-7
     1: 0x80,   # CPU7 only
     8: 0xFF,   # All cores

@@ -165,8 +165,11 @@ espeak-ng --version   # 需要 1.52+
 ls -la /usr/lib/librknnrt.so
 
 # 快速推理测试
+# 注意（legacy 示例）：旧的 `app.backends.piper_rknn` 模块已不存在，
+# CPU/RK 后端已迁移到 voxedge。此处仅作为接口示意；实际调用入口
+# 请参考 voxedge 的 Piper/RKNN 后端文档。
 python3 -c "
-from app.backends.piper_rknn import PiperRKNNBackend
+from voxedge.backends.piper_rknn import PiperRKNNBackend  # legacy: was app.backends.piper_rknn
 tts = PiperRKNNBackend(model_dir='/opt/piper-models', lang='en_US')
 wav = tts.synthesize('Hello, this is a test.')
 print(f'OK, samples={len(wav)}')

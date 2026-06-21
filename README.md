@@ -56,6 +56,12 @@ rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. 
 | **Matcha + Vocos** | zh, en | 0.19 | 0.10 |
 | **Piper VITS** | en, zh, de, fr, ja, … | ~0.05 | ~0.03 |
 
+> **MOSS-TTS-Nano (experimental)** — supported via **ORT (CPU) and hybrid** routes only; the
+> ORT path is the production-correctness fallback. **NPU acceleration is not production-ready**
+> (RKNN hybrid prefill is slower than full ORT and/or fails the ASR roundtrip quality gate; the
+> RKLLM custom export fails hidden-state parity). Expect **performance issues** vs the Matcha/Piper
+> NPU paths. See [`docs/moss-rknn-rk3576.md`](docs/moss-rknn-rk3576.md).
+
 ### Voice-to-Voice (EOS → First Audio)
 
 Streaming V2V latency: time from user stops speaking to first TTS audio chunk.
@@ -219,20 +225,21 @@ Pre-validated profiles in `configs/`:
 | Profile | Description |
 |---------|-------------|
 | `rk3576-full.yaml` | ASR + Matcha TTS (split NPU cores) |
-| `rk3576-paraformer-matcha.yaml` | Paraformer RKNN ASR + Matcha TTS |
+| `rk3576-paraformer-matcha.yaml` | Paraformer RKNN ASR (hybrid encoder + RKNN decoder) + Matcha TTS |
 | `rk3576-asr-only.yaml` | ASR with both NPU cores |
 | `rk3576-tts-only.yaml` | Matcha TTS only |
 | `rk3576-piper-multilang.yaml` | Piper multi-language TTS |
 | `rk3588-full.yaml` | RK3588 full stack |
-| `rk3588-paraformer-matcha.yaml` | RK3588 Paraformer RKNN ASR + Matcha TTS |
+| `rk3588-paraformer-matcha.yaml` | RK3588 Paraformer RKNN ASR (hybrid encoder + RKNN decoder) + Matcha TTS |
 
 Use via Docker:
 ```bash
 docker run -e CONFIG=rk3576-full rkvoice-stream
 ```
 
-Enable the experimental Paraformer hybrid ASR container profile with an
-artifact directory mounted at `/opt/asr/paraformer`:
+Enable the validated Paraformer hybrid ASR container profile with an artifact
+directory mounted at `/opt/asr/paraformer`. This uses RKNN encoder prefix,
+CPU encoder suffix, and RKNN decoder:
 
 ```bash
 PARAFORMER_HOST_MODEL_DIR=/home/cat/models/paraformer-hybrid \
@@ -248,7 +255,8 @@ Published digest: `sha256:8dec7528ed4e08b919f0b2fd9192b8564d2b713df8552aed3eb982
 For RK3588 set `PARAFORMER_CONTAINER_RKNN_DIR=/opt/asr/paraformer/rknn/rk3588`.
 Export/upload scripts live under `models/asr/paraformer/`; generated artifacts
 are stored in the existing RK artifact repo under
-`harvestsu/seeed-local-voice-rk-artifacts/paraformer-hybrid/`.
+`harvestsu/seeed-local-voice-rk-artifacts/rk3576/paraformer-hybrid/` and
+`harvestsu/seeed-local-voice-rk-artifacts/rk3588/paraformer-hybrid/`.
 
 Measured hybrid ASR performance uses the same Python pipeline baseline with
 full ONNX Runtime vs RKNN prefix + ONNX suffix/decoder. RK3576 improved from

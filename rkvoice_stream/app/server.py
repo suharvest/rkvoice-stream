@@ -349,6 +349,7 @@ async def asr_stream(
     # 1.3-s final decode in the executor.
     audio_q: asyncio.Queue = asyncio.Queue()
     eou_state = {"pending": False}
+    prepare_task: asyncio.Task | None = None
     # Tracks the most recent archive_text we've already streamed as a final.
     # Used so VAD-triggered utterance finals get pushed to the client mid-session
     # without being re-emitted by the session-end final block.
@@ -388,23 +389,30 @@ async def asr_stream(
     async def worker():
         while True:
             item = await audio_q.get()
-            if item is None:
-                break
-            sr, samples = item
             try:
-                await loop.run_in_executor(
-                    None, stream.accept_waveform, sr, samples)
-            except Exception as exc:
-                logger.debug("ASR worker accept_waveform error: %s", exc)
-                continue
-            # Always check for VAD-triggered utterance finals, even after
-            # EOU — multi-utterance clients need to see them.  Partials,
-            # on the other hand, are skipped post-EOU (saves ws.send).
-            if await _maybe_emit_utterance_final():
-                continue
-            if eou_state["pending"]:
-                continue
-            await _send_partial_if_any()
+                if item is None:
+                    break
+                sr, samples = item
+                try:
+                    await loop.run_in_executor(
+                        None, stream.accept_waveform, sr, samples)
+                except Exception as exc:
+                    logger.debug("ASR worker accept_waveform error: %s", exc)
+                    continue
+                # Always check for VAD-triggered utterance finals, even after
+                # EOU — multi-utterance clients need to see them.  Partials,
+                # on the other hand, are skipped post-EOU (saves ws.send).
+                if await _maybe_emit_utterance_final():
+                    continue
+                if eou_state["pending"]:
+                    continue
+                await _send_partial_if_any()
+            finally:
+                audio_q.task_done()
+
+    async def prepare_when_drained():
+        await audio_q.join()
+        await loop.run_in_executor(None, stream.prepare_finalize)
 
     worker_task = asyncio.create_task(worker())
 
@@ -433,6 +441,15 @@ async def asr_stream(
                 logger.debug("ASR stream: bad control msg %r", text[:80])
                 continue
             mtype = (ctl.get("type") or "").lower()
+            if mtype in {"prepare", "pre_eou", "prepare_finalize"}:
+                # Frontend/external VAD can send this as soon as it enters
+                # tail-silence.  It hides final encoder/decoder work under the
+                # remaining VAD hangover, while the later EOU frame simply
+                # drains the cached final text.
+                eou_state["pending"] = True
+                if prepare_task is None or prepare_task.done():
+                    prepare_task = asyncio.create_task(prepare_when_drained())
+                continue
             if mtype == "eou":
                 # Mark EOU so worker stops sending partials, then break to
                 # finalize.  All audio queued so far will still be processed
@@ -467,7 +484,10 @@ async def asr_stream(
             # last sub-chunk audio is encoded.  With the worker-queue model
             # all queued audio is processed before we reach this point, so
             # there's no need for cancel_and_finalize's drop-tail behavior.
-            await loop.run_in_executor(None, stream.prepare_finalize)
+            if prepare_task is not None:
+                await prepare_task
+            else:
+                await loop.run_in_executor(None, stream.prepare_finalize)
             final_result = await loop.run_in_executor(None, stream.finalize)
             if isinstance(final_result, dict):
                 final_text = final_result.get("text", "")

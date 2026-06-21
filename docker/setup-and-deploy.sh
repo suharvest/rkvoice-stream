@@ -141,7 +141,7 @@ $FLEET exec --timeout 30 "$DEVICE" -- "
     source venv/bin/activate
     export MODEL_DIR=$MODEL_DIR
     export LD_LIBRARY_PATH=/usr/lib
-    nohup python3 -m uvicorn app.main:app --host 0.0.0.0 --port $PORT > /tmp/rk3576-tts.log 2>&1 &
+    nohup python3 -m uvicorn server.main:app --host 0.0.0.0 --port $PORT > /tmp/rk3576-tts.log 2>&1 &
     echo \"PID: \$!\"
     sleep 2
     if curl -s http://localhost:$PORT/health >/dev/null 2>&1; then

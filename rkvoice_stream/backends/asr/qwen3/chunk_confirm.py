@@ -32,6 +32,7 @@ Architecture::
 
 from __future__ import annotations
 
+import ast
 import logging
 import os
 import re
@@ -45,6 +46,28 @@ from .config import SAMPLE_RATE
 from .utils import apply_itn, parse_asr_output
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_decoder_text(value) -> tuple[str, Optional[str]]:
+    """Return ``(text, language)`` from decoder text-like payloads."""
+    if isinstance(value, (tuple, list)):
+        text = value[0] if value else ""
+        lang = value[1] if len(value) > 1 else None
+        return str(text or ""), str(lang) if lang else None
+    if isinstance(value, str) and value[:1] in ("(", "["):
+        try:
+            parsed = ast.literal_eval(value)
+        except (SyntaxError, ValueError):
+            parsed = None
+        if (
+            isinstance(parsed, (tuple, list))
+            and 1 <= len(parsed) <= 2
+            and isinstance(parsed[0], str)
+        ):
+            lang = parsed[1] if len(parsed) > 1 else None
+            return parsed[0], str(lang) if isinstance(lang, str) and lang else None
+    return str(value or ""), None
+
 
 # ── Energy-based split (official Qwen3-ASR split_audio_into_chunks) ──────
 # Sliding window size for energy estimation when finding split points.
@@ -475,15 +498,16 @@ class ChunkConfirmASRStream:
         result = self._decode(full_embd, n_tokens, early_stop)
         self._n_hops += 1
 
-        raw = result.get("text", "") or ""
+        raw, decoded_language = _normalize_decoder_text(result.get("text", ""))
         was_aborted = result.get("aborted", False)
 
         if self._language:
             new_text = raw
+            if decoded_language:
+                self._current_language = decoded_language
         else:
             lang, new_text = parse_asr_output(raw)
-            if lang:
-                self._current_language = lang
+            self._current_language = lang or decoded_language or self._current_language
 
         if was_aborted and not is_final:
             new_text = ""
