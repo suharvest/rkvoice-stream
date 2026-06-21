@@ -36,6 +36,7 @@ app = FastAPI(title="RK3576 Speech Service", version="3.0.0")
 
 _backend = None
 _asr_backend = None
+_audio_llm_backend = None
 _dialogue = None
 _resource_plan = None
 _speech_mode = None
@@ -55,13 +56,19 @@ class TTSRequest(BaseModel):
 
 @app.on_event("startup")
 async def startup():
-    global _backend, _asr_backend, _dialogue, _resource_plan, _speech_mode
+    global _backend, _asr_backend, _audio_llm_backend, _dialogue
+    global _resource_plan, _speech_mode
 
     config_path = os.environ.get("CONFIG", "")
     if config_path:
         from pathlib import Path
 
-        from rkvoice_stream import _apply_asr_env, _apply_tts_env, load_config
+        from rkvoice_stream import (
+            _apply_asr_env,
+            _apply_audio_llm_env,
+            _apply_tts_env,
+            load_config,
+        )
 
         path = Path(config_path)
         if not path.exists() and not path.suffix:
@@ -71,14 +78,18 @@ async def startup():
             _apply_asr_env(config["asr"])
         if config.get("tts"):
             _apply_tts_env(config["tts"])
+        if config.get("audio_llm"):
+            _apply_audio_llm_env(config["audio_llm"])
         logger.info("Loaded runtime profile: %s", path)
 
     # --- ResourcePlanner: auto-select backends if SPEECH_MODE is set ---
     speech_mode = os.environ.get("SPEECH_MODE", "")
     tts_backend_name = os.environ.get("TTS_BACKEND", "")
     asr_backend_name = os.environ.get("ASR_BACKEND", "")
+    audio_llm_backend_name = os.environ.get("AUDIO_LLM_BACKEND", "")
     require_tts_backend = _env_flag("REQUIRE_TTS_BACKEND")
     require_asr_backend = _env_flag("REQUIRE_ASR_BACKEND")
+    require_audio_llm_backend = _env_flag("REQUIRE_AUDIO_LLM_BACKEND")
 
     if speech_mode and not tts_backend_name and not asr_backend_name:
         from rkvoice_stream.app.resource_planner import ResourcePlanner
@@ -133,17 +144,47 @@ async def startup():
             raise RuntimeError("REQUIRE_ASR_BACKEND=1 but ASR_BACKEND is not set or disabled")
         logger.info("ASR_BACKEND not set — ASR disabled.")
 
+    # --- AudioLLM (optional; opt-in via AUDIO_LLM_BACKEND, e.g. gemma4_rk1828) ---
+    # Audio -> text understanding model that collapses ASR+LLM (Phase 2). It does
+    # NOT participate in SPEECH_MODE auto-selection — set AUDIO_LLM_BACKEND
+    # explicitly. On a single RK1828 EP gemma4 and Qwen3-TTS are memory-exclusive
+    # (~5GB); the V2V device placement (gemma4 on RK1828 + TTS on host, or
+    # time-sharing) is a deployment decision — see capability.py device buckets.
+    if audio_llm_backend_name and audio_llm_backend_name != "disabled":
+        logger.info("Loading AudioLLM backend: %s", audio_llm_backend_name)
+        try:
+            from rkvoice_stream.engine.audio_llm import create_audio_llm
+            _audio_llm_backend = create_audio_llm(audio_llm_backend_name)
+            _audio_llm_backend.preload()
+            logger.info("AudioLLM backend '%s' ready.", _audio_llm_backend.name)
+        except Exception as e:
+            if require_audio_llm_backend:
+                logger.error("Required AudioLLM backend '%s' failed to load: %s", audio_llm_backend_name, e)
+                raise RuntimeError(
+                    f"Required AudioLLM backend '{audio_llm_backend_name}' failed to load"
+                ) from e
+            logger.error("Failed to load AudioLLM backend '%s': %s — AudioLLM disabled", audio_llm_backend_name, e)
+            _audio_llm_backend = None
+    else:
+        if require_audio_llm_backend:
+            raise RuntimeError("REQUIRE_AUDIO_LLM_BACKEND=1 but AUDIO_LLM_BACKEND is not set or disabled")
+        logger.info("AUDIO_LLM_BACKEND not set — AudioLLM disabled.")
+
     # --- Dialogue orchestrator (requires TTS) ---
     if _backend:
         from rkvoice_stream.app.dialogue import DialogueOrchestrator
-        _dialogue = DialogueOrchestrator(tts_backend=_backend)
-        logger.info("Dialogue orchestrator ready (echo mode — no LLM).")
+        _dialogue = DialogueOrchestrator(
+            tts_backend=_backend,
+            audio_llm_backend=_audio_llm_backend,
+        )
+        mode_note = "AudioLLM understanding" if _audio_llm_backend else "echo mode — no LLM"
+        logger.info("Dialogue orchestrator ready (%s).", mode_note)
 
 
 @app.on_event("shutdown")
 async def shutdown():
     """Gracefully destroy NPU resources to prevent zombie threads."""
-    global _backend, _asr_backend
+    global _backend, _asr_backend, _audio_llm_backend
     logger.info("Shutting down — releasing NPU resources...")
 
     if _backend and hasattr(_backend, 'cleanup'):
@@ -157,6 +198,12 @@ async def shutdown():
             _asr_backend.cleanup()
         except Exception as e:
             logger.warning("ASR cleanup error: %s", e)
+
+    if _audio_llm_backend and hasattr(_audio_llm_backend, 'cleanup'):
+        try:
+            _audio_llm_backend.cleanup()
+        except Exception as e:
+            logger.warning("AudioLLM cleanup error: %s", e)
 
     logger.info("Shutdown complete.")
 
@@ -172,7 +219,20 @@ async def health():
         "asr": asr_ready,
         "asr_backend": _asr_backend.name if asr_ready else None,
         "streaming_asr": asr_ready and _asr_backend.has_capability(ASRCapability.STREAMING),
+        "audio_llm": _audio_llm_backend.is_ready() if _audio_llm_backend else False,
+        "audio_llm_backend": (
+            _audio_llm_backend.name
+            if _audio_llm_backend and _audio_llm_backend.is_ready()
+            else None
+        ),
     }
+    if _audio_llm_backend and hasattr(_audio_llm_backend, "runtime_info"):
+        try:
+            info = _audio_llm_backend.runtime_info()
+            if info:
+                result["audio_llm_info"] = info
+        except Exception as exc:
+            result["audio_llm_info_error"] = str(exc)
     if _backend and hasattr(_backend, "runtime_info"):
         try:
             result["tts_info"] = _backend.runtime_info()
@@ -571,6 +631,115 @@ async def dialogue_ws(ws: WebSocket):
 
     except Exception as exc:
         logger.debug("Dialogue WS error: %s", exc)
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Audio dialogue route (V2V: audio → AudioLLM (audio→text) → TTS → audio)
+# ---------------------------------------------------------------------------
+
+def _decode_audio_bytes(audio_bytes: bytes, fallback_sr: int = 16000):
+    """Decode WAV/FLAC/… bytes (or raw int16 PCM) to (float32 mono, sample_rate).
+
+    Tries a container decode via soundfile first; if that fails the payload is
+    treated as raw little-endian int16 PCM at ``fallback_sr``.
+    """
+    import io as _io
+
+    try:
+        import soundfile as sf
+        audio, sr = sf.read(_io.BytesIO(audio_bytes), dtype="float32")
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+        return audio.astype(np.float32), int(sr)
+    except Exception:
+        pcm = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        return pcm, fallback_sr
+
+
+@app.websocket("/audio_dialogue")
+async def audio_dialogue_ws(ws: WebSocket):
+    """Streaming V2V dialogue with an audio-in understanding stage.
+
+    Collapses ASR + LLM into the AudioLLM backend (e.g. gemma4 on RK1828):
+    client sends audio, the AudioLLM produces text, which is pipelined into
+    streaming TTS and returned as PCM audio.
+
+    Protocol:
+      1. Client sends a binary frame: the input audio (WAV/FLAC bytes, or raw
+         int16 PCM at 16 kHz). Optionally precede it with a JSON text frame
+         ``{"prompt": "...", "sample_rate": 16000}`` to set the AudioLLM prompt
+         and declare the sample rate for the raw-PCM case.
+      2. Server streams binary: first 4 bytes = sample_rate (uint32 LE), then
+         backend-native int16 PCM chunks as soon as they are decoded.
+      3. Server sends JSON: {"done": true, "chunks": N}.
+      4. Client can send another turn or close.
+
+    Requires both an AudioLLM backend and a streaming TTS backend.
+    """
+    await ws.accept()
+
+    if not _dialogue or not _dialogue.has_audio_llm():
+        await ws.send_json({"error": "Audio dialogue not available (AudioLLM not loaded)"})
+        await ws.close()
+        return
+    if not _backend or not getattr(_backend, "supports_streaming", False) or not hasattr(_backend, "synthesize_stream"):
+        await ws.send_json({"error": "Audio dialogue requires streaming TTS backend"})
+        await ws.close()
+        return
+
+    try:
+        prompt: str | None = None
+        sample_rate = 16000
+        while True:
+            msg = await ws.receive()
+            if msg.get("type") == "websocket.disconnect":
+                break
+
+            text = msg.get("text")
+            if text is not None:
+                # Optional control frame: prompt / sample_rate for the next turn.
+                try:
+                    ctl = json.loads(text)
+                except Exception:
+                    await ws.send_json({"error": "bad control message"})
+                    continue
+                if "prompt" in ctl:
+                    prompt = ctl.get("prompt") or None
+                if "sample_rate" in ctl:
+                    try:
+                        sample_rate = int(ctl["sample_rate"])
+                    except (TypeError, ValueError):
+                        pass
+                continue
+
+            data = msg.get("bytes")
+            if data is None or not data:
+                continue
+
+            audio, sr = _decode_audio_bytes(data, fallback_sr=sample_rate)
+            logger.info("audio_dialogue: audio=%d samples @%dHz prompt=%r",
+                        audio.size, sr, (prompt or "")[:40])
+            chunk_count = 0
+            try:
+                async for pcm_chunk in _dialogue.process_audio_turn_pcm(
+                    audio, sr, prompt=prompt
+                ):
+                    await ws.send_bytes(pcm_chunk)
+                    chunk_count += 1
+            except Exception as exc:
+                logger.error("audio_dialogue streaming failed: %s", exc)
+                await ws.send_json({"error": "audio dialogue streaming failed", "chunks": chunk_count})
+                continue
+
+            await ws.send_json({"done": True, "chunks": chunk_count})
+
+    except Exception as exc:
+        logger.debug("Audio dialogue WS error: %s", exc)
     finally:
         try:
             await ws.close()

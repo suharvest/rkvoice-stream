@@ -209,3 +209,35 @@ def _apply_tts_env(cfg: dict) -> None:
         for key, env_name in mapping.items():
             if key in cfg:
                 os.environ[env_name] = str(cfg[key])
+
+
+def _apply_audio_llm_env(cfg: dict) -> None:
+    """Apply config keys understood by current AudioLLM backends.
+
+    Mirrors ``_apply_tts_env``: maps the YAML ``audio_llm:`` block to the env
+    vars the selected backend reads. ``device_id`` wires the backend to a
+    specific device (host SoC vs RK1828 PCIe EP).
+    """
+    import os
+
+    backend = cfg.get("backend")
+    if backend:
+        os.environ["AUDIO_LLM_BACKEND"] = str(backend)
+    if "require_backend" in cfg:
+        os.environ["REQUIRE_AUDIO_LLM_BACKEND"] = str(cfg["require_backend"])
+
+    if backend == "gemma4_rk1828":
+        # RK1828 PCIe coprocessor: gemma4 C++ worker driven via subprocess.
+        mapping = {
+            "binary_path": "RK1828_GEMMA4_BINARY",
+            "model_dir": "RK1828_GEMMA4_MODEL_DIR",
+            "device_id": "RK1828_DEVICE_ID",
+        }
+        for key, env_name in mapping.items():
+            if key in cfg:
+                os.environ[env_name] = str(cfg[key])
+        # Per-submodel NPU core masks (LLM 0xff / audio encoder 0xf): the
+        # backend also sets these defensively, but config can override.
+        env_overrides = cfg.get("env") or {}
+        for env_name, value in env_overrides.items():
+            os.environ[str(env_name)] = str(value)

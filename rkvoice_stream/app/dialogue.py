@@ -67,9 +67,17 @@ class DialogueOrchestrator:
         self,
         tts_backend=None,
         llm_client: Optional[LLMClient] = None,
+        audio_llm_backend=None,
     ):
         self.tts = tts_backend
         self.llm = llm_client or EchoLLM()
+        # Optional AudioLLM (audio -> text) backend. When present the
+        # "understanding" stage of a turn can be driven directly from audio
+        # (collapsing ASR + LLM), instead of the text -> LLM path above.
+        self.audio_llm = audio_llm_backend
+
+    def has_audio_llm(self) -> bool:
+        return self.audio_llm is not None and self.audio_llm.is_ready()
 
     async def process_turn(
         self, user_text: str
@@ -116,8 +124,71 @@ class DialogueOrchestrator:
     ) -> AsyncGenerator[bytes, None]:
         """Yield raw int16 PCM chunks from the backend streaming TTS path.
 
+        Understanding stage = text -> LLM (the ``self.llm`` token stream).
         Prefixes the stream with 4 bytes: sample_rate as uint32 LE.
         Suitable for WebSocket streaming.
+        """
+        async for chunk in self._tts_stream_from_sentences(
+            self._chunk_sentences(self.llm.stream_chat(user_text))
+        ):
+            yield chunk
+
+    async def process_audio_turn_pcm(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        prompt: Optional[str] = None,
+    ) -> AsyncGenerator[bytes, None]:
+        """Audio-in understanding stage: AudioLLM (audio -> text) -> TTS -> PCM.
+
+        Collapses ASR + LLM into the single AudioLLM backend, then pipelines the
+        produced text into streaming TTS exactly like ``process_turn_pcm``.
+        Prefixes the stream with 4 bytes: sample_rate as uint32 LE.
+        """
+        if not self.has_audio_llm():
+            raise RuntimeError("audio dialogue requires a ready AudioLLM backend")
+
+        async def _token_stream() -> AsyncGenerator[str, None]:
+            loop = asyncio.get_event_loop()
+            q: asyncio.Queue[str | BaseException | None] = asyncio.Queue(maxsize=8)
+
+            def _produce() -> None:
+                try:
+                    for tok in self.audio_llm.generate_stream(
+                        audio, sample_rate, prompt=prompt
+                    ):
+                        asyncio.run_coroutine_threadsafe(q.put(tok), loop).result()
+                except Exception as exc:  # surface to the consumer
+                    logger.error("audio dialogue AudioLLM failed: %s", exc)
+                    asyncio.run_coroutine_threadsafe(q.put(exc), loop).result()
+                finally:
+                    asyncio.run_coroutine_threadsafe(q.put(None), loop).result()
+
+            producer = loop.run_in_executor(None, _produce)
+            try:
+                while True:
+                    item = await q.get()
+                    if item is None:
+                        break
+                    if isinstance(item, BaseException):
+                        raise RuntimeError("audio dialogue AudioLLM failed") from item
+                    yield item
+            finally:
+                await producer
+
+        async for chunk in self._tts_stream_from_sentences(
+            self._chunk_sentences(_token_stream())
+        ):
+            yield chunk
+
+    async def _tts_stream_from_sentences(
+        self, sentence_stream: AsyncGenerator[str, None]
+    ) -> AsyncGenerator[bytes, None]:
+        """Shared TTS streaming core: sentence text stream -> int16 PCM chunks.
+
+        Prefixes the stream with 4 bytes: sample_rate as uint32 LE. Used by both
+        the text (``process_turn_pcm``) and audio (``process_audio_turn_pcm``)
+        understanding stages.
         """
         import struct
 
@@ -126,7 +197,7 @@ class DialogueOrchestrator:
         sr = self.tts.get_sample_rate() if self.tts else 24000
         yield struct.pack("<I", sr)
 
-        async for sentence in self._chunk_sentences(self.llm.stream_chat(user_text)):
+        async for sentence in sentence_stream:
             if not sentence:
                 continue
 
