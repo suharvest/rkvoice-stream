@@ -471,6 +471,21 @@ int release_gemma4_model(rknn_gemma4_app_context* app_ctx)
 }
 
 
+int gemma4_server_reset_kvcache(rknn_gemma4_app_context* app_ctx)
+{
+    if (app_ctx == NULL || app_ctx->llm.rknn_sess == NULL) {
+        return 0;  // nothing initialised -> nothing to clear
+    }
+    // CLEAR_ALL (not KEEP_SYSTEM_PROMPT): server requests are independent turns
+    // with no carried system prompt, so a full clear is the correct reset and
+    // guarantees no residual prefix survives into the next request.
+    int ret = rknn3_session_clear_kvcache(app_ctx->llm.rknn_sess, RKNN3_KVCACHE_CLEAR_ALL);
+    if (ret != RKNN3_SUCCESS) {
+        fprintf(stderr, "[server] gemma4_server_reset_kvcache failed ret=%d\n", ret);
+    }
+    return ret;
+}
+
 int inference_gemma4_model(rknn_gemma4_app_context* app_ctx,
                            rknn3_llm_multimodal_tensor tensor,
                            audio_buffer_t* audio,

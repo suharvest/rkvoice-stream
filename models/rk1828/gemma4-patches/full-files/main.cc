@@ -870,6 +870,12 @@ static int run_server(const std::string& model_dir, const std::string& device_id
               utt, audio_ref.c_str(), prompt_str.c_str(), req_max_new);
       int rc = run_server_request(&app_ctx, enable_audio, audio_ref, prompt_str, req_max_new);
       if (rc != 0) fprintf(stderr, "[server] req#%d FAILED rc=%d\n", utt, rc);
+      // Always reset the KV cache between requests, regardless of rc.  The
+      // success path inside inference_gemma4_llm already clears KV, but its
+      // error early-returns skip it; without this unconditional reset a failed
+      // request leaves stale KV that accumulates across turns until the context
+      // overflows and the runtime aborts (SIGABRT / rc=-6) on a later request.
+      gemma4_server_reset_kvcache(&app_ctx);
       emit_eos_frame();
       fprintf(stderr, "[server] req#%d done\n", utt);
       utt++;

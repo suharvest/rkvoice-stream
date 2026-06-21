@@ -85,6 +85,19 @@ int init_gemma4_model(rknn_gemma4_app_context* app_ctx,
 
 int release_gemma4_model(rknn_gemma4_app_context* app_ctx);
 
+// Unconditionally clear the LLM KV cache for the next server-mode request.
+//
+// The per-request success path (inference_gemma4_llm) already clears the KV
+// cache, but its several error early-returns (audio-encode failure, NULL embeds,
+// session_run failure) skip that clear, leaving stale KV behind.  Across many
+// server requests a failed-then-retried turn can accumulate dirty KV until the
+// context overflows max_ctx_len and the runtime aborts (SIGABRT / rc=-6).  The
+// server loop calls this after EVERY request, regardless of rc, so a failed
+// request can never poison the next one.  Returns the underlying
+// rknn3_session_clear_kvcache rc (0 on success); safe to call when the LLM
+// session is initialised.  No effect on the one-shot (non-server) default path.
+int gemma4_server_reset_kvcache(rknn_gemma4_app_context* app_ctx);
+
 // Number of <=7 s chunks the audio waveform (num_frames samples @16kHz) will be
 // split into for the long-audio encoder path. Returns >=1 for non-empty audio.
 int gemma4_audio_num_chunks(int num_frames);
