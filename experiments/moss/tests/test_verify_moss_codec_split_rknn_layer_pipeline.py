@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_module():
-    path = ROOT / "models" / "tts" / "moss" / "verify_moss_codec_split_rknn_layer_pipeline.py"
+    path = ROOT / "scripts" / "verify_moss_codec_split_rknn_layer_pipeline.py"
     spec = importlib.util.spec_from_file_location("verify_moss_codec_split_rknn_layer_pipeline", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

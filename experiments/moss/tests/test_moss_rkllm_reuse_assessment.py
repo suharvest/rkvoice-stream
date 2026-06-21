@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def _load_module():
-    path = Path(__file__).resolve().parents[1] / "models" / "tts" / "moss" / "assess_moss_rkllm_reuse.py"
+    path = Path(__file__).resolve().parents[1] / "scripts" / "assess_moss_rkllm_reuse.py"
     spec = importlib.util.spec_from_file_location("assess_moss_rkllm_reuse", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

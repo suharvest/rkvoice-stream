@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from models.tts.moss.package_moss_rkllm_reproducer import package_reproducer
+from package_moss_rkllm_reproducer import package_reproducer
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EVIDENCE_DIR = ROOT / "docs" / "evidence" / "moss"
+EVIDENCE_DIR = ROOT / "evidence"
 
 
 def test_package_reproducer_contains_actionable_upstream_evidence(tmp_path):

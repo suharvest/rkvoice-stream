@@ -15,9 +15,9 @@ import onnx
 import onnxruntime as ort
 from onnx.utils import extract_model
 
-from models.tts.moss.build_moss_codec_front_islands import CodecFrontSpec, discover_codec_front_specs
-from models.tts.moss.build_moss_codec_middle_bridges import CodecMiddleSpec, discover_codec_middle_specs
-from models.tts.moss.build_moss_codec_suffix_islands import CodecSuffixSpec, discover_codec_suffix_specs
+from build_moss_codec_front_islands import CodecFrontSpec, discover_codec_front_specs
+from build_moss_codec_middle_bridges import CodecMiddleSpec, discover_codec_middle_specs
+from build_moss_codec_suffix_islands import CodecSuffixSpec, discover_codec_suffix_specs
 from models.tts.moss.convert_moss_rknn import sha256_file
 
 

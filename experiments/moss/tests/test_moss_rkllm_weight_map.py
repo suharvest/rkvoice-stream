@@ -8,7 +8,7 @@ from onnx import TensorProto, helper
 
 
 def _load_module():
-    path = Path(__file__).resolve().parents[1] / "models" / "tts" / "moss" / "inspect_moss_rkllm_weight_map.py"
+    path = Path(__file__).resolve().parents[1] / "scripts" / "inspect_moss_rkllm_weight_map.py"
     spec = importlib.util.spec_from_file_location("inspect_moss_rkllm_weight_map", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

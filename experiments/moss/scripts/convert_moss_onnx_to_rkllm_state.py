@@ -17,7 +17,7 @@ from onnx import numpy_helper
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from models.tts.moss.prepare_moss_rkllm_custom_model import prepare
+from prepare_moss_rkllm_custom_model import prepare
 
 
 def _load_initializers(onnx_path: Path) -> dict[str, np.ndarray]:

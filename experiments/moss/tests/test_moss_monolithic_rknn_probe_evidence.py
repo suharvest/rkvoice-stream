@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EVIDENCE = ROOT / "docs" / "evidence" / "moss" / "rk3576-moss-monolithic-prefill-decode-rknn-probe.json"
+EVIDENCE = ROOT / "evidence" / "rk3576-moss-monolithic-prefill-decode-rknn-probe.json"
 
 
 def test_rk3576_monolithic_prefill_and_decode_rknn_crash_at_inference():

@@ -40,21 +40,25 @@ rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. 
 
 ## Performance
 
-### ASR — four backends
+### ASR — five backends
 
 | Backend | Languages | Type | RK3576 RTF | RK3588 RTF |
 |---------|:---------:|------|:----------:|:----------:|
 | **Qwen3-ASR** (NPU) | 52 | RKNN + RKLLM | 0.44 | 0.34 |
 | **Paraformer** (Hybrid) | 4 | RKNN encoder prefix + CPU suffix/decoder | 0.29 | 0.33 |
-| **SenseVoice** (CPU) | 50+ | sherpa-onnx | 0.36 | 0.11 |
 | **Paraformer** (CPU) | 4 | sherpa-onnx streaming | 0.50 | 0.24 |
+| **SenseVoice** (NPU) | 50+ | RKNN encoder + CPU CTC | — | — |
+| **SenseVoice** (CPU) | 50+ | sherpa-onnx | 0.36 | 0.11 |
 
-### TTS — two backends
+### TTS — five backends
 
-| Backend | Languages | RK3576 RTF | RK3588 RTF |
-|---------|-----------|:----------:|:----------:|
-| **Matcha + Vocos** | zh, en | 0.19 | 0.10 |
-| **Piper VITS** | en, zh, de, fr, ja, … | ~0.05 | ~0.03 |
+| Backend | Languages | Type | RK3576 RTF | RK3588 RTF |
+|---------|-----------|------|:----------:|:----------:|
+| **Matcha + Vocos** | zh, en | RKNN vocoder (NPU) | 0.19 | 0.10 |
+| **Piper VITS** | en, zh, de, fr, ja, … | Hybrid CPU + NPU | ~0.05 | ~0.03 |
+| **Kokoro** | en, zh | RKNN (NPU) | — | — |
+| **Qwen3-TTS** | zh, en | RKNN (NPU) | — | — |
+| **MOSS-TTS-Nano** (experimental) | zh, en | ORT (CPU) / RKNN hybrid | — | — |
 
 > **MOSS-TTS-Nano (experimental)** — supported via **ORT (CPU) and hybrid** routes only; the
 > ORT path is the production-correctness fallback. **NPU acceleration is not production-ready**
@@ -79,10 +83,15 @@ Audio streamed at real-time pace (simulating live microphone). Qwen3-ASR (NPU) +
 
 - **ASR: Qwen3-ASR** — streaming + offline, 52 languages, RKNN encoder + RKLLM decoder on NPU
 - **ASR: Paraformer RKNN** — experimental hybrid split: FP16 RKNN encoder prefix through block30, CPU ONNX encoder suffix and decoder; boundary parity verified on RK3588 and RK3576
+- **ASR: SenseVoice RKNN** — offline, 50+ languages, RKNN encoder + CPU CTC decode
 - **ASR: SenseVoice** — offline + VAD streaming, 50+ languages, CPU (sherpa-onnx)
 - **ASR: Paraformer** — native streaming, zh/en/ja/ko, CPU (sherpa-onnx)
 - **TTS: Matcha + Vocos** — high-quality Chinese/English synthesis, NPU-accelerated vocoder
 - **TTS: Piper VITS** — lightweight multi-language TTS (en, zh, de, fr, ja, …), hybrid CPU+NPU
+- **TTS: Kokoro RKNN** — multi-stage RKNN synthesis (en, zh), NPU-accelerated
+- **TTS: Qwen3-TTS** — RKNN streaming TTS (zh, en) on NPU
+- **TTS: MOSS-TTS-Nano** (experimental) — ORT (CPU) and RKNN-hybrid routes only; ORT is the
+  production-correctness fallback, NPU path is not production-ready (see note above)
 - **Streaming everywhere** — WebSocket ASR (real-time partials), streaming TTS (sentence-by-sentence PCM)
 - **Voice-to-voice pipeline** — ASR → LLM → TTS dialogue orchestrator with sub-second first-audio latency
 - **NPU accelerated** — runs on Rockchip RKNN/RKLLM, not CPU

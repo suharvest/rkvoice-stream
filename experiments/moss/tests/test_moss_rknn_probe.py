@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from models.tts.moss.probe_moss_rknn_runtime import (
+from probe_moss_rknn_runtime import (
     _case_from_name,
     _named_inputs_for_case,
     _inputs_for_case,
@@ -204,7 +204,8 @@ def test_probe_treats_rknn_runtime_stderr_errors_as_failures():
 
 
 def test_probe_child_marks_inference_before_call():
-    source = Path("models/tts/moss/probe_moss_rknn_runtime.py").read_text(encoding="utf-8")
+    script = Path(__file__).resolve().parents[1] / "scripts" / "probe_moss_rknn_runtime.py"
+    source = script.read_text(encoding="utf-8")
 
     assert 'result["phase"] = "inference"' in source
     assert source.index('result["phase"] = "inference"') < source.index("rknn.inference(inputs=inputs")

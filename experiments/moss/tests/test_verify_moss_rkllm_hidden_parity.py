@@ -7,7 +7,7 @@ import numpy as np
 
 
 def _load_module():
-    path = Path(__file__).resolve().parents[1] / "models" / "tts" / "moss" / "verify_moss_rkllm_hidden_parity.py"
+    path = Path(__file__).resolve().parents[1] / "scripts" / "verify_moss_rkllm_hidden_parity.py"
     spec = importlib.util.spec_from_file_location("verify_moss_rkllm_hidden_parity", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

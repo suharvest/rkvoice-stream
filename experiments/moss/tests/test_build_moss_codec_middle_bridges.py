@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_module():
-    path = ROOT / "models" / "tts" / "moss" / "build_moss_codec_middle_bridges.py"
+    path = ROOT / "scripts" / "build_moss_codec_middle_bridges.py"
     spec = importlib.util.spec_from_file_location("build_moss_codec_middle_bridges", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

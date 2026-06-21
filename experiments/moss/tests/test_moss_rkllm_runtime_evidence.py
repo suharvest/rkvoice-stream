@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EVIDENCE_DIR = ROOT / "docs" / "evidence" / "moss"
+EVIDENCE_DIR = ROOT / "evidence"
 
 
 def _load_json(name: str) -> dict:

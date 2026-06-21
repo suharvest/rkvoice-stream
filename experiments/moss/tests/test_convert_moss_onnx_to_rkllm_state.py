@@ -10,7 +10,7 @@ from onnx import TensorProto, helper, numpy_helper
 
 
 def _load_module():
-    path = Path(__file__).resolve().parents[1] / "models" / "tts" / "moss" / "convert_moss_onnx_to_rkllm_state.py"
+    path = Path(__file__).resolve().parents[1] / "scripts" / "convert_moss_onnx_to_rkllm_state.py"
     spec = importlib.util.spec_from_file_location("convert_moss_onnx_to_rkllm_state", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

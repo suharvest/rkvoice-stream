@@ -12,7 +12,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from models.tts.moss.assess_moss_rkllm_reuse import assess
+from assess_moss_rkllm_reuse import assess
 
 
 TEMPLATE_FILES = (

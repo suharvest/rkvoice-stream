@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EVIDENCE = ROOT / "docs" / "evidence" / "moss" / "rk3576-moss-sampler-sequential-per-block-rknn-promotion.json"
+EVIDENCE = ROOT / "evidence" / "rk3576-moss-sampler-sequential-per-block-rknn-promotion.json"
 
 
 def test_rk3576_sampler_per_block_rknn_is_not_service_integratable_yet():
