@@ -2,8 +2,9 @@
 
 对 Rockchip `rknn3_model_zoo` 的 `examples/gemma4/cpp/` 的改动,给 RK1828(Radxa ROCK 5T)上的 Gemma-4 E2B demo 加了长音频 chunk、KV/prefix cache、实时捕获流水线。**全部 opt-in(env 控制),默认行为不变。**
 
-- `gemma4-rk1828-mods.patch` — 相对 SDK V1.0.4 原版 gemma4/cpp 的统一 diff。
-- `full-files/` — 改动后的完整文件(备份;patch 对不同 model-zoo 版本不适用时直接用)。
+patch 与产物在 [`models/rk1828/gemma4-patches/`](../models/rk1828/gemma4-patches/):
+- [`gemma4-rk1828-mods.patch`](../models/rk1828/gemma4-patches/gemma4-rk1828-mods.patch) — 相对 SDK V1.0.4 原版 gemma4/cpp 的统一 diff。
+- [`full-files/`](../models/rk1828/gemma4-patches/full-files/) — 改动后的完整文件(备份;patch 对不同 model-zoo 版本不适用时直接用)。
 
 ## 应用
 ```bash
