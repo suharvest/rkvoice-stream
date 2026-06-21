@@ -1,0 +1,38 @@
+[project]
+name = "rk1828-qwen3-tts-export"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch==2.7.0",
+    "torchvision==0.22.0",
+    "transformers==4.57.3",
+    "onnx==1.18.0",
+    "onnxruntime>=1.18",
+    "numpy<2.0",
+    "scipy",
+    "sentencepiece",
+    "protobuf==4.25.4",
+    "modelscope",
+    "accelerate==1.14.0",
+    "tqdm",
+    "pandas==3.0.3",
+    "opencv-python-headless>=4.11.0.86",
+    "psutil==7.2.2",
+    "ruamel-yaml==0.19.1",
+    "fast-histogram==0.14",
+    "pillow==12.2.0",
+    "tabulate==0.10.0",
+    "prettytable==3.17.0",
+    "librosa==0.11.0",
+    "soundfile==0.14.0",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://mirrors.aliyun.com/pytorch-wheels/cpu/"
+format = "flat"
+explicit = true

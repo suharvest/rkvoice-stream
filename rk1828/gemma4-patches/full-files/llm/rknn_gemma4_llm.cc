@@ -1,0 +1,375 @@
+// Copyright (c) 2025 by Rockchip Electronics Co., Ltd. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "rknn_gemma4_llm.h"
+
+#include "time_utils.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int query_input_tensors(rknn_gemma4_llm_context* llm_ctx)
+{
+  int                    ret;
+  rknn3_input_output_num io_num;
+  memset(&io_num, 0, sizeof(io_num));
+
+  ret = rknn3_query(llm_ctx->rknn_ctx, RKNN3_QUERY_IN_OUT_NUM, &io_num, sizeof(io_num));
+  if (ret != RKNN3_SUCCESS) {
+    printf("rknn3_query RKNN3_QUERY_IN_OUT_NUM failed! ret=%d\n", ret);
+    return ret;
+  }
+
+  llm_ctx->input_tensors = (rknn3_tensor*)calloc(io_num.n_input, sizeof(rknn3_tensor));
+  if (!llm_ctx->input_tensors) {
+    printf("calloc input tensors failed\n");
+    return -1;
+  }
+  llm_ctx->n_input_tensors = (int)io_num.n_input;
+
+  for (uint32_t i = 0; i < io_num.n_input; ++i) {
+    llm_ctx->input_tensors[i].attr = (rknn3_tensor_attr*)calloc(1, sizeof(rknn3_tensor_attr));
+    if (!llm_ctx->input_tensors[i].attr) {
+      printf("calloc input tensor attr failed\n");
+      return -1;
+    }
+
+    llm_ctx->input_tensors[i].attr->index = i;
+    ret = rknn3_query(llm_ctx->rknn_ctx, RKNN3_QUERY_INPUT_ATTR, llm_ctx->input_tensors[i].attr,
+                      sizeof(rknn3_tensor_attr));
+    if (ret != RKNN3_SUCCESS) {
+      printf("rknn3_query RKNN3_QUERY_INPUT_ATTR failed! ret=%d\n", ret);
+      return ret;
+    }
+  }
+
+  // Collect indices of ext inputs: per_layer_inputs always; rope_cos_cache/rope_sin_cache
+  // only when rope_cache_host_storage == 1.
+  int  n_ext            = 0;
+  bool need_rope_cache  = llm_ctx->llm_config.rope_cache_host_storage != 0;
+  for (int i = 0; i < llm_ctx->n_input_tensors; ++i) {
+    const char* name = llm_ctx->input_tensors[i].attr->name;
+    if (strcmp(name, "per_layer_inputs") == 0) {
+      n_ext++;
+    } else if (need_rope_cache && (strstr(name, "rope_cos_cache") || strstr(name, "rope_sin_cache"))) {
+      n_ext++;
+    }
+  }
+
+  if (n_ext == 0) {
+    printf("no ext input tensors (per_layer_inputs%s) found\n",
+           need_rope_cache ? "/rope_cos_cache/rope_sin_cache" : "");
+    return -1;
+  }
+
+  llm_ctx->llm_ext_input_indices = (int*)malloc(n_ext * sizeof(int));
+  if (!llm_ctx->llm_ext_input_indices) {
+    printf("malloc llm_ext_input_indices failed\n");
+    return -1;
+  }
+  llm_ctx->n_llm_ext_inputs = 0;
+  for (int i = 0; i < llm_ctx->n_input_tensors; ++i) {
+    const char* name = llm_ctx->input_tensors[i].attr->name;
+    if (strcmp(name, "per_layer_inputs") == 0) {
+      llm_ctx->llm_ext_input_indices[llm_ctx->n_llm_ext_inputs++] = i;
+    } else if (need_rope_cache && (strstr(name, "rope_cos_cache") || strstr(name, "rope_sin_cache"))) {
+      llm_ctx->llm_ext_input_indices[llm_ctx->n_llm_ext_inputs++] = i;
+    }
+  }
+
+  return RKNN3_SUCCESS;
+}
+
+int init_gemma4_llm(rknn_gemma4_llm_context* llm_ctx, const char* model_path, const char* weight_path,
+                    rknn3_llm_param* params, int n_params, RKLLMCallback* callback, uint32_t core_mask)
+{
+  int           ret;
+  rknn3_devices devs;
+  rknn3_config  config;
+
+  if (!llm_ctx || !params || !callback || n_params <= 0) {
+    return -1;
+  }
+
+  memset(llm_ctx, 0, sizeof(*llm_ctx));
+
+  memset(&devs, 0, sizeof(devs));
+  ret = rknn3_find_devices(&devs);
+  if (ret != RKNN3_SUCCESS || devs.n_devices == 0) {
+    printf("rknn3_find_devices fail! ret=%d, n_devices=%d\n", ret, devs.n_devices);
+    return -1;
+  }
+
+  rknn3_init_extend init_extend;
+  init_extend.device_id = devs.devices[0].id;
+  printf("device id: %s, type: %s\n",  devs.devices[0].id, devs.devices[0].type);
+  ret = rknn3_init(&llm_ctx->rknn_ctx, &init_extend);
+  if (ret != RKNN3_SUCCESS) {
+    printf("rknn3_init fail! ret=%d\n", ret);
+    return ret;
+  }
+
+  ret = rknn3_load_model_from_path(llm_ctx->rknn_ctx, model_path, weight_path);
+  if (ret != RKNN3_SUCCESS) {
+    printf("rknn3_load_model_from_path failed! ret=%d\n", ret);
+    release_gemma4_llm(llm_ctx);
+    return ret;
+  }
+
+  memset(&config, 0, sizeof(config));
+  config.run_core_mask = core_mask;
+  ret = rknn3_model_init(llm_ctx->rknn_ctx, &config);
+  if (ret != RKNN3_SUCCESS) {
+    printf("rknn3_model_init failed! ret=%d\n", ret);
+    release_gemma4_llm(llm_ctx);
+    return ret;
+  }
+
+  ret = rknn3_query(llm_ctx->rknn_ctx, RKNN3_QUERY_LLM_CONFIG, &llm_ctx->llm_config, sizeof(llm_ctx->llm_config));
+  if (ret != RKNN3_SUCCESS) {
+    printf("rknn3_query RKNN3_QUERY_LLM_CONFIG failed! ret=%d\n", ret);
+    release_gemma4_llm(llm_ctx);
+    return ret;
+  }
+
+  ret = query_input_tensors(llm_ctx);
+  if (ret != RKNN3_SUCCESS) {
+    release_gemma4_llm(llm_ctx);
+    return ret;
+  }
+
+  if (params[0].max_context_len <= 0) {
+    params[0].max_context_len = llm_ctx->llm_config.max_ctx_len;
+  }
+
+  llm_ctx->rknn_sess = rknn3_session_init(llm_ctx->rknn_ctx, params, n_params);
+  if (!llm_ctx->rknn_sess) {
+    printf("Failed to initialize RKNN3 session\n");
+    release_gemma4_llm(llm_ctx);
+    return -1;
+  }
+
+  callback->input_tensors_index = llm_ctx->llm_ext_input_indices;
+  callback->n_input_tensors     = llm_ctx->n_llm_ext_inputs;
+  ret = rknn3_session_set_callback(llm_ctx->rknn_sess, callback);
+  if (ret != RKNN3_SUCCESS) {
+    printf("rknn3_session_set_callback failed! ret=%d\n", ret);
+    release_gemma4_llm(llm_ctx);
+    return ret;
+  }
+
+  ret = rknn3_session_set_chat_template(llm_ctx->rknn_sess, "", "<|turn>user\n", "<turn|>\n<|turn>model\n");
+  if (ret != RKNN3_SUCCESS) {
+    printf("rknn3_session_set_chat_template failed! ret=%d\n", ret);
+    release_gemma4_llm(llm_ctx);
+    return ret;
+  }
+  
+
+  return RKNN3_SUCCESS;
+}
+
+int release_gemma4_llm(rknn_gemma4_llm_context* llm_ctx)
+{
+  if (!llm_ctx) {
+    return 0;
+  }
+
+  if (llm_ctx->rknn_sess) {
+    rknn3_session_destroy(llm_ctx->rknn_sess);
+    llm_ctx->rknn_sess = NULL;
+  }
+
+  if (llm_ctx->rknn_ctx) {
+    rknn3_destroy(llm_ctx->rknn_ctx);
+    llm_ctx->rknn_ctx = 0;
+  }
+
+  if (llm_ctx->input_tensors) {
+    for (int i = 0; i < llm_ctx->n_input_tensors; ++i) {
+      free(llm_ctx->input_tensors[i].attr);
+      llm_ctx->input_tensors[i].attr = NULL;
+    }
+    free(llm_ctx->input_tensors);
+    llm_ctx->input_tensors = NULL;
+  }
+
+  if (llm_ctx->llm_ext_input_indices) {
+    free(llm_ctx->llm_ext_input_indices);
+    llm_ctx->llm_ext_input_indices = NULL;
+  }
+
+  llm_ctx->n_input_tensors  = 0;
+  llm_ctx->n_llm_ext_inputs = 0;
+  return 0;
+}
+
+int inference_gemma4_llm(rknn_gemma4_llm_context* llm_ctx, rknn3_llm_multimodal_tensor tensor, int32_t max_new_tokens,
+                         rknn_perf_metrics_t* perf)
+{
+  int ret;
+
+  if (!llm_ctx || !llm_ctx->rknn_sess || !perf) {
+    return -1;
+  }
+
+  rknn3_llm_infer_param infer_param;
+  rknn3_llm_input       input;
+  // rknn3_llm_tensor      input_tensor;
+  RKLLMRunState         state;
+  memset(&infer_param, 0, sizeof(infer_param));
+  memset(&input, 0, sizeof(input));
+  // memset(&input_tensor, 0, sizeof(input_tensor));
+  memset(&state, 0, sizeof(state));
+
+  // ---------------------------------------------------------------------------
+  // Opt-in KV/prefix-cache validation path. Gated by env GEMMA4_KV_DEMO=1.
+  // Runs the SAME prompt twice in one process with keep_history=1 and NO clear
+  // between rounds. Round 2 should find the prefix already in the KV cache and
+  // prefill far fewer tokens than round 1 -> proves prefill is being saved.
+  // Default behaviour (env unset) is unchanged: keep_history=0 + clear after.
+  // ---------------------------------------------------------------------------
+  const char* kv_demo_env = getenv("GEMMA4_KV_DEMO");
+  bool        kv_demo     = (kv_demo_env && kv_demo_env[0] == '1');
+  // Optional short follow-up prompt for round 2. When set, round 2 sends ONLY
+  // this follow-up (relying on round-1 KV for the long prefix) -> a true
+  // multi-turn prefix-reuse test.
+  const char* followup    = getenv("GEMMA4_KV_FOLLOWUP");
+
+  if (kv_demo) {
+    input.input_type       = RKNN3_LLM_INPUT_MULTIMODAL;
+    input.multimodal_input = tensor;
+    infer_param.max_new_tokens = max_new_tokens;
+    infer_param.keep_history   = 1;  // retain KV across the rounds
+
+    RKLLMRunState st1, st2, st3;
+    memset(&st1, 0, sizeof(st1));
+    memset(&st2, 0, sizeof(st2));
+    memset(&st3, 0, sizeof(st3));
+
+    // ===================== ROUND 1: cold cache (long prefix) ==================
+    printf("\n[KV-DEMO] ROUND 1 (keep_history=1, cold cache, full prompt)\n");
+    int64_t r1_start = getCurrentTimeUs();
+    ret = rknn3_session_run(llm_ctx->rknn_sess, &input, 1, &infer_param);
+    int64_t r1_end = getCurrentTimeUs();
+    if (ret != RKNN3_SUCCESS) { printf("[KV-DEMO] round1 run failed ret=%d\n", ret); return ret; }
+    ret = rknn3_session_query_state(llm_ctx->rknn_sess, &st1);
+    if (ret != RKNN3_SUCCESS) { printf("[KV-DEMO] round1 state failed ret=%d\n", ret); return ret; }
+
+    // ===================== ROUND 2: warm cache (follow-up turn) ===============
+    // Send ONLY the short follow-up. The long prefix from round 1 is still in
+    // the KV cache (keep_history=1, no clear), so round 2 should prefill only
+    // the new follow-up tokens -> dramatically fewer prefill tokens.
+    rknn3_llm_multimodal_tensor t2 = tensor;
+    if (followup && followup[0] != '\0') {
+      t2.prompt = followup;
+    }
+    rknn3_llm_input input2;
+    memset(&input2, 0, sizeof(input2));
+    input2.input_type       = RKNN3_LLM_INPUT_MULTIMODAL;
+    input2.multimodal_input = t2;
+
+    printf("\n[KV-DEMO] ROUND 2 (warm cache, follow-up only: \"%s\")\n",
+           (followup && followup[0]) ? followup : "<same prompt>");
+    int64_t r2_start = getCurrentTimeUs();
+    ret = rknn3_session_run(llm_ctx->rknn_sess, &input2, 1, &infer_param);
+    int64_t r2_end = getCurrentTimeUs();
+    if (ret != RKNN3_SUCCESS) { printf("[KV-DEMO] round2 run failed ret=%d\n", ret); return ret; }
+    ret = rknn3_session_query_state(llm_ctx->rknn_sess, &st2);
+    if (ret != RKNN3_SUCCESS) { printf("[KV-DEMO] round2 state failed ret=%d\n", ret); return ret; }
+
+    // ===================== ROUND 3: control (cold follow-up) ==================
+    // Clear ALL KV, then send the SAME follow-up turn with no history. This
+    // shows what the follow-up costs WITHOUT the cached prefix (it must
+    // re-prefill the prefix-equivalent context). For an apples-to-apples cold
+    // baseline of the prefix we re-run the full round-1 prompt cold instead.
+    rknn3_session_clear_kvcache(llm_ctx->rknn_sess, RKNN3_KVCACHE_CLEAR_ALL);
+    printf("\n[KV-DEMO] ROUND 3 (CONTROL: KV cleared, full prompt cold again)\n");
+    int64_t r3_start = getCurrentTimeUs();
+    ret = rknn3_session_run(llm_ctx->rknn_sess, &input, 1, &infer_param);
+    int64_t r3_end = getCurrentTimeUs();
+    if (ret != RKNN3_SUCCESS) { printf("[KV-DEMO] round3 run failed ret=%d\n", ret); return ret; }
+    ret = rknn3_session_query_state(llm_ctx->rknn_sess, &st3);
+    if (ret != RKNN3_SUCCESS) { printf("[KV-DEMO] round3 state failed ret=%d\n", ret); return ret; }
+
+    // restore a clean session
+    rknn3_session_clear_kvcache(llm_ctx->rknn_sess, RKNN3_KVCACHE_CLEAR_ALL);
+
+    double r1_ms = (double)(r1_end - r1_start) / 1000.0;
+    double r2_ms = (double)(r2_end - r2_start) / 1000.0;
+    double r3_ms = (double)(r3_end - r3_start) / 1000.0;
+    printf("\n=====================  KV-DEMO PREFILL COMPARISON  =====================\n");
+    printf(" %-22s | %-14s | %-18s | %-14s\n", "",
+           "R1 cold-full", "R2 warm-followup", "R3 cold-full");
+    printf("------------------------------------------------------------------------\n");
+    printf(" %-22s | %-14llu | %-18llu | %-14llu\n", "Prefill tokens",
+           (unsigned long long)st1.n_prefill_tokens,
+           (unsigned long long)st2.n_prefill_tokens,
+           (unsigned long long)st3.n_prefill_tokens);
+    printf(" %-22s | %-14llu | %-18llu | %-14llu\n", "Decode tokens",
+           (unsigned long long)st1.n_decode_tokens,
+           (unsigned long long)st2.n_decode_tokens,
+           (unsigned long long)st3.n_decode_tokens);
+    printf(" %-22s | %-14.2f | %-18.2f | %-14.2f\n", "Run wall (ms)",
+           r1_ms, r2_ms, r3_ms);
+    printf("------------------------------------------------------------------------\n");
+    if (st1.n_prefill_tokens > 0) {
+      double saved_pct = 100.0 *
+          (double)((long long)st1.n_prefill_tokens - (long long)st2.n_prefill_tokens) /
+          (double)st1.n_prefill_tokens;
+      printf(" R2 (warm follow-up) prefill vs R1 (cold full prefix): %llu -> %llu  (%.1f%% fewer prefill tokens)\n",
+             (unsigned long long)st1.n_prefill_tokens,
+             (unsigned long long)st2.n_prefill_tokens, saved_pct);
+    }
+    printf("========================================================================\n\n");
+
+    perf->n_prefill_tokens = (int)st2.n_prefill_tokens;
+    perf->n_decode_tokens  = (int)st2.n_decode_tokens;
+    perf->llm_start_time   = r2_start;
+    perf->llm_end_time     = r2_end;
+    return RKNN3_SUCCESS;
+  }
+
+  // ----------------------- default single-shot path (unchanged) --------------
+  infer_param.keep_history   = 0;
+  infer_param.max_new_tokens = max_new_tokens;
+
+  input.input_type = RKNN3_LLM_INPUT_MULTIMODAL;
+  input.multimodal_input = tensor;
+
+  perf->llm_start_time = getCurrentTimeUs();
+  ret                  = rknn3_session_run(llm_ctx->rknn_sess, &input, 1, &infer_param);
+  perf->llm_end_time   = getCurrentTimeUs();
+  if (ret != RKNN3_SUCCESS) {
+    printf("rknn3_session_run failed! ret=%d\n", ret);
+    return ret;
+  }
+
+  ret = rknn3_session_query_state(llm_ctx->rknn_sess, &state);
+  if (ret != RKNN3_SUCCESS) {
+    printf("rknn3_session_query_state failed! ret=%d\n", ret);
+    return ret;
+  }
+
+  ret = rknn3_session_clear_kvcache(llm_ctx->rknn_sess, RKNN3_KVCACHE_KEEP_SYSTEM_PROMPT);
+  if (ret != RKNN3_SUCCESS) {
+    printf("rknn3_session_clear_kvcache failed! ret=%d\n", ret);
+    return ret;
+  }
+
+  perf->n_prefill_tokens = (int)state.n_prefill_tokens;
+  perf->n_decode_tokens  = (int)state.n_decode_tokens;
+  return RKNN3_SUCCESS;
+}
