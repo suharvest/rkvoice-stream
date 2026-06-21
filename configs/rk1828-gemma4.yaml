@@ -15,3 +15,10 @@ audio_llm:
   model_dir: /opt/rk1828/models/gemma4
   device_id: "0001:11:00.0"
   max_new_tokens: 256
+  # The two gemma4 sub-models need DIFFERENT NPU core masks on the RK1828 EP:
+  # the LLM is built for the 8-core layout (0xff), the audio encoder for the
+  # 4-core layout (0xf). A single shared mask makes one of them reject. The
+  # backend sets these defensively; the on-device binary also defaults to them.
+  env:
+    GEMMA4_LLM_CORE_MASK: "0xff"
+    GEMMA4_AUDIO_CORE_MASK: "0xf"

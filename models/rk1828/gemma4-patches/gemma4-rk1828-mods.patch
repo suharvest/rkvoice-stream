@@ -1,6 +1,21 @@
 --- a/examples/gemma4/cpp/main.cc	2026-06-01 10:50:12
-+++ b/examples/gemma4/cpp/main.cc	2026-06-20 22:25:55
-@@ -39,7 +39,9 @@
++++ b/examples/gemma4/cpp/main.cc	2026-06-21 09:30:00
+@@ -21,12 +21,14 @@
+ #include "time_utils.h"
+ 
+ #include <fcntl.h>
++#include <errno.h>
+ #include <inttypes.h>
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <string>
++#include <iostream>
+ #include <sys/mman.h>
+ #include <sys/stat.h>
+ #include <unistd.h>
+@@ -39,8 +41,60 @@
    return arg == NULL || arg[0] == '\0';
  }
  
@@ -9,9 +24,404 @@
 +// timestamp to report true post-stream latency.
 +int64_t        g_first_token_time_us = 0;
  static bool    g_first_decode        = true;
++
++// ── RK1828 AudioLLM server mode (Phase 2, opt-in via trailing "-" argv) ──
++// Protocol (matches rkvoice_stream.runtime.rknn3_worker.AudioLLMWorker / the
++// Python mock fixture, bit-for-bit):
++//   - argv:   <model_dir> [--device-id <id>] -      (trailing "-" = server)
++//   - stderr: "READY 1" once Init (LLM + audio encoder) completes (handshake +
++//             AUDIO_LLM_PROTOCOL_VERSION=1).
++//   - stdin:  one JSON request line per turn:
++//                 {"audio_ref": "/path.wav", "prompt": "...",
++//                  "max_new_tokens": 256}
++//   - stdout: per generated token  [uint32 LE len][utf8 token bytes]
++//             per request end       [uint32 LE 0xFFFFFFFE]  (EOS sentinel)
++//   - EOF on stdin -> exit.
++// Like the TTS server mode, the real stdout fd is dup'd to g_frame_fd for raw
++// binary frames and the C stdout FILE* is re-pointed at stderr so stray
++// printf() in this file / rknn_gemma4.cc never corrupts the token stream.
++#define AUDIO_LLM_PROTOCOL_VERSION 1
++static const uint32_t AUDIO_LLM_END_OF_STREAM = 0xFFFFFFFEu;
++static bool g_server_mode = false;
++static int  g_frame_fd    = -1;
++
++static void frame_write_all(const void* buf, size_t len)
++{
++  const char* p = (const char*)buf;
++  while (len > 0) {
++    ssize_t n = write(g_frame_fd, p, len);
++    if (n <= 0) {
++      if (n < 0 && errno == EINTR) continue;
++      fprintf(stderr, "[server] frame write failed (n=%zd errno=%d)\n", n, errno);
++      return;
++    }
++    p += n;
++    len -= (size_t)n;
++  }
++}
++
++// Emit one UTF-8 text token as [uint32 LE len][bytes].
++static void emit_token_frame(const std::string& piece)
++{
++  if (piece.empty()) return;  // 0-len frames carry no text; skip (reader tolerates).
++  uint32_t len = (uint32_t)piece.size();
++  frame_write_all(&len, sizeof(len));
++  frame_write_all(piece.data(), piece.size());
++}
++
++static void emit_eos_frame()
++{
++  uint32_t marker = AUDIO_LLM_END_OF_STREAM;
++  frame_write_all(&marker, sizeof(marker));
++}
  
  static const rknn3_sampling_params SAMPLE_PARAMS = {
-@@ -675,7 +677,27 @@
+     1,    // top_k
+@@ -107,7 +161,13 @@
+       piece = tokenizer->Decode(result->token_ids, result->num_tokens);
+     }
+ 
+-    printf("%s", piece.c_str());
++    if (g_server_mode) {
++      // Server mode: emit the token as a length-prefixed UTF-8 frame on the raw
++      // (dup'd) stdout fd; the C stdout FILE* points at stderr here.
++      emit_token_frame(piece);
++    } else {
++      printf("%s", piece.c_str());
++    }
+     if (g_first_decode) {
+       g_first_token_time_us = getCurrentTimeUs();
+       g_first_decode        = false;
+@@ -529,11 +589,325 @@
+   if (perf->vision_latency > 0) {
+     printf(" Vision latency = %.2f ms, FPS = %.2f\n",
+            (int64_t)perf->vision_latency / 1000.f, 1000.f * 1000.f / (int64_t)perf->vision_latency);
++  }
++}
++
++// ── server mode helpers ──────────────────────────────────────────
++
++static std::string join_path(const std::string& dir, const char* name)
++{
++  if (dir.empty()) return std::string(name);
++  if (dir.back() == '/') return dir + name;
++  return dir + "/" + name;
++}
++
++// Run one request inside the persistent server. The LLM + audio encoder are
++// already Init'd; this only reads the audio, sizes the embed buffer, runs
++// inference (tokens stream out via the server result_callback), then frees the
++// per-request audio. Returns 0 on success (an EOS frame is always emitted by
++// the caller regardless of rc so the client unblocks).
++static int run_server_request(rknn_gemma4_app_context* app_ctx, bool enable_audio,
++                              const std::string& audio_ref, const std::string& prompt_str,
++                              int32_t max_new_tokens)
++{
++  audio_buffer_t src_audio;
++  image_buffer_t src_image;
++  float16*       audio_embeds = NULL;
++  size_t         n_audio_tokens = 0;
++  size_t         n_embed_audio  = 0;
++  int            n_audio = 0;
++  int            ret = 0;
++  rknn3_llm_multimodal_tensor tensor;
++  rknn_perf_metrics_t         perf;
++
++  memset(&src_audio, 0, sizeof(audio_buffer_t));
++  memset(&src_image, 0, sizeof(image_buffer_t));
++  memset(&tensor, 0, sizeof(rknn3_llm_multimodal_tensor));
++  memset(&perf, 0, sizeof(perf));
++
++  if (prompt_str.empty()) {
++    fprintf(stderr, "[server] empty prompt for request\n");
++    return -1;
++  }
++  const char* prompt = prompt_str.c_str();
++
++  // Read + size audio (mirrors main()'s long-audio chunking buffer sizing).
++  if (enable_audio && !audio_ref.empty()) {
++    fprintf(stderr, "[server] reading audio: %s\n", audio_ref.c_str());
++    ret = read_audio(audio_ref.c_str(), &src_audio);
++    if (ret != 0) {
++      fprintf(stderr, "[server] read_audio fail ret=%d audio=%s\n", ret, audio_ref.c_str());
++      goto req_out;
++    }
++    fprintf(stderr, "[server] audio: num_frames=%d channels=%d rate=%d\n",
++            src_audio.num_frames, src_audio.num_channels, src_audio.sample_rate);
++    {
++      int n_chunks = gemma4_audio_num_chunks(src_audio.num_frames);
++      if (n_chunks < 1) n_chunks = 1;
++      int per_chunk_tokens = 0;
++      for (int s = 0; s < app_ctx->audio.n_shapes; s++) {
++        if (app_ctx->audio.embeds_dim0[s] > per_chunk_tokens) {
++          per_chunk_tokens = app_ctx->audio.embeds_dim0[s];
++        }
++      }
++      if (per_chunk_tokens <= 0) {
++        per_chunk_tokens = get_n_audio(&app_ctx->audio, src_audio.num_frames);
++      }
++      n_audio_tokens = (size_t)n_chunks * (size_t)per_chunk_tokens;
++    }
++    n_embed_audio = n_audio_tokens * app_ctx->audio.embeds_dim1;
++    audio_embeds = (float16*)malloc(n_embed_audio * sizeof(float16));
++    if (!audio_embeds) {
++      fprintf(stderr, "[server] failed to alloc audio_embeds\n");
++      ret = -1;
++      goto req_out;
++    }
++  }
++
++  if (enable_audio &&
++      (strstr(prompt, "<audio>") || strstr(prompt, "<|audio>") ||
++       strstr(prompt, "<|audio|>") || strstr(prompt, "<audio|>"))) {
++    n_audio = 1;
++  }
++
++  tensor.name            = "input_embeds";
++  tensor.prompt          = prompt;
++  tensor.enable_thinking = false;
++  if (enable_audio) {
++    tensor.audio.audio_embed    = audio_embeds;
++    tensor.audio.n_audio_tokens = 0;  // updated after audio encoder inference
++    tensor.audio.n_audio        = n_audio;
++    tensor.audio.audio_start    = "<|audio>";
++    tensor.audio.audio_end      = "<audio|>";
++    tensor.audio.audio_content  = "<|audio|>";
++  }
++
++  g_first_decode        = true;
++  g_first_token_time_us = 0;
++  fprintf(stderr, "[server] --> inference (max_new_tokens=%d)\n", max_new_tokens);
++  ret = inference_gemma4_model(app_ctx, tensor, &src_audio, &src_image,
++                               audio_embeds, NULL, max_new_tokens, &perf);
++  if (ret != RKNN3_SUCCESS) {
++    fprintf(stderr, "[server] inference_gemma4_model fail ret=%d\n", ret);
++    goto req_out;
++  }
++
++req_out:
++  if (audio_embeds) free(audio_embeds);
++  if (src_audio.data) free(src_audio.data);
++  return ret;
++}
++
++// Server mode: Init LLM + audio encoder ONCE, handshake "READY 1" on stderr,
++// then loop over JSON request lines emitting framed UTF-8 tokens + an EOS
++// sentinel per request. model_dir holds the standard gemma-4-e2b-it.* files.
++static int run_server(const std::string& model_dir, const std::string& device_id)
++{
++  (void)device_id;  // device selection is via env/PCIe enumeration in the runtime.
++
++  // Resolve the standard model files inside model_dir (on-device naming).
++  std::string llm_model       = join_path(model_dir, "gemma-4-e2b-it.rknn");
++  std::string llm_weight      = join_path(model_dir, "gemma-4-e2b-it.weight");
++  std::string tokenizer_path_s = join_path(model_dir, "gemma-4-e2b-it.tokenizer.gguf");
++  std::string embedding_path_s = join_path(model_dir, "gemma-4-e2b-it.embed.bin");
++  std::string per_layer_s     = join_path(model_dir, "gemma-4-e2b-it_per_layer_inputs.embed.bin");
++  std::string safetensors_s   = join_path(model_dir, "gemma-4-e2b-it.safetensors");
++  std::string audio_model_s   = join_path(model_dir, "gemma-4-e2b-it-audio.rknn");
++  std::string audio_weight_s  = join_path(model_dir, "gemma-4-e2b-it-audio.weight");
++
++  // The two gemma4 sub-models want DIFFERENT core masks on the RK1828 EP: the
++  // LLM is built for the full 8-core layout (0xff) while the audio encoder is
++  // built for the 4-core layout (0xf). They are init'd independently
++  // (init_gemma4_llm vs init_gemma4_audio), so feeding them the same mask makes
++  // one of the two reject ("core_mask ... is not match with npu core number").
++  // Verified on RK1828 (0001:11:00.0): LLM=0xff + audio=0xf -> READY + intelligible
++  // ZH output. Env vars still override for other core counts / debugging.
++  uint32_t llm_core_mask   = 0xff;
++  uint32_t audio_core_mask = 0xf;
++  if (const char* e = getenv("GEMMA4_LLM_CORE_MASK"))   llm_core_mask   = (uint32_t)strtoul(e, NULL, 16);
++  if (const char* e = getenv("GEMMA4_AUDIO_CORE_MASK")) audio_core_mask = (uint32_t)strtoul(e, NULL, 16);
++  const int32_t  max_context_len = 16384;
++  const bool     enable_audio    = true;
++  const bool     enable_vision   = false;
++
++  int                     ret = 0;
++  VocabInfo               vocab_info;
++  Tokenizer*              tokenizer = NULL;
++  embedding_info          token_embedding;
++  input_cb_userdata       input_cb_data;
++  rknn3_llm_param         params;
++  RKLLMCallback           callback;
++  rknn_gemma4_app_context app_ctx;
++
++  memset(&vocab_info, 0, sizeof(vocab_info));
++  memset(&token_embedding, 0, sizeof(token_embedding));
++  memset(&input_cb_data, 0, sizeof(input_cb_data));
++  memset(&params, 0, sizeof(params));
++  memset(&callback, 0, sizeof(callback));
++  memset(&app_ctx, 0, sizeof(rknn_gemma4_app_context));
++  token_embedding.fd               = -1;
++  input_cb_data.per_layer_embed.fd = -1;
++  input_cb_data.rope_fd            = -1;
++
++  tokenizer = new Tokenizer(TOKENIZER_BACKEND_LLAMA, tokenizer_path_s.c_str());
++  if (!tokenizer) {
++    fprintf(stderr, "[server] load tokenizer failed: %s\n", tokenizer_path_s.c_str());
++    ret = -1;
++    goto srv_out;
++  }
++  tokenizer->GetVocabInfo(&vocab_info);
++
++  ret = load_embedding(embedding_path_s.c_str(), vocab_info.vocab_size, &token_embedding);
++  if (ret != 0) goto srv_out;
++  ret = load_embedding(per_layer_s.c_str(), vocab_info.vocab_size, &input_cb_data.per_layer_embed);
++  if (ret != 0) goto srv_out;
++
++  params.logits_name                 = (char*)"logits_gathered";
++  params.max_context_len             = 0;
++  params.sampling_param              = SAMPLE_PARAMS;
++  params.vocab_info.vocab_size       = vocab_info.vocab_size;
++  params.vocab_info.n_special_eos_id = vocab_info.n_special_eos_id;
++  params.vocab_info.n_special_bos_id = vocab_info.n_special_bos_id;
++  params.vocab_info.linefeed_id      = vocab_info.linefeed_id;
++  params.vocab_info.ignore_eos_token = 0;
++  memcpy(params.vocab_info.special_eos_id, vocab_info.special_eos_id, sizeof(vocab_info.special_eos_id));
++  memcpy(params.vocab_info.special_bos_id, vocab_info.special_bos_id, sizeof(vocab_info.special_bos_id));
++
++  callback.result_callback    = result_callback;
++  callback.result_userdata    = tokenizer;
++  callback.embed_callback     = embed_callback;
++  callback.embed_userdata     = &token_embedding;
++  callback.tokenizer_callback = tokenizer_callback;
++  callback.tokenizer_userdata = tokenizer;
++  callback.output_callback    = output_callback;
++  callback.output_userdata    = &token_embedding;
++  callback.input_callback     = input_callback;
++  callback.input_userdata     = &input_cb_data;
++
++  ret = init_gemma4_model(&app_ctx, llm_model.c_str(), llm_weight.c_str(),
++                          audio_model_s.c_str(), audio_weight_s.c_str(),
++                          enable_audio, enable_vision,
++                          &params, 1, callback, llm_core_mask, audio_core_mask, 0,
++                          per_layer_s.c_str(), NULL, tokenizer, &token_embedding, &input_cb_data,
++                          NULL, NULL);
++  if (ret != RKNN3_SUCCESS) {
++    fprintf(stderr, "[server] init_gemma4_model fail ret=%d\n", ret);
++    goto srv_out;
++  }
++
++  // rope cache (host storage) — same gating as main().
++  if (app_ctx.llm.llm_config.rope_cache_host_storage) {
++    ret = load_safetensors(safetensors_s.c_str(), input_cb_data.rope_caches,
++                           &input_cb_data.rope_fd, &input_cb_data.rope_mmap_base,
++                           &input_cb_data.rope_mmap_size);
++    if (ret != 0) {
++      fprintf(stderr, "[server] load_safetensors fail: %s\n", safetensors_s.c_str());
++      goto srv_out;
++    }
++  }
++
++  if (max_context_len > app_ctx.llm.llm_config.max_ctx_len) {
++    fprintf(stderr, "[server] warn: max_context_len %d > model max_ctx_len %d\n",
++            max_context_len, app_ctx.llm.llm_config.max_ctx_len);
++  }
++
++  // Re-route stdout: dup the real stdout fd for raw frames, point C stdout at
++  // stderr so any stray printf() never corrupts the token byte stream.
++  g_frame_fd = dup(STDOUT_FILENO);
++  if (g_frame_fd < 0) {
++    fprintf(stderr, "[server] dup(stdout) failed\n");
++    ret = -1;
++    goto srv_out;
++  }
++  if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) {
++    fprintf(stderr, "[server] dup2 stderr->stdout failed\n");
++    ret = -1;
++    goto srv_out;
++  }
++  g_server_mode = true;
++
++  // Handshake: Init complete, advertise protocol version.
++  fprintf(stderr, "[server] Init complete\n");
++  fprintf(stderr, "READY %d\n", AUDIO_LLM_PROTOCOL_VERSION);
++  fflush(stderr);
++
++  {
++    std::string line;
++    int utt = 0;
++    while (std::getline(std::cin, line)) {
++      while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
++      if (line.empty()) {
++        // Empty request line: emit an EOS so the client unblocks, keep serving.
++        emit_eos_frame();
++        continue;
++      }
++
++      std::string audio_ref;
++      std::string prompt_str;
++      int32_t     req_max_new = 256;
++      try {
++        nlohmann::json req = nlohmann::json::parse(line);
++        if (req.contains("audio_ref") && !req["audio_ref"].is_null())
++          audio_ref = req["audio_ref"].get<std::string>();
++        if (req.contains("prompt") && !req["prompt"].is_null())
++          prompt_str = req["prompt"].get<std::string>();
++        if (req.contains("max_new_tokens") && !req["max_new_tokens"].is_null())
++          req_max_new = req["max_new_tokens"].get<int32_t>();
++      } catch (const nlohmann::json::exception& e) {
++        fprintf(stderr, "[server] bad JSON request: %s (%s)\n", line.c_str(), e.what());
++        emit_eos_frame();
++        continue;
++      }
++
++      // If the prompt has no <audio*> marker but audio_ref is set, prepend the
++      // standard audio-transcribe scaffold so the encoder output is consumed.
++      if (enable_audio && !audio_ref.empty() &&
++          prompt_str.find("<audio") == std::string::npos) {
++        prompt_str = std::string("<audio>") + prompt_str;
++      }
++
++      fprintf(stderr, "[server] req#%d audio_ref=\"%s\" prompt=\"%s\" max_new=%d\n",
++              utt, audio_ref.c_str(), prompt_str.c_str(), req_max_new);
++      int rc = run_server_request(&app_ctx, enable_audio, audio_ref, prompt_str, req_max_new);
++      if (rc != 0) fprintf(stderr, "[server] req#%d FAILED rc=%d\n", utt, rc);
++      emit_eos_frame();
++      fprintf(stderr, "[server] req#%d done\n", utt);
++      utt++;
++    }
+   }
++
++  ret = 0;
++
++srv_out:
++  release_gemma4_model(&app_ctx);
++  release_safetensors(&input_cb_data);
++  release_embedding(&input_cb_data.per_layer_embed);
++  release_embedding(&token_embedding);
++  if (tokenizer) { delete tokenizer; tokenizer = NULL; }
++  return ret;
+ }
+ 
+ int main(int argc, char** argv)
+ {
++  // ── Server mode dispatch (opt-in): "<model_dir> [--device-id <id>] -" ──
++  // The trailing "-" sentinel (matching the TTS server mode + the Python
++  // AudioLLMWorker._build_args) selects the persistent AudioLLM server. The
++  // default one-shot 18-positional-arg path below is unchanged.
++  if (argc >= 2 && std::string(argv[argc - 1]) == "-") {
++    std::string model_dir;
++    std::string device_id;
++    for (int i = 1; i < argc - 1; ++i) {
++      std::string a = argv[i];
++      if (a == "--device-id" && i + 1 < argc - 1) {
++        device_id = argv[++i];
++      } else if (model_dir.empty()) {
++        model_dir = a;
++      }
++    }
++    if (model_dir.empty()) {
++      fprintf(stderr, "server mode usage: %s <model_dir> [--device-id <id>] -\n", argv[0]);
++      return -1;
++    }
++    return run_server(model_dir, device_id);
++  }
++
+   if (argc < 18 || argc > 19) {
+     print_usage(argv[0]);
+     return -1;
+@@ -675,7 +1049,27 @@
      printf("audio: num_frames=%d, num_channels=%d, sample_rate=%d\n",
             src_audio.num_frames, src_audio.num_channels, src_audio.sample_rate);
  
@@ -40,7 +450,7 @@
      n_embed_audio = n_audio_tokens * app_ctx.audio.embeds_dim1;
      audio_embeds = (float16*)malloc(n_embed_audio * sizeof(float16));
      if (!audio_embeds) {
-@@ -822,4 +844,4 @@
+@@ -822,4 +1216,4 @@
    }
  
    return ret;

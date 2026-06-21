@@ -161,6 +161,16 @@ class Gemma4RK1828Backend(AudioLLMBackend):
         )
         device_id = os.environ.get("RK1828_DEVICE_ID") or None
 
+        # The two gemma4 sub-models want DIFFERENT core masks on the RK1828 EP:
+        # the LLM is built for the full 8-core layout (0xff) and the audio
+        # encoder for the 4-core layout (0xf). They are init'd independently, so
+        # a single shared mask makes one of them reject ("core_mask ... is not
+        # match with npu core number"). The on-device binary already defaults to
+        # these values; we set them defensively so a stale binary still inits.
+        # The worker spawns via subprocess.Popen and inherits this environment.
+        os.environ.setdefault("GEMMA4_LLM_CORE_MASK", "0xff")
+        os.environ.setdefault("GEMMA4_AUDIO_CORE_MASK", "0xf")
+
         self._service = Gemma4RK1828Service(
             binary_path=binary_path,
             model_dir=model_dir,
