@@ -28,3 +28,13 @@ class PlatformProfile:
 
     # Default RKLLM domain (1 to avoid conflict with RKNN domain 0)
     default_rkllm_domain: int = 1
+
+    # ── Optional: PCIe coprocessor (e.g. RK1828) ────────────────────
+    # PCIe endpoint device id, e.g. "0001:11:00.0". None for host SoCs.
+    device_id: str | None = None
+    # When True this profile describes a separate PCIe accelerator, NOT the
+    # host SoC. The CPU topology / mask fields above then describe the *host*
+    # (informational only): any logic that derives an RKNN/RKLLM CPU affinity
+    # or NPU core mask from those fields MUST skip a coprocessor profile —
+    # RK1828 has its own RISC-V cores and is addressed via ``device_id``.
+    is_coprocessor: bool = False

@@ -146,6 +146,18 @@ def _apply_tts_env(cfg: dict) -> None:
         for key, env_name in mapping.items():
             if key in cfg:
                 os.environ[env_name] = str(cfg[key])
+    elif backend == "qwen3_tts_rk1828":
+        # RK1828 PCIe coprocessor: C++ worker driven via subprocess.
+        if model_dir:
+            os.environ["RK1828_TTS_MODEL_DIR"] = str(model_dir)
+        mapping = {
+            "binary_path": "RK1828_TTS_BINARY",
+            "device_id": "RK1828_DEVICE_ID",
+            "ref_speaker": "RK1828_TTS_REF_SPEAKER",
+        }
+        for key, env_name in mapping.items():
+            if key in cfg:
+                os.environ[env_name] = str(cfg[key])
     elif backend == "moss_rknn":
         mapping = {
             "worker_bin": "MOSS_RKNN_WORKER_BIN",

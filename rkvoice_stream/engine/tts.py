@@ -97,6 +97,9 @@ def create_backend(backend_name: Optional[str] = None) -> TTSBackend:
     elif backend_name == "moss_rknn":
         from rkvoice_stream.backends.tts.moss_rknn import MossRKNNBackend
         return MossRKNNBackend()
+    elif backend_name == "qwen3_tts_rk1828":
+        from rkvoice_stream.backends.tts.qwen3_tts_rk1828 import Qwen3TTSRK1828Backend
+        return Qwen3TTSRK1828Backend()
     elif backend_name == "matcha_rknn":
         from rkvoice_stream.backends.tts.matcha import MatchaRKNNBackend
         return MatchaRKNNBackend()

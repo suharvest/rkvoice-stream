@@ -3,10 +3,12 @@
 from .base import PlatformProfile
 from .rk3576 import RK3576
 from .rk3588 import RK3588
+from .rk1828 import RK1828
 
 PLATFORMS = {
     "rk3576": RK3576,
     "rk3588": RK3588,
+    "rk1828": RK1828,
 }
 
 
