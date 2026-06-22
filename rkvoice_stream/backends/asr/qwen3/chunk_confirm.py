@@ -716,11 +716,20 @@ class ChunkConfirmASRStream:
 
     # ── Internal: helpers ─────────────────────────────────────────────────
 
+    def _join_segments(self) -> str:
+        if not self._segments:
+            return ""
+        result = self._segments[0]
+        for seg in self._segments[1:]:
+            sep = "" if (result and _is_cjk(result[-1])) else " "
+            result = result + sep + seg
+        return result
+
     def _composed_text(self) -> str:
         """Merge completed segments with current partial for display."""
         if self._episode_final:
-            return "".join(self._segments) if self._segments else ""
-        base = "".join(self._segments) if self._segments else ""
+            return self._join_segments()
+        base = self._join_segments()
         if not self._current_partial:
             return base
         if not base:

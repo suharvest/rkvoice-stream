@@ -415,10 +415,13 @@ async def asr_stream(
     # without being re-emitted by the session-end final block.
     streamed_state = {"last_archive": ""}
 
+    _last_partial: dict[str, str] = {"text": ""}
+
     async def _send_partial_if_any():
         try:
             partial, _ = stream.get_partial()
-            if partial:
+            if partial and partial != _last_partial["text"]:
+                _last_partial["text"] = partial
                 await ws.send_json({"text": partial, "is_final": False})
         except Exception:
             pass
