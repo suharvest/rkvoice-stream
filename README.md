@@ -59,11 +59,11 @@ It also supports the **RK1828 PCIe NPU coprocessor** (an accelerator card attach
 |---------|-----------|------|:----------:|:----------:|:-----------:|:-----------:|
 | **Matcha + Vocos** | zh, en | RKNN vocoder (NPU) | 0.13 | 0.05 | ~320ms | ~145ms |
 | **Piper VITS** | en, zh, de, fr, ja, … | Hybrid CPU + NPU | 0.17 | 0.13 | ~234ms | ~142ms |
-| **Kokoro** | en, zh | RKNN (NPU) | — | 0.77 | — | ~3.7s |
+| **Kokoro** | en, zh | RKNN (NPU) | — | 0.77 | — | ~800ms / ~1.8s / ~3.5s |
 | **Qwen3-TTS** | zh, en | RKNN (NPU) | — | — | — | — |
 | **Qwen3-TTS (RK1828)** | zh, en | RKNN3 on RK1828 PCIe NPU coprocessor | — | — | — | — |
 
-> TTFA = time to first audio chunk via `/tts/stream`, sentence-level streaming (warm, after first inference). Kokoro TTFA is bucket-32 (typical sentences); very short phrases (&le;5 tokens) route to bucket-8 at ~835ms.
+> TTFA = time to first audio chunk via `/tts/stream`, sentence-level streaming (warm, after first inference). Kokoro uses three-tier bucket routing on RK3588: bucket-8 (~800ms, &le;8 tokens), bucket-16 (~1.8s, 9–16 tokens), bucket-32 (~3.5s, 17–32 tokens).
 
 > **Qwen3-TTS (RK1828)** — `qwen3_tts_rk1828` runs Qwen3-TTS (~1.7 GB) on the RK1828 PCIe
 > NPU coprocessor via the RKNN3 toolchain (driven by a subprocess worker over PCIe). See
