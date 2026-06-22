@@ -294,6 +294,8 @@ class _KokoroTokenizer:
 class KokoroRKNNBackend:
     """Kokoro TTS using full RKNN or a CPU/RKNN/CPU hybrid split."""
 
+    supports_streaming: bool = True
+
     def __init__(self) -> None:
         self.model_dir = Path(MODEL_DIR)
         self.mode = MODE

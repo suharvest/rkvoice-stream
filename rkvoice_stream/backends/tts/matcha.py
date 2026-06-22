@@ -850,18 +850,25 @@ class MatchaRKNNBackend:
         }
         return wav_bytes, metadata
 
-    def synthesize_stream(self, text, speaker_id=0, speed=None, pitch_shift=None, **kwargs):
-        """Yield (audio_float32_chunk, metadata). Non-streaming fallback."""
-        import io as _io
-        import soundfile as sf
+    supports_streaming: bool = True
 
-        wav_bytes, meta = self.synthesize(
-            text=text, speaker_id=speaker_id, speed=speed,
-            pitch_shift=pitch_shift, **kwargs,
-        )
-        buf = _io.BytesIO(wav_bytes)
-        audio, _ = sf.read(buf, dtype="float32")
-        yield audio, meta
+    def synthesize_stream(self, text, speaker_id=0, speed=None, pitch_shift=None, **kwargs):
+        """Yield (audio_float32_chunk, metadata) per sentence chunk.
+
+        Splits text into sentences via _split_text and synthesizes each one
+        independently, yielding each chunk as soon as it's ready. TTFA equals
+        the synthesis latency of the first sentence (~100-200ms on RK3588).
+        """
+        engine: RKNNMatchaVocoder = self._engine
+        _speed = float(speed) if speed is not None else 1.0
+        _noise = float(kwargs.get("noise_scale", 0.667))
+
+        sentences = engine._split_text(text)
+        for seg in sentences:
+            audio_seg, seg_meta = engine._synthesize_segment(seg, _speed, _noise)
+            if len(audio_seg) == 0:
+                continue
+            yield audio_seg.astype("float32"), seg_meta
 
     def cleanup(self) -> None:
         """Release RKNN resources."""
