@@ -257,6 +257,24 @@ class Qwen3ASRRKBackend(ASRBackend):
         self._use_npu_lock = (decoder_type == "rkllm")
         if self._use_npu_lock:
             logger.info("NPU lock enabled for RKLLM decoder (shared with TTS).")
+
+        # Warn when chunk_confirm mode is active but no small encoder is loaded.
+        # With only a 15s encoder each hop takes ~6s, longer than real-time audio
+        # push — streaming partials will never arrive during the audio window.
+        # Fix: deploy 2s+4s encoder files and set ASR_ENCODER_SIZES=2,4,15.
+        if cc_mode:
+            loaded_sizes = getattr(self._engine, "_encoder", None)
+            loaded_sizes = getattr(loaded_sizes, "_sizes", None) or []
+            if loaded_sizes and min(loaded_sizes) > 4:
+                logger.warning(
+                    "Qwen3-ASR chunk_confirm mode loaded only %ss encoder(s). "
+                    "Streaming partials require a ≤4s encoder; without it each "
+                    "hop takes longer than real-time and no partials will arrive "
+                    "during the audio window. Deploy 2s/4s encoder files and set "
+                    "ASR_ENCODER_SIZES=2,4,15 (or leave unset to load all).",
+                    min(loaded_sizes),
+                )
+
         self._ready = True
         logger.info("Qwen3-ASR RK backend ready.")
 
