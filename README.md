@@ -55,24 +55,19 @@ It also supports the **RK1828 PCIe NPU coprocessor** (an accelerator card attach
 
 ### TTS — six backends
 
-| Backend | Languages | Type | RK3576 RTF | RK3588 RTF |
-|---------|-----------|------|:----------:|:----------:|
-| **Matcha + Vocos** | zh, en | RKNN vocoder (NPU) | 0.19 | 0.10 |
-| **Piper VITS** | en, zh, de, fr, ja, … | Hybrid CPU + NPU | ~0.05 | ~0.03 |
-| **Kokoro** | en, zh | RKNN (NPU) | — | — |
-| **Qwen3-TTS** | zh, en | RKNN (NPU) | — | — |
-| **Qwen3-TTS (RK1828)** | zh, en | RKNN3 on RK1828 PCIe NPU coprocessor | — | — |
-| **MOSS-TTS-Nano** (experimental) | zh, en | ORT (CPU) / RKNN hybrid | — | — |
+| Backend | Languages | Type | RK3576 RTF | RK3588 RTF | RK3576 TTFA | RK3588 TTFA |
+|---------|-----------|------|:----------:|:----------:|:-----------:|:-----------:|
+| **Matcha + Vocos** | zh, en | RKNN vocoder (NPU) | 0.13 | 0.05 | ~580ms | ~200ms |
+| **Piper VITS** | en, zh, de, fr, ja, … | Hybrid CPU + NPU | ~0.05 | ~0.03 | — | — |
+| **Kokoro** | en, zh | RKNN (NPU) | — | 0.77 | — | ~3.9s |
+| **Qwen3-TTS** | zh, en | RKNN (NPU) | — | — | — | — |
+| **Qwen3-TTS (RK1828)** | zh, en | RKNN3 on RK1828 PCIe NPU coprocessor | — | — | — | — |
+
+> TTFA = time to first audio chunk. Matcha+Vocos is a batch backend (non-streaming); its TTFA equals total synthesis latency. Kokoro streams via NPU decoder, TTFA measured via `/tts/stream`.
 
 > **Qwen3-TTS (RK1828)** — `qwen3_tts_rk1828` runs Qwen3-TTS (~1.7 GB) on the RK1828 PCIe
 > NPU coprocessor via the RKNN3 toolchain (driven by a subprocess worker over PCIe). See
 > [`docs/rk1828-qwen3-tts.md`](docs/rk1828-qwen3-tts.md).
-
-> **MOSS-TTS-Nano (experimental)** — supported via **ORT (CPU) and hybrid** routes only; the
-> ORT path is the production-correctness fallback. **NPU acceleration is not production-ready**
-> (RKNN hybrid prefill is slower than full ORT and/or fails the ASR roundtrip quality gate; the
-> RKLLM custom export fails hidden-state parity). Expect **performance issues** vs the Matcha/Piper
-> NPU paths. See [`docs/moss-rknn-rk3576.md`](docs/moss-rknn-rk3576.md).
 
 ### Voice-to-Voice (EOS → First Audio)
 
@@ -122,8 +117,6 @@ Used by the `/audio_dialogue` WebSocket endpoint for V2V: audio in → AudioLLM 
 - **TTS: Qwen3-TTS** — RKNN streaming TTS (zh, en) on NPU
 - **TTS: Qwen3-TTS (RK1828)** — `qwen3_tts_rk1828`, Qwen3-TTS on the RK1828 PCIe NPU coprocessor (RKNN3)
 - **AudioLLM: Gemma-4 multimodal (audio→text) on RK1828 PCIe NPU** — `gemma4_rk1828`, streams text from audio (+ optional prompt), powering single-model V2V (experimental)
-- **TTS: MOSS-TTS-Nano** (experimental) — ORT (CPU) and RKNN-hybrid routes only; ORT is the
-  production-correctness fallback, NPU path is not production-ready (see note above)
 - **Streaming everywhere** — WebSocket ASR (real-time partials), streaming TTS (sentence-by-sentence PCM)
 - **Voice-to-voice pipeline** — ASR → LLM → TTS dialogue orchestrator with sub-second first-audio latency
 - **NPU accelerated** — runs on Rockchip RKNN/RKLLM, not CPU
