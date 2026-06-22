@@ -253,15 +253,21 @@ Text → Phonemes → Matcha (NPU) → Mel → Vocos (NPU) → ISTFT (CPU) → P
 
 ## Model Preparation
 
-Models are not bundled — use the conversion scripts in `models/` to generate them:
+Models are not bundled — use the conversion scripts in `models/` to generate them.
+These are **build-time scripts only** (run on x86/WSL2 with rknn-toolkit2); they are not
+part of the pip package and are never deployed to the device.
 
 ```
 models/
 ├── asr/qwen3/       # RKNN encoder, RKLLM decoder, matmul weights
-├── tts/matcha/       # Matcha+Vocos RKNN conversion + ONNX fixes
-├── tts/piper/        # Piper VITS split (CPU encoder + NPU decoder)
-├── tts/kokoro/       # Kokoro RKNN fixes
-└── common/           # Shared tools: Sin→polynomial, ScatterND bake, Erf→Tanh
+├── asr/paraformer/  # Paraformer RKNN conversion + hybrid-bucket export
+├── asr/sensevoice/  # SenseVoice RKNN export
+├── tts/matcha/      # Matcha+Vocos RKNN conversion + ONNX fixes
+├── tts/piper/       # Piper VITS split (CPU encoder + NPU decoder)
+├── tts/kokoro/      # Kokoro RKNN fixes
+├── tts/moss/        # MOSS-TTS island/bucket build, parity & smoke scripts
+├── rk1828/          # RK1828 PCIe coprocessor model production
+└── common/          # Shared tools: Sin→polynomial, ScatterND bake, Erf→Tanh
 ```
 
 Expected model layout on the device:
