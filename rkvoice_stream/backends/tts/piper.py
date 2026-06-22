@@ -580,6 +580,8 @@ class PiperRKNNBackend:
     Select via TTS_BACKEND=piper_rknn.
     """
 
+    supports_streaming: bool = True
+
     def __init__(self) -> None:
         self._models: dict[str, "_LangModel | _JaKokoroModel"] = {}
         self._ready = False
