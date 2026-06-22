@@ -58,7 +58,7 @@ It also supports the **RK1828 PCIe NPU coprocessor** (an accelerator card attach
 | Backend | Languages | Type | RK3576 RTF | RK3588 RTF | RK3576 TTFA | RK3588 TTFA |
 |---------|-----------|------|:----------:|:----------:|:-----------:|:-----------:|
 | **Matcha + Vocos** | zh, en | RKNN vocoder (NPU) | 0.13 | 0.05 | ~320ms | ~145ms |
-| **Piper VITS** | en, zh, de, fr, ja, … | Hybrid CPU + NPU | ~0.05 | ~0.03 | — | — |
+| **Piper VITS** | en, zh, de, fr, ja, … | Hybrid CPU + NPU | 0.17 | 0.13 | ~234ms | ~142ms |
 | **Kokoro** | en, zh | RKNN (NPU) | — | 0.77 | — | ~3.7s |
 | **Qwen3-TTS** | zh, en | RKNN (NPU) | — | — | — | — |
 | **Qwen3-TTS (RK1828)** | zh, en | RKNN3 on RK1828 PCIe NPU coprocessor | — | — | — | — |
