@@ -399,14 +399,16 @@ class _LangModel:
         noise_w: float,
     ) -> np.ndarray:
         """Hybrid inference: encoder on CPU, flow+decoder on NPU."""
-        n = len(token_ids)
-        # Encoder accepts dynamic-length input
-        tokens = np.array([token_ids], dtype=np.int64)  # (1, n) dynamic
+        n = min(len(token_ids), SEQ_LEN)
+
+        # Pad tokens to fixed SEQ_LEN (the encoder expects fixed-size inputs)
+        tokens = np.zeros((1, SEQ_LEN), dtype=np.int64)
+        tokens[0, :n] = token_ids[:n]
         lengths = np.array([n], dtype=np.int64)
         scales = np.array([noise_scale, length_scale, noise_w], dtype=np.float32)
 
-        # Step 1: Encoder on CPU (dynamic shapes)
-        enc_inputs = {
+        # Step 1: Encoder on CPU
+        enc_inputs: dict[str, np.ndarray] = {
             "input": tokens,
             "input_lengths": lengths,
             "scales": scales,
@@ -415,6 +417,19 @@ class _LangModel:
         enc_input_names = {inp.name for inp in self._encoder.get_inputs()}
         if "sid" in enc_input_names:
             enc_inputs["sid"] = np.array([0], dtype=np.int64)
+        # Add x_mask if encoder expects it (hoisted from internal in fixed ONNX)
+        if "x_mask" in enc_input_names:
+            x_mask = np.zeros((1, 1, SEQ_LEN), dtype=np.float32)
+            x_mask[0, 0, :n] = 1.0
+            enc_inputs["x_mask"] = x_mask
+        # Add audio_length if encoder expects it
+        if "audio_length" in enc_input_names:
+            enc_inputs["audio_length"] = np.array([0], dtype=np.int64)
+        # Add cumulative_durations if encoder expects it
+        if "cumulative_durations" in enc_input_names:
+            enc_inputs["cumulative_durations"] = np.zeros(
+                (SEQ_LEN, 1), dtype=np.float32
+            )
 
         enc_out = self._encoder.run(None, enc_inputs)
         z = enc_out[0]        # (1, 192, mel_len)
