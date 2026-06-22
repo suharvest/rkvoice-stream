@@ -78,6 +78,9 @@ class RKNNMatchaVocoder:
         self._matcha_estimator = None  # split mode: estimator RKNN
         self._cstsin_refs = None      # ctypes refs for CstSin custom op (prevent GC)
         self._time_emb_steps = None   # split mode: [3, 6, 256] time embeddings
+        # Probed from single RKNN model at load time: (x_seq_len, noise_shape, has_x_length)
+        # noise_shape = None means the model takes x_length instead of a noise tensor
+        self._matcha_rknn_input_meta = None
         self._vocos = None
         self._lexicon = None
         self._token_to_id = None
@@ -177,6 +180,34 @@ class RKNNMatchaVocoder:
                 if ret != 0:
                     raise RuntimeError(f"init_runtime ret={ret}")
                 self._matcha_backend = 'rknn'
+                # Probe input shapes so run_matcha can build correctly-shaped arrays.
+                # Input layout may be:
+                #   v1 (old): [x, x_length, noise_scale, length_scale]
+                #   v2 (new): [x, noise_scale, length_scale, noise]
+                try:
+                    rt = self._matcha.rknn_runtime
+                    attrs = [rt.get_tensor_attr(i, False) for i in range(4)]
+                    names = [a.name.decode() if isinstance(a.name, bytes) else a.name
+                             for a in attrs]
+                    x_seq_len = int(list(attrs[0].dims[:attrs[0].n_dims])[-1])
+                    if 'noise' in names:
+                        noise_idx = names.index('noise')
+                        noise_dims = list(attrs[noise_idx].dims[:attrs[noise_idx].n_dims])
+                        self._matcha_rknn_input_meta = {
+                            'x_seq_len': x_seq_len,
+                            'noise_shape': tuple(noise_dims),  # e.g. (1, 80, 256)
+                            'layout': 'v2',  # [x, noise_scale, length_scale, noise]
+                        }
+                    else:
+                        self._matcha_rknn_input_meta = {
+                            'x_seq_len': x_seq_len,
+                            'noise_shape': None,
+                            'layout': 'v1',  # [x, x_length, noise_scale, length_scale]
+                        }
+                    log.info("Matcha RKNN input meta: %s", self._matcha_rknn_input_meta)
+                except Exception as probe_err:
+                    log.warning("Matcha RKNN input probe failed (%s), using env defaults", probe_err)
+                    self._matcha_rknn_input_meta = None
                 log.info("Matcha acoustic model loaded via RKNN (single model)")
             except Exception as e:
                 log.warning("Matcha RKNN load failed (%s), trying ORT fallback", e)
@@ -395,11 +426,25 @@ class RKNNMatchaVocoder:
             mel = z * np.float32(MEL_SIGMA) + np.float32(MEL_MEAN)
 
         elif self._matcha_backend == 'rknn':
-            tokens_padded = np.zeros((1, MATCHA_MODEL_SEQ_LEN), dtype=np.int64)
-            tokens_padded[0, :num_tokens] = tokens
-            mel = self._matcha.inference(
-                inputs=[tokens_padded, x_length, noise_scale_arr, length_scale_arr]
-            )[0]
+            meta = self._matcha_rknn_input_meta
+            if meta is not None and meta['layout'] == 'v2':
+                # Newer exported model: [x, noise_scale, length_scale, noise]
+                # x_length is not an explicit input; noise is pre-generated.
+                seq_len = meta['x_seq_len']
+                noise_shape = meta['noise_shape']
+                tokens_padded = np.zeros((1, seq_len), dtype=np.int64)
+                tokens_padded[0, :num_tokens] = tokens
+                noise = np.random.randn(*noise_shape).astype(np.float32)
+                mel = self._matcha.inference(
+                    inputs=[tokens_padded, noise_scale_arr, length_scale_arr, noise]
+                )[0]
+            else:
+                # Older exported model: [x, x_length, noise_scale, length_scale]
+                tokens_padded = np.zeros((1, MATCHA_MODEL_SEQ_LEN), dtype=np.int64)
+                tokens_padded[0, :num_tokens] = tokens
+                mel = self._matcha.inference(
+                    inputs=[tokens_padded, x_length, noise_scale_arr, length_scale_arr]
+                )[0]
         else:
             # ORT fallback — dynamic shapes, no padding needed
             tokens_padded = np.zeros((1, max(num_tokens, 1)), dtype=np.int64)
