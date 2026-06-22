@@ -43,56 +43,56 @@ def _find_split_tensors(model) -> tuple[str, str]:
     """Find the tensor names at the encoder/flow boundary.
 
     Strategy:
-    1. Look for the first node in the /flow/ namespace.
-    2. Its inputs are the split-point tensors (z and y_mask).
-    3. If /flow/ namespace not found, fall back to known names.
+    1. Build a set of initializer names (constant weights — not data tensors).
+    2. For each /flow/ node in topological order, collect inputs that originate
+       from the encoder side (produced by non-/flow/ nodes, not initializers).
+    3. The first flow node with ≥2 such encoder-side inputs is the true entry
+       point; return those two tensors as (z, y_mask).
+    4. Fall back to known tensor names if the above finds nothing.
+
+    This correctly skips /flow/ nodes that only slice constant weight tensors
+    (which appear early in topological order but are not the encoder boundary).
 
     Returns (z_tensor_name, y_mask_tensor_name).
     """
-    # Build map: tensor_name -> producing node
-    producer = {}
+    initializer_names = {init.name for init in model.graph.initializer}
+    graph_input_names = {i.name for i in model.graph.input}
+
+    # Map each tensor to the namespace of its producing node
+    tensor_producer_ns: dict[str, str] = {}
     for node in model.graph.node:
         for out in node.output:
-            producer[out] = node
+            tensor_producer_ns[out] = node.name
 
-    # Find first node whose name starts with /flow/
+    def is_encoder_side(name: str) -> bool:
+        """True when the tensor comes from the encoder, not a flow internal or constant."""
+        if not name:
+            return False
+        if name in initializer_names:
+            return False
+        if name in graph_input_names:
+            return True
+        return not tensor_producer_ns.get(name, "").startswith("/flow/")
+
     flow_nodes = [n for n in model.graph.node if n.name.startswith("/flow/")]
 
-    if flow_nodes:
-        first_flow = flow_nodes[0]
-        # The first flow node typically has 2 inputs: z and y_mask
-        # z shape: (1, 192, mel_len), y_mask shape: (1, 1, mel_len)
-        inputs = list(first_flow.input)
-        if len(inputs) >= 2:
-            print(f"  Auto-detected split point from first /flow/ node: {first_flow.name}")
-            print(f"    Input tensors: {inputs}")
-            return inputs[0], inputs[1]
+    for node in flow_nodes:
+        enc_inputs = [inp for inp in node.input if is_encoder_side(inp)]
+        if len(enc_inputs) >= 2:
+            print(f"  Auto-detected split point from flow entry node: {node.name}")
+            print(f"    Encoder-side inputs: {enc_inputs}")
+            return enc_inputs[0], enc_inputs[1]
 
     # Fallback: try known tensor names from common Piper models
     known_z = ["/Add_output_0", "/enc_p/Add_output_0"]
     known_mask = ["/Cast_2_output_0", "/enc_p/Cast_2_output_0"]
 
-    graph_tensors = set()
-    for node in model.graph.node:
-        for out in node.output:
-            graph_tensors.add(out)
-
+    graph_tensors = set(tensor_producer_ns.keys())
     for z_name in known_z:
         for mask_name in known_mask:
             if z_name in graph_tensors and mask_name in graph_tensors:
                 print(f"  Using known split tensors: z={z_name}, mask={mask_name}")
                 return z_name, mask_name
-
-    # Last resort: search for the Add node that feeds into /flow/
-    # by tracing backwards from /dec/ or /flow/ inputs
-    dec_nodes = [n for n in model.graph.node
-                 if n.name.startswith("/dec/") or n.name.startswith("/flow/")]
-    if dec_nodes:
-        # Find the Conv node in decoder, trace its input chain
-        for node in dec_nodes:
-            if "conv_pre" in node.name or "Conv" in node.op_type:
-                # This node's input comes from flow output, not useful
-                continue
 
     raise RuntimeError(
         "Could not auto-detect split point tensors. "
@@ -161,8 +161,6 @@ def split_model(onnx_path: str, output_dir: str,
     try:
         import onnxsim
 
-        # Determine channel dim from z tensor
-        # Default: z=(1,192,mel_len), y_mask=(1,1,mel_len)
         z_shape = {z_tensor: [1, 192, mel_len]}
         mask_shape = {mask_tensor: [1, 1, mel_len]}
         input_shapes = {**z_shape, **mask_shape}
@@ -170,7 +168,7 @@ def split_model(onnx_path: str, output_dir: str,
         fd_model = onnx.load(flow_decoder_path)
         fd_simplified, ok = onnxsim.simplify(
             fd_model,
-            input_shapes=input_shapes,
+            overwrite_input_shapes=input_shapes,
         )
         if ok:
             onnx.save(fd_simplified, flow_decoder_path)
@@ -180,6 +178,8 @@ def split_model(onnx_path: str, output_dir: str,
             print("  WARNING: onnxsim simplification failed, keeping unsimplified version")
     except ImportError:
         print("  WARNING: onnxsim not installed, skipping simplification")
+    except Exception as e:
+        print(f"  WARNING: onnxsim failed ({e}), keeping unsimplified version")
 
     return encoder_path, flow_decoder_path
 
