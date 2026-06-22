@@ -814,9 +814,10 @@ class PiperRKNNBackend:
         audio = np.concatenate(all_audio) if all_audio else np.zeros(0, dtype=np.float32)
 
         # Normalize
-        peak = np.abs(audio).max()
-        if peak > 0:
-            audio = audio / peak * 0.95
+        if len(audio) > 0:
+            peak = np.abs(audio).max()
+            if peak > 0:
+                audio = audio / peak * 0.95
 
         inference_time = time.perf_counter() - t_start
         duration = len(audio) / lang_model.sample_rate
