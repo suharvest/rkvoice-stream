@@ -47,13 +47,13 @@ It also supports the **RK1828 PCIe NPU coprocessor** (an accelerator card attach
 
 | Backend | Languages | Type | RK3576 RTF | RK3588 RTF | RK3576 TTFW | RK3588 TTFW | RK3576 Finalize | RK3588 Finalize |
 |---------|:---------:|------|:----------:|:----------:|:-----------:|:-----------:|:---------------:|:---------------:|
-| **Qwen3-ASR** (NPU) | 52 | RKNN encoder + RKLLM decoder | 0.36 | 0.23 | ~1.1s | — | ~6.5s | ~3.7s |
+| **Qwen3-ASR** (NPU) | 52 | RKNN encoder + RKLLM decoder | 0.36 | 0.23 | ~1.1s | ~1.2s | ~6.5s | ~3.7s |
 | **Paraformer** (Hybrid) | 4 | RKNN encoder prefix + CPU suffix/decoder | 0.29 | 0.33 | — | — | — | — |
 | **Paraformer** (CPU) | 4 | sherpa-onnx streaming | 0.50 | 0.24 | — | — | — | — |
 | **SenseVoice** (NPU) | 50+ | RKNN encoder + CPU CTC | — | — | — | — | — | — |
 | **SenseVoice** (CPU) | 50+ | sherpa-onnx | 0.36 | 0.11 | — | — | — | — |
 
-> TTFW = time to first word (streaming partial). Finalize = latency from end-of-audio to final transcript. Qwen3-ASR RK3576 uses w4a16_g128 RKLLM decoder; RK3588 uses w8a8. RK3588 TTFW pending (partial streaming not yet wired for that path).
+> TTFW = time to first word (streaming partial via chunk-confirm). Finalize = latency from end-of-audio to final transcript. Qwen3-ASR requires `ASR_ENCODER_SIZES=2,4,15` to load all three encoder windows; omitting the 2s/4s models disables real-time partials. RK3576 uses w4a16_g128 RKLLM decoder; RK3588 uses w8a8.
 
 ### TTS — six backends
 
