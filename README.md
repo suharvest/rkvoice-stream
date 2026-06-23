@@ -7,30 +7,36 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/Python-3.10+-green.svg" alt="Python">
-  <img src="https://img.shields.io/badge/Platform-RK3576%20%7C%20RK3588%20%7C%20RK1828%20(NPU%20coprocessor)-orange.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-RK3576%20%7C%20RK3588%20%7C%20RK1828-orange.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/ASR-Qwen3--ASR%20%7C%20Paraformer%20%7C%20SenseVoice-2f80ed.svg" alt="ASR backends">
+  <img src="https://img.shields.io/badge/TTS-Matcha--TTS%20%7C%20Qwen3--TTS%20%7C%20Piper%20%7C%20Kokoro-f97316.svg" alt="TTS backends">
 </p>
 
 <p align="center">
-  Deploy streaming ASR + TTS on RK3576/RK3588 — <strong>120ms TTS latency, 52-language ASR, one Docker command.</strong>
+  Qwen3-ASR · Matcha-TTS · sherpa-onnx on RK3576/RK3588 NPU — <strong>120ms first-audio · 700ms V2V · no cloud</strong>
 </p>
 
-<!-- TODO: Add demo GIF here — record a terminal session showing:
-     1. docker-compose up (service starts)
-     2. curl POST /tts with Chinese text → WAV file plays
-     3. WebSocket /asr/stream with microphone → real-time transcription
-     Target length: ~15 seconds -->
+<!-- TODO: Add demo GIF — record a ~15s terminal session showing:
+     1. docker compose up (service starts in ~3s)
+     2. curl POST /tts/stream → first PCM chunk arrives in 120ms
+     3. WebSocket /asr/stream with microphone → real-time Chinese transcription
+     Suggested tool: asciinema + agg, or Kap for screen recording -->
 
 ## What is this?
 
-rkvoice-stream is a ready-to-deploy speech AI service for Rockchip NPU devices. It runs ASR and TTS entirely on-device via RKNN/RKLLM acceleration — no cloud, no GPU, no internet required. Ship it as a Python library or a Docker container.
+rkvoice-stream is the **Rockchip NPU speech engine** for [OpenVoiceStream](https://github.com/suharvest/openvoicestream) — the production voice AI service that runs across Jetson, Rockchip, and Raspberry Pi. It powers the RK3576/RK3588 backend of OpenVoiceStream's shipped Docker images (`seeed-local-voice:rk-*`).
 
-It also supports the **RK1828 PCIe NPU coprocessor** (an accelerator card attached to an RK3576/RK3588 host) for on-device TTS (`qwen3_tts_rk1828`) and a multimodal **AudioLLM** (`gemma4_rk1828`, Gemma-4) that takes audio and streams text — collapsing ASR + LLM into a single model.
+It runs ASR and TTS entirely on-device via RKNN/RKLLM acceleration — no cloud, no GPU, no internet required. Use it as a Python library (`from rkvoice_stream import create_asr, create_tts`) or ship it via [OpenVoiceStream](https://github.com/suharvest/openvoicestream)'s one-command installer.
+
+It also supports the **RK1828 PCIe NPU coprocessor** for on-device TTS (`qwen3_tts_rk1828`) and a multimodal **AudioLLM** (`gemma4_rk1828`, Gemma-4) that takes audio and streams text — collapsing ASR + LLM into a single model.
+
+> **Looking to deploy on-device voice?** Start with [OpenVoiceStream](https://github.com/suharvest/openvoicestream) — it wraps this engine with a FastAPI server, prebuilt Docker images, and a one-line installer for Jetson, Rockchip, and Raspberry Pi.
 
 ## Table of Contents
 
 - [Performance](#performance)
-- [AudioLLM — Gemma-4 (RK1828)](#audiollm--gemma-4-rk1828)
 - [Features](#features)
+- [AudioLLM — Gemma-4 (RK1828)](#audiollm--gemma-4-rk1828)
 - [Supported Platforms](#supported-platforms)
 - [Quick Start](#quick-start)
 - [API Reference](#api-reference)
@@ -38,6 +44,7 @@ It also supports the **RK1828 PCIe NPU coprocessor** (an accelerator card attach
 - [Model Preparation](#model-preparation)
 - [Configuration](#configuration)
 - [Testing](#testing)
+- [Contributing](#contributing)
 - [Acknowledgements](#acknowledgements)
 - [License](#license)
 
@@ -65,11 +72,9 @@ It also supports the **RK1828 PCIe NPU coprocessor** (an accelerator card attach
 | **Qwen3-TTS** | zh, en | RKNN (NPU) | — | — | — | — |
 | **Qwen3-TTS (RK1828)** | zh, en | RKNN3 on RK1828 PCIe NPU coprocessor | — | — | — | — |
 
-> TTFA = time to first audio chunk via `/tts/stream`, sentence-level streaming (warm, after first inference). Kokoro uses three-tier bucket routing on RK3588: bucket-8 (~800ms, &le;8 tokens), bucket-16 (~1.8s, 9–16 tokens), bucket-32 (~3.5s, 17–32 tokens).
+> TTFA = time to first audio chunk via `/tts/stream`, sentence-level streaming (warm, after first inference). Kokoro uses three-tier bucket routing on RK3588: bucket-8 (~800ms, ≤8 tokens), bucket-16 (~1.8s, 9–16 tokens), bucket-32 (~3.5s, 17–32 tokens).
 
-> **Qwen3-TTS (RK1828)** — `qwen3_tts_rk1828` runs Qwen3-TTS (~1.7 GB) on the RK1828 PCIe
-> NPU coprocessor via the RKNN3 toolchain (driven by a subprocess worker over PCIe). See
-> [`docs/rk1828-qwen3-tts.md`](docs/rk1828-qwen3-tts.md).
+> **Qwen3-TTS (RK1828)** — `qwen3_tts_rk1828` runs Qwen3-TTS (~1.7 GB) on the RK1828 PCIe NPU coprocessor via the RKNN3 toolchain (driven by a subprocess worker over PCIe). See [`docs/rk1828-qwen3-tts.md`](docs/rk1828-qwen3-tts.md).
 
 ### Voice-to-Voice (EOS → First Audio)
 
@@ -83,6 +88,32 @@ Audio streamed at real-time pace (simulating live microphone). Qwen3-ASR (NPU) +
 | 语音识别测试 (3.1s) | 1700 ms | **1408 ms** |
 | Hello world (1.7s) | 1289 ms | **644 ms** |
 | **Average** | **1385 ms** | **1042 ms** |
+
+## Features
+
+### ASR
+
+- **Qwen3-ASR** — streaming + offline, 52 languages, RKNN encoder + RKLLM decoder on NPU; chunk-confirm partials
+- **Paraformer RKNN** — hybrid split: FP16 RKNN encoder prefix through block30, CPU ONNX suffix + decoder; parity verified on RK3588 and RK3576
+- **SenseVoice RKNN** — offline, 50+ languages, RKNN encoder + CPU CTC decode
+- **SenseVoice (CPU)** — offline + VAD streaming, 50+ languages, [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)
+- **Paraformer (CPU)** — native streaming, zh/en/ja/ko, [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)
+
+### TTS
+
+- **Matcha + Vocos** — high-quality zh/en synthesis, NPU-accelerated vocoder; **145ms TTFA on RK3588**
+- **Piper VITS** — lightweight multi-language TTS (en, zh, de, fr, ja, …), hybrid CPU+NPU; **142ms TTFA**
+- **Kokoro RKNN** — multi-stage RKNN synthesis (en, zh), NPU-accelerated
+- **Qwen3-TTS** — RKNN streaming TTS (zh, en) on NPU
+- **Qwen3-TTS (RK1828)** — `qwen3_tts_rk1828`, Qwen3-TTS on the RK1828 PCIe NPU coprocessor (RKNN3)
+
+### AudioLLM & Pipeline
+
+- **Gemma-4 AudioLLM (RK1828)** — `gemma4_rk1828`, audio + optional prompt → streaming text; collapses ASR + LLM into one model (experimental)
+- **Streaming everywhere** — WebSocket ASR (real-time partials), streaming TTS (sentence-by-sentence PCM)
+- **Voice-to-voice pipeline** — ASR → LLM → TTS dialogue orchestrator, **~700ms first-audio on RK3588**
+- **Config profiles** — pre-validated YAML configs for common setups (ASR-only, TTS-only, full stack)
+- **[OpenVoiceStream](https://github.com/suharvest/openvoicestream) compatible** — same HTTP/WebSocket API used by the production multi-platform deployment
 
 ## AudioLLM — Gemma-4 (RK1828)
 
@@ -106,25 +137,6 @@ Used by the `/audio_dialogue` WebSocket endpoint for V2V: audio in → AudioLLM 
 > worker-level retry). See [`docs/rk1828-upstream-modelsetup-ackfail.md`](docs/rk1828-upstream-modelsetup-ackfail.md)
 > and [`docs/rk1828-gemma4.md`](docs/rk1828-gemma4.md).
 
-## Features
-
-- **ASR: Qwen3-ASR** — streaming + offline, 52 languages, RKNN encoder + RKLLM decoder on NPU
-- **ASR: Paraformer RKNN** — experimental hybrid split: FP16 RKNN encoder prefix through block30, CPU ONNX encoder suffix and decoder; boundary parity verified on RK3588 and RK3576
-- **ASR: SenseVoice RKNN** — offline, 50+ languages, RKNN encoder + CPU CTC decode
-- **ASR: SenseVoice** — offline + VAD streaming, 50+ languages, CPU (sherpa-onnx)
-- **ASR: Paraformer** — native streaming, zh/en/ja/ko, CPU (sherpa-onnx)
-- **TTS: Matcha + Vocos** — high-quality Chinese/English synthesis, NPU-accelerated vocoder
-- **TTS: Piper VITS** — lightweight multi-language TTS (en, zh, de, fr, ja, …), hybrid CPU+NPU
-- **TTS: Kokoro RKNN** — multi-stage RKNN synthesis (en, zh), NPU-accelerated
-- **TTS: Qwen3-TTS** — RKNN streaming TTS (zh, en) on NPU
-- **TTS: Qwen3-TTS (RK1828)** — `qwen3_tts_rk1828`, Qwen3-TTS on the RK1828 PCIe NPU coprocessor (RKNN3)
-- **AudioLLM: Gemma-4 multimodal (audio→text) on RK1828 PCIe NPU** — `gemma4_rk1828`, streams text from audio (+ optional prompt), powering single-model V2V (experimental)
-- **Streaming everywhere** — WebSocket ASR (real-time partials), streaming TTS (sentence-by-sentence PCM)
-- **Voice-to-voice pipeline** — ASR → LLM → TTS dialogue orchestrator with sub-second first-audio latency
-- **NPU accelerated** — runs on Rockchip RKNN/RKLLM, not CPU
-- **Config profiles** — pre-validated YAML configs for common setups (ASR-only, TTS-only, full stack)
-- **jetson-voice compatible** — same HTTP/WebSocket API, drop-in replacement for RK platforms
-
 ## Supported Platforms
 
 | Platform | NPU | CPU | RKLLM Quant | V2V Latency | Status |
@@ -142,13 +154,20 @@ Used by the `/audio_dialogue` WebSocket endpoint for V2V: audio in → AudioLLM 
 
 ## Quick Start
 
-### Option 1: Docker (recommended)
+### Recommended: via OpenVoiceStream
+
+The fastest path to a running service is [OpenVoiceStream](https://github.com/suharvest/openvoicestream), which wraps this engine with prebuilt Docker images and a one-command installer:
 
 ```bash
-# Build
-cd docker && docker build -t rkvoice-stream -f Dockerfile .. && cd ..
+git clone --recurse-submodules https://github.com/suharvest/openvoicestream.git
+cd openvoicestream
+deploy/install.sh --target rk3576 --pull --verify   # or --target rk3588
+```
 
-# Run with pre-validated config
+### Option 1: Docker (standalone)
+
+```bash
+cd docker && docker build -t rkvoice-stream -f Dockerfile .. && cd ..
 docker-compose -f docker/docker-compose.yml up
 ```
 
@@ -182,7 +201,7 @@ for chunk, meta in tts.synthesize_stream("Hello world"):
 # AudioLLM (Gemma-4 on RK1828): audio (+ optional prompt) -> streaming text
 from rkvoice_stream.engine.audio_llm import create_audio_llm
 
-audio_llm = create_audio_llm("gemma4_rk1828")  # or AUDIO_LLM_BACKEND env
+audio_llm = create_audio_llm("gemma4_rk1828")
 audio_llm.preload()
 for token in audio_llm.generate_stream(audio, sample_rate=16000, prompt="Reply in English."):
     print(token, end="", flush=True)
@@ -199,7 +218,7 @@ asr, tts = create_from_config(config)
 
 ## API Reference
 
-All endpoints are compatible with [jetson-voice](https://github.com/dusty-nv/jetson-voice) clients.
+All endpoints are compatible with [OpenVoiceStream](https://github.com/suharvest/openvoicestream) clients.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -340,6 +359,14 @@ SERVICE_URL=http://192.168.1.100:8621 pytest tests/ -v
 ```
 
 Quality gates: CER < 0.5 per sentence, RTF < 1.0.
+
+## Contributing
+
+This repo is the Rockchip speech engine component of [OpenVoiceStream](https://github.com/suharvest/openvoicestream). Bug reports and pull requests are welcome.
+
+- **Engine bugs / backend issues** — open an issue here (rkvoice-stream)
+- **Deployment / Docker / multi-platform** — open an issue in [openvoicestream](https://github.com/suharvest/openvoicestream)
+- **Model conversion / build scripts** — see `models/` directory and open an issue here
 
 ## Acknowledgements
 
