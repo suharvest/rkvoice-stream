@@ -54,6 +54,20 @@ TIME_EMB_DIM = 256
 N_TIME_BLOCKS = 6
 
 
+def _npu_lock():
+    """Shared host-NPU lock, or None when the ASR backend is unavailable.
+
+    Same accessor the qwen3_rknn TTS backend uses (qwen3_rknn.py:53-57): the
+    RKLLM ASR decoder holds all three NPU cores while decoding, so any RKNN
+    context here has to serialize against it regardless of core pinning.
+    """
+    try:
+        from rkvoice_stream.backends.asr.qwen3_rk import get_npu_lock
+    except ImportError:
+        return None
+    return get_npu_lock()
+
+
 class RKNNMatchaVocoder:
     """RKNN 加速的 Matcha TTS 引擎"""
 
@@ -448,7 +462,16 @@ class RKNNMatchaVocoder:
         mel_padded[:, :, :use_frames] = mel[:, :, :use_frames]
 
         # 推理
-        outputs = self._vocos.inference(inputs=[mel_padded])
+        # Serialize NPU access with the ASR backend: the RKLLM decoder runs with
+        # npu_core_num=3 (all cores), so it overlaps this vocos context even
+        # though vocos is pinned to NPU_CORE_0. Lock only the RKNN call — the
+        # ISTFT below is pure numpy on the CPU and must stay outside.
+        lock = _npu_lock()
+        if lock is not None:
+            with lock:
+                outputs = self._vocos.inference(inputs=[mel_padded])
+        else:
+            outputs = self._vocos.inference(inputs=[mel_padded])
 
         # 提取 STFT 分量
         mag = outputs[0][0]  # [513, T]
