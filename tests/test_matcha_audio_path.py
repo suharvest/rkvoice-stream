@@ -282,14 +282,10 @@ def test_tokens_parser_trusts_the_id_column(tmp_path):
 
 
 def _normalize(audio: np.ndarray) -> np.ndarray:
-    """Mirror of the normalization block in synthesize()."""
-    peak = float(np.abs(audio).max())
-    if peak <= 0:
-        return audio
-    p999 = float(np.percentile(np.abs(audio), 99.9))
-    if p999 > 0 and p999 / peak < 0.25:
-        return np.clip(audio / p999 * 0.95, -1.0, 1.0)
-    return audio / peak * 0.95
+    """Apply utterance_gain the way synthesize() does."""
+    gain, clip = m.utterance_gain(audio)
+    out = audio * gain
+    return np.clip(out, -1.0, 1.0) if clip else out
 
 
 def _speech(n: int = 64000) -> np.ndarray:
@@ -316,3 +312,30 @@ def test_a_transient_does_not_duck_the_utterance():
 
     assert abs(rescued - healthy) < 2.0, "rescue path changed the level"
     assert healthy - old > 15, "regression witness is stale"
+
+
+def test_gain_is_a_factor_so_streaming_can_reuse_it():
+    """synthesize_stream() bypasses synthesize(), so the gain must be reusable.
+
+    The v2v conversation loop is the streaming path.  If the gain were only
+    applied inside synthesize(), streaming would come out quieter than /tts
+    for the same text.  Returning a factor is what lets both agree -- and
+    fixing one factor for the whole utterance is what keeps the level from
+    pumping between sentences of a single reply.
+    """
+    quiet = _speech() * 0.1
+    loud = _speech() * 0.8
+
+    g_quiet, _ = m.utterance_gain(quiet)
+    g_loud, _ = m.utterance_gain(loud)
+
+    # Normalizing each segment on its own would flatten both to 0.95.
+    assert g_quiet > g_loud
+    before = float(np.abs(quiet).max() / np.abs(loud).max())
+    after = float(np.abs(quiet * g_loud).max() / np.abs(loud * g_loud).max())
+    assert after == pytest.approx(before, rel=1e-6)
+
+
+def test_empty_and_silent_audio_get_a_neutral_gain():
+    assert m.utterance_gain(np.zeros(0, dtype=np.float32)) == (1.0, False)
+    assert m.utterance_gain(np.zeros(100, dtype=np.float32)) == (1.0, False)

@@ -215,6 +215,30 @@ def ipa_to_token_strings(ipa: str) -> list[str]:
     return out
 
 
+def utterance_gain(audio: np.ndarray) -> tuple[float, bool]:
+    """Playback gain for one utterance, returned as (gain, needs_clip).
+
+    Plain peak normalization lets a single transient decide the level for the
+    whole utterance: a 3-sample ISTFT spike once ducked a 4 s clip by 23 dB.
+    When the peak is a clear outlier (p99.9 far below it), normalize against
+    p99.9 and clip the outlier instead of ducking everything.
+
+    Returned as a factor rather than applied in place so the streaming path
+    can compute it once for an utterance and reuse it across every segment.
+    Normalizing each segment independently would make the level pump between
+    sentences of the same reply.
+    """
+    if len(audio) == 0:
+        return 1.0, False
+    peak = float(np.abs(audio).max())
+    if peak <= 0:
+        return 1.0, False
+    p999 = float(np.percentile(np.abs(audio), 99.9))
+    if p999 > 0 and p999 / peak < 0.25:
+        return 0.95 / p999, True
+    return 0.95 / peak, False
+
+
 def parse_tokens_file(path: str) -> dict[str, int]:
     """Parse an icefall ``tokens.txt`` into {token: id}.
 
@@ -1160,19 +1184,11 @@ class RKNNMatchaVocoder:
 
         audio = np.concatenate(all_audio) if all_audio else np.zeros(0, dtype=np.float32)
 
-        # 归一化 (guard against empty audio).
-        # Plain peak normalization lets a single transient decide the gain for
-        # the whole utterance: a 3-sample spike once ducked a 4 s clip by 23 dB.
-        # When the peak is a clear outlier (p99.9 far below it), normalize
-        # against p99.9 and clip the outlier instead of ducking everything.
-        if len(audio) > 0:
-            peak = float(np.abs(audio).max())
-            if peak > 0:
-                p999 = float(np.percentile(np.abs(audio), 99.9))
-                if p999 > 0 and p999 / peak < 0.25:
-                    audio = np.clip(audio / p999 * 0.95, -1.0, 1.0)
-                else:
-                    audio = audio / peak * 0.95
+        gain, clip = utterance_gain(audio)
+        if gain != 1.0:
+            audio = audio * gain
+            if clip:
+                audio = np.clip(audio, -1.0, 1.0)
 
         metadata = {
             'num_tokens': total_num_tokens,
@@ -1317,11 +1333,29 @@ class MatchaRKNNBackend:
         _speed = float(speed) if speed is not None else 1.0
         _noise = float(kwargs.get("noise_scale", 0.667))
 
-        sentences = engine._split_text(text)
+        # Level has to match synthesize(): the batch path normalizes, and this
+        # path used to reach it via a non-streaming fallback.  Yielding raw
+        # segments here would make the streaming path (which is what the v2v
+        # conversation loop uses) quieter than /tts for the same text.
+        #
+        # The gain is fixed from the first segment and reused: normalizing each
+        # segment on its own would pump the level between sentences of one
+        # reply, since a segment containing a plosive gets pushed down while a
+        # quiet one gets pushed up.
+        gain: float | None = None
+        clip = False
+
+        sentences = engine._split_text(text, _speed)
         for seg in sentences:
             audio_seg, seg_meta = engine._synthesize_segment(seg, _speed, _noise)
             if len(audio_seg) == 0:
                 continue
+            if gain is None:
+                gain, clip = utterance_gain(audio_seg)
+            if gain != 1.0:
+                audio_seg = audio_seg * gain
+                if clip:
+                    audio_seg = np.clip(audio_seg, -1.0, 1.0)
             yield audio_seg.astype("float32"), seg_meta
 
     def cleanup(self) -> None:
