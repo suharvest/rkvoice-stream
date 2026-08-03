@@ -30,6 +30,26 @@ TEST_SENTENCES_EN = [
     "Speech recognition is amazing",
 ]
 
+# Long-form cases.  Every sentence above fits inside a single vocoder window,
+# which is why the 2026-08 truncation bug (audio cut at the compiled window,
+# 43% of a reply silently dropped) shipped with a green test suite.  These are
+# deliberately long enough to need more than one window.
+#
+# Keep them phrased as things an assistant actually says — the failure showed
+# up in production replies, not in lab phrases.
+TEST_SENTENCES_LONG_ZH = [
+    "今天天气不错，请把客厅的灯打开，然后再把卧室的空调调到二十六度，谢谢你。",
+    "好的，我已经帮你把客厅的灯打开了，需要我顺便把厨房的灯也打开吗？",
+]
+
+TEST_SENTENCES_LONG_EN = [
+    "Sure, I have turned on the living room light for you. Would you also "
+    "like me to adjust the bedroom air conditioner to twenty six degrees, "
+    "or turn on the kitchen light as well?",
+    "The weather is nice today, so I opened the living room curtains and "
+    "turned off the hallway light to save power.",
+]
+
 
 # ---------------------------------------------------------------------------
 # Helpers

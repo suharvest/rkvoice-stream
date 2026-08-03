@@ -23,6 +23,8 @@ Vocos vocoder compiled with fixed TIME_FRAMES:
 from __future__ import annotations
 
 import os
+import re
+import threading
 import time
 import numpy as np
 from pathlib import Path
@@ -52,6 +54,210 @@ N_ODE_STEPS = 3  # number of pre-computed time_emb files (always 3)
 MAX_FRAMES = 600
 TIME_EMB_DIM = 256
 N_TIME_BLOCKS = 6
+
+
+# ---------------------------------------------------------------------------
+# English text frontend
+#
+# Reverse-engineered from sherpa-onnx's native frontend for this exact model
+# (matcha-icefall-zh-en) by dumping the int64 tensor it feeds the acoustic
+# model (OfflineTtsModelConfig(debug=True) -> offline-tts-matcha-impl.h:467).
+# The rules below reproduce 83/83 probe texts token-for-token.
+#
+# The previous implementation emitted raw IPA characters, which drove the
+# model with phones outside its training distribution: `aɪ` went in as `a`+`ɪ`
+# rather than the single token `I` that tokens.txt reserves for it.  Measured
+# effect on English word error rate: 38.3% -> 0.0%.
+# ---------------------------------------------------------------------------
+
+# Greedy longest-first.  Note `ɚ` is an *expansion*: one IPA char, two tokens.
+_IPA_MAP: dict[str, tuple[str, ...]] = {
+    'aɪ': ('I',),
+    'eɪ': ('A',),
+    'oʊ': ('O',),
+    'aʊ': ('W',),
+    'ɔɪ': ('Y',),
+    'tʃ': ('ʧ',),
+    'dʒ': ('ʤ',),
+    'ɚ': ('ə', 'ɹ'),
+}
+_IPA_MAX_KEY = max(len(k) for k in _IPA_MAP)
+
+# Length marks are always dropped; stress marks are kept in place.
+_IPA_STRIP = frozenset('ː')
+
+# Punctuation is normalized before lookup.  `:` folds onto `,` -- token 3
+# exists in tokens.txt but sherpa never emits it.
+_PUNCT_NORMALIZE = {
+    '：': ',', ':': ',', '，': ',', '、': ',',
+    '。': '.', '！': '!', '？': '?', '；': ';',
+}
+# Dropped outright (they also swallow the word boundary around them).
+_PUNCT_DROP = frozenset("-'（）《》")
+# Cutting a chunk here means a separate acoustic-model call, matching
+# sherpa's per-sentence chunking.  `;` `—` `…` `(` `)` do NOT cut.
+_PUNCT_CHUNK_END = frozenset(',.!?"“”')
+
+_CJK_RE = re.compile(r"[一-鿿]")
+_WORD_RE = re.compile(r"[A-Za-zÀ-ɏ][A-Za-zÀ-ɏ'\-]*")
+_ITEM_RE = re.compile(
+    r"[一-鿿]+"                              # CJK run
+    r"|[A-Za-zÀ-ɏ][A-Za-zÀ-ɏ'\-]*"  # latin word
+    r"|\s+"
+    r"|."                                            # punct, digit or symbol
+)
+
+
+class _EspeakPhonemizer:
+    """Per-word IPA via the espeak-ng C API.
+
+    The CLI is deliberately not used: `espeak-ng --ipa -q -- <word>` promotes
+    stress on a lone function word, so `the` comes back as `ðˈə` where sherpa
+    (and the C API) produce `ðə`, and `but`/`our` get `ˈ` instead of `ˌ`.
+    Measured on 83 words: the CLI disagrees with sherpa on 12 of them purely
+    from this effect.  espeak is not thread-safe and initializes globally, so
+    this is a process-wide singleton behind a lock.
+    """
+
+    _ESPEAK_CHARS_UTF8 = 1
+    _ESPEAK_PHONEMES_IPA = 2
+    _AUDIO_OUTPUT_RETRIEVAL = 1
+
+    _instance: '_EspeakPhonemizer | None' = None
+    _instance_lock = threading.Lock()
+
+    def __init__(self, data_dir: Optional[str] = None):
+        import ctypes
+
+        self._lock = threading.Lock()
+        self._lib = ctypes.CDLL('libespeak-ng.so.1')
+        self._lib.espeak_Initialize.argtypes = [
+            ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+        ]
+        self._lib.espeak_Initialize.restype = ctypes.c_int
+        self._lib.espeak_SetVoiceByName.argtypes = [ctypes.c_char_p]
+        self._lib.espeak_SetVoiceByName.restype = ctypes.c_int
+        self._lib.espeak_TextToPhonemes.argtypes = [
+            ctypes.POINTER(ctypes.c_void_p), ctypes.c_int, ctypes.c_int,
+        ]
+        self._lib.espeak_TextToPhonemes.restype = ctypes.c_char_p
+
+        path = data_dir.encode('utf-8') if data_dir and os.path.isdir(data_dir) else None
+        rate = self._lib.espeak_Initialize(self._AUDIO_OUTPUT_RETRIEVAL, 0, path, 0)
+        if rate < 0:
+            raise RuntimeError(f"espeak_Initialize failed (rc={rate})")
+        if self._lib.espeak_SetVoiceByName(b'en-us') != 0:
+            raise RuntimeError("espeak_SetVoiceByName('en-us') failed")
+
+    @classmethod
+    def get(cls, data_dir: Optional[str] = None) -> '_EspeakPhonemizer | None':
+        with cls._instance_lock:
+            if cls._instance is None:
+                try:
+                    cls._instance = cls(data_dir)
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "espeak-ng C API unavailable (%s) — falling back to the "
+                        "CLI; function-word stress will differ slightly from "
+                        "the reference frontend", e,
+                    )
+                    cls._instance = False  # sentinel: tried and failed
+            return cls._instance or None
+
+    def phonemize(self, word: str) -> str:
+        import ctypes
+
+        with self._lock:
+            buf = ctypes.c_char_p(word.encode('utf-8'))
+            ptr = ctypes.cast(ctypes.byref(buf), ctypes.POINTER(ctypes.c_void_p))
+            out = []
+            while True:
+                res = self._lib.espeak_TextToPhonemes(
+                    ptr, self._ESPEAK_CHARS_UTF8, self._ESPEAK_PHONEMES_IPA,
+                )
+                if res:
+                    out.append(res.decode('utf-8'))
+                if not buf.value:
+                    break
+            return ''.join(out)
+
+
+def ipa_to_token_strings(ipa: str) -> list[str]:
+    """Map an espeak IPA string onto this model's token alphabet.
+
+    Greedy longest match over _IPA_MAP, length marks dropped, everything else
+    (stress marks included) passed through verbatim.  Spaces inside a single
+    word's espeak output become word-boundary tokens -- espeak expands e.g. an
+    emoji into several words.
+    """
+    out: list[str] = []
+    i = 0
+    n = len(ipa)
+    while i < n:
+        for width in range(min(_IPA_MAX_KEY, n - i), 0, -1):
+            key = ipa[i:i + width]
+            if key in _IPA_MAP:
+                out.extend(_IPA_MAP[key])
+                i += width
+                break
+        else:
+            ch = ipa[i]
+            i += 1
+            if ch in _IPA_STRIP:
+                continue
+            if ch == ' ':
+                out.append(' ')
+            elif ch.isspace():
+                continue
+            else:
+                out.append(ch)
+    return out
+
+
+def parse_tokens_file(path: str) -> dict[str, int]:
+    """Parse an icefall ``tokens.txt`` into {token: id}.
+
+    Each line is ``<token> <id>`` -- and the token may itself be a space.
+    Line 1 of matcha-icefall-zh-en/tokens.txt is literally ``"  1"``: the
+    word-boundary token (id 1) that sherpa-onnx requires via
+    ``token2id_.at(" ")`` (matcha-tts-lexicon.cc:265).
+
+    The original parse was ``line.strip().split()`` with the id taken as
+    ``i + 1``.  That swallowed the leading space, so the boundary token became
+    unreachable and a phantom token ``"1"`` was registered in its place --
+    English then had no way to mark word boundaries at all.  Split the id off
+    from the right, keep the token verbatim, and trust the file's own id
+    column instead of assuming line order.
+    """
+    token_to_id: dict[str, int] = {}
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.rstrip('\r\n')
+            if not line:
+                continue
+            token, sep, id_str = line.rpartition(' ')
+            if not sep:
+                continue
+            try:
+                token_to_id[token] = int(id_str)
+            except ValueError:
+                continue
+    return token_to_id
+
+
+def _npu_lock():
+    """Shared host-NPU lock, or None when the ASR backend is unavailable.
+
+    Same accessor the qwen3_rknn TTS backend uses (qwen3_rknn.py:53-57): the
+    RKLLM ASR decoder holds all three NPU cores while decoding, so any RKNN
+    context here has to serialize against it regardless of core pinning.
+    """
+    try:
+        from rkvoice_stream.backends.asr.qwen3_rk import get_npu_lock
+    except ImportError:
+        return None
+    return get_npu_lock()
 
 
 class RKNNMatchaVocoder:
@@ -101,13 +307,7 @@ class RKNNMatchaVocoder:
                     self._lexicon[parts[0]] = parts[1:]
 
         # 加载 tokens
-        self._token_to_id = {}
-        with open(self.tokens_path, 'r', encoding='utf-8') as f:
-            for i, line in enumerate(f):
-                parts = line.strip().split()
-                if len(parts) >= 1:
-                    # token ID = 行号 + 1 (1-indexed)
-                    self._token_to_id[parts[0]] = i + 1
+        self._token_to_id = parse_tokens_file(self.tokens_path)
 
         # 加载 Matcha 声学模型
         # Priority: 1) split RKNN (best FP16 precision), 2) single RKNN, 3) ORT fallback
@@ -251,6 +451,50 @@ class RKNNMatchaVocoder:
         if ret != 0:
             raise RuntimeError(f"初始化 Vocos RKNN 运行时失败: ret={ret}")
 
+        # Probe the vocoder's real time capacity.
+        #
+        # Neither the filename nor VOCOS_FRAMES can be trusted: the shipped
+        # "vocos-16khz-600.rknn" is in fact a 256-frame build, and rknn-lite
+        # does NOT error on an oversized input — it silently reinterprets the
+        # buffer and emits garbage (measured: -22 dB vs a correctly sized
+        # call).  Ask the model what it actually is.
+        self._vocos_frames = VOCOS_FRAMES
+        for probe_frames in (VOCOS_FRAMES, MAX_FRAMES):
+            try:
+                probe = np.zeros((1, 80, probe_frames), dtype=np.float32)
+                lock = _npu_lock()
+                if lock is not None:
+                    with lock:
+                        out = self._vocos.inference(inputs=[probe])
+                else:
+                    out = self._vocos.inference(inputs=[probe])
+                actual = int(np.asarray(out[0]).shape[-1])
+            except Exception as e:  # undersized buffer can legitimately fail
+                log.debug("Vocos capacity probe at %d frames failed: %s", probe_frames, e)
+                continue
+            if actual > 0:
+                self._vocos_frames = actual
+                if actual != VOCOS_FRAMES:
+                    log.warning(
+                        "Vocos model %s emits %d frames, but VOCOS_FRAMES=%d — "
+                        "using the model's %d (%.2fs per chunk). Oversized "
+                        "inputs are silently misread by rknn-lite, so the env "
+                        "value is ignored.",
+                        os.path.basename(self.vocos_rknn_path), actual,
+                        VOCOS_FRAMES, actual, actual * HOP_LENGTH / SAMPLE_RATE,
+                    )
+                else:
+                    log.info(
+                        "Vocos capacity: %d frames (%.2fs per chunk)",
+                        actual, actual * HOP_LENGTH / SAMPLE_RATE,
+                    )
+                break
+        else:
+            log.warning(
+                "Vocos capacity probe failed — assuming VOCOS_FRAMES=%d",
+                VOCOS_FRAMES,
+            )
+
     def release(self):
         """释放资源"""
         for m in (self._matcha, self._matcha_encoder, self._matcha_estimator):
@@ -270,19 +514,24 @@ class RKNNMatchaVocoder:
                 pass
             self._vocos = None
 
-    def _phonemize_english(self, text: str) -> list[str]:
-        """
-        Use espeak-ng to convert English text to IPA phonemes.
-
-        Falls back to empty list if espeak-ng is not available.
-        """
-        import subprocess
+    def _espeak_ipa(self, word: str) -> str:
+        """Raw IPA for one word, preferring the C API over the CLI."""
         import logging
-        log = logging.getLogger(__name__)
 
+        engine = _EspeakPhonemizer.get(self.data_dir)
+        if engine is not None:
+            try:
+                return engine.phonemize(word)
+            except Exception as e:
+                logging.getLogger(__name__).warning(
+                    "espeak C API failed on %r (%s) — using the CLI", word, e,
+                )
+
+        import subprocess
+
+        log = logging.getLogger(__name__)
         try:
-            # Use espeak-ng with the data_dir if available
-            cmd = ["espeak-ng", "--ipa", "-v", "en-us", "-q", "--", text]
+            cmd = ["espeak-ng", "--ipa", "-v", "en-us", "-q", "--", word]
             env = os.environ.copy()
             if self.data_dir and os.path.isdir(self.data_dir):
                 env["ESPEAK_DATA_PATH"] = self.data_dir
@@ -290,60 +539,107 @@ class RKNNMatchaVocoder:
                 cmd, capture_output=True, text=True, timeout=5, env=env,
             )
             if result.returncode != 0:
-                log.warning("espeak-ng failed (rc=%d): %s", result.returncode, result.stderr.strip())
-                return []
-            ipa = result.stdout.strip()
-            if not ipa:
-                return []
-            # Split IPA string into individual phoneme characters/tokens.
-            # espeak-ng outputs IPA with spaces between words and stress marks.
-            # Each IPA character that exists in our token table is a valid phoneme.
-            phonemes = []
-            for ch in ipa:
-                if ch in (' ', '\n', '\t'):
-                    continue
-                phonemes.append(ch)
-            return phonemes
+                log.warning(
+                    "espeak-ng failed (rc=%d): %s",
+                    result.returncode, result.stderr.strip(),
+                )
+                return ""
+            return result.stdout.strip()
         except FileNotFoundError:
             log.warning("espeak-ng not found — English text will be skipped")
-            return []
+            return ""
         except subprocess.TimeoutExpired:
-            log.warning("espeak-ng timed out")
+            log.warning("espeak-ng timed out on %r", word)
+            return ""
+
+    def _phonemize_english(self, word: str) -> list[str]:
+        """One English word -> token strings, following the reference frontend.
+
+        Resolution order matches sherpa's ConvertWordToIds: a word that is
+        itself a token in the table bypasses espeak entirely (that is why "a"
+        stays `a` rather than becoming `eɪ`/`A`).
+        """
+        if word in self._token_to_id:
+            return [word]
+        ipa = self._espeak_ipa(word)
+        if not ipa:
             return []
+        return ipa_to_token_strings(ipa)
 
     def text_to_tokens(self, text: str) -> list[int]:
         """
         将文本转换为 token IDs
 
         中文：lexicon 查表 → phonemes → token IDs
-        英文：espeak-ng IPA → token IDs
-        混合文本：按语言分段处理
+        英文：espeak-ng C API 逐词 → IPA → token 映射
+        标点：归一化后作为 token 发出
+        词边界：拉丁词之后插入空格 token(id 1)
+
+        Mirrors sherpa-onnx's frontend for this model.  The old version emitted
+        raw IPA characters and dropped both word boundaries and punctuation,
+        leaving English as one unbroken phone run -- measured at 38.3% WER
+        against 0.0% for the reference frontend.
         """
-        import re
-        tokens = []
+        # Build (is_latin_word, token_strings) items first, then assemble: the
+        # word-boundary rule needs to know whether the *next* item emits
+        # anything.
+        items: list[tuple[bool, list[str]]] = []
 
-        # Split text into Chinese and non-Chinese (English/punctuation) segments
-        # Each segment is (is_chinese: bool, text: str)
-        segments = re.findall(r'[\u4e00-\u9fff]+|[A-Za-z][A-Za-z\' ]*[A-Za-z]|[A-Za-z]|[^\u4e00-\u9fffA-Za-z]+', text)
-
-        for seg in segments:
-            seg = seg.strip()
-            if not seg:
+        for raw in _ITEM_RE.findall(text):
+            if not raw or raw.isspace():
                 continue
 
-            # Check if segment is Chinese
-            if re.match(r'^[\u4e00-\u9fff]+$', seg):
-                # Chinese: use lexicon lookup
-                tokens.extend(self._chinese_to_tokens(seg))
-            elif re.match(r'^[A-Za-z]', seg):
-                # English: use espeak-ng phonemization
-                phonemes = self._phonemize_english(seg)
-                for p in phonemes:
-                    if p in self._token_to_id:
-                        tokens.append(self._token_to_id[p])
-            # else: punctuation/whitespace — skip
+            if _CJK_RE.match(raw):
+                items.append((False, self._chinese_token_strings(raw)))
+                continue
+
+            if _WORD_RE.fullmatch(raw):
+                items.append((True, self._phonemize_english(raw)))
+                continue
+
+            # Single non-word char: punctuation, digit or symbol.
+            ch = _PUNCT_NORMALIZE.get(raw, raw)
+            if ch in _PUNCT_DROP:
+                continue
+            if not ch.isalnum() and ch in self._token_to_id:
+                items.append((False, [ch]))
+                continue
+            # Digits and stray symbols: let espeak say them out loud rather
+            # than dropping them silently, as the old code did.
+            items.append((False, self._phonemize_english(raw)))
+
+        boundary = self._token_to_id.get(' ')
+        tokens: list[int] = []
+        for idx, (is_word, strings) in enumerate(items):
+            for s in strings:
+                tid = self._token_to_id.get(s)
+                if tid is not None:
+                    tokens.append(tid)
+            if (
+                is_word
+                and strings
+                and boundary is not None
+                and idx + 1 < len(items)
+                and items[idx + 1][1]
+            ):
+                tokens.append(boundary)
 
         return tokens
+
+    def _chinese_token_strings(self, text: str) -> list[str]:
+        """Chinese run -> token strings via longest-match lexicon lookup."""
+        out: list[str] = []
+        i = 0
+        while i < len(text):
+            for length in range(min(4, len(text) - i), 0, -1):
+                word = text[i:i + length]
+                if word in self._lexicon:
+                    out.extend(self._lexicon[word])
+                    i += length
+                    break
+            else:
+                i += 1
+        return out
 
     def _chinese_to_tokens(self, text: str) -> list[int]:
         """Convert Chinese text to token IDs via lexicon lookup."""
@@ -487,26 +783,88 @@ class RKNNMatchaVocoder:
         Returns:
             audio: 音频样本
         """
-        # Pad mel to Vocos compiled input size
-        mel_padded = np.zeros((1, 80, VOCOS_FRAMES), dtype=np.float32)
-        use_frames = min(mel_frames, VOCOS_FRAMES, mel.shape[2])
-        mel_padded[:, :, :use_frames] = mel[:, :, :use_frames]
+        total_frames = min(mel_frames, mel.shape[2])
+        if total_frames <= 0:
+            return np.zeros(0, dtype=np.float32)
 
-        # 推理
-        outputs = self._vocos.inference(inputs=[mel_padded])
-
-        # 提取 STFT 分量
-        mag = outputs[0][0]  # [513, T]
-        x = outputs[1][0]    # cos 分量
-        y = outputs[2][0]    # sin 分量
+        # The vocoder has a fixed compiled window (self._vocos_frames).  Longer
+        # utterances are rendered in overlapping chunks and stitched in the
+        # *spectral* domain, so a single ISTFT still runs over the whole
+        # utterance and there are no seams in the waveform.
+        #
+        # Previously anything past the window was simply dropped — a 447-frame
+        # Chinese sentence rendered only 256 frames, losing 42% of its content.
+        mag, x, y = self._run_vocos_frames(mel, total_frames)
 
         # ISTFT
         audio = self._istft(mag, x, y)
 
         # 裁剪到正确长度
-        audio = audio[:mel_frames * HOP_LENGTH]
+        return audio[:total_frames * HOP_LENGTH]
 
-        return audio
+    def _vocos_infer(self, mel_window: np.ndarray) -> list:
+        """One vocoder call, serialized against the ASR backend's NPU use.
+
+        The RKLLM decoder runs with npu_core_num=3 (all cores), so it overlaps
+        this vocos context even though vocos is pinned to NPU_CORE_0.  Lock only
+        the RKNN call — the ISTFT is pure numpy on the CPU and must stay
+        outside.
+        """
+        lock = _npu_lock()
+        if lock is not None:
+            with lock:
+                return self._vocos.inference(inputs=[mel_window])
+        return self._vocos.inference(inputs=[mel_window])
+
+    def _run_vocos_frames(
+        self,
+        mel: np.ndarray,
+        total_frames: int,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Render `total_frames` mel frames through the fixed-window vocoder.
+
+        Returns the concatenated (mag, cos, sin) spectra, exactly
+        `total_frames` wide.  Chunks carry `ctx` frames of context on each side
+        which are then discarded, so the convolutional receptive field is fed
+        properly across chunk boundaries.
+        """
+        cap = int(getattr(self, '_vocos_frames', VOCOS_FRAMES) or VOCOS_FRAMES)
+
+        def _emit(window: np.ndarray, lo: int, hi: int):
+            buf = np.zeros((1, 80, cap), dtype=np.float32)
+            n = window.shape[2]
+            buf[:, :, :n] = window
+            out = self._vocos_infer(buf)
+            return (out[0][0][:, lo:hi], out[1][0][:, lo:hi], out[2][0][:, lo:hi])
+
+        if total_frames <= cap:
+            mag, x, y = _emit(mel[:, :, :total_frames], 0, total_frames)
+            return mag, x, y
+
+        ctx = min(32, cap // 8)
+        stride = cap - 2 * ctx
+        if stride <= 0:  # pathologically small window
+            ctx, stride = 0, cap
+
+        mags, xs, ys = [], [], []
+        pos = 0
+        while pos < total_frames:
+            w_end = min(total_frames, max(pos - ctx, 0) + cap)
+            w_start = max(0, w_end - cap)
+            keep_end = min(total_frames, pos + stride)
+            m, cx, sy = _emit(
+                mel[:, :, w_start:w_end], pos - w_start, keep_end - w_start
+            )
+            mags.append(m)
+            xs.append(cx)
+            ys.append(sy)
+            pos = keep_end
+
+        return (
+            np.concatenate(mags, axis=1),
+            np.concatenate(xs, axis=1),
+            np.concatenate(ys, axis=1),
+        )
 
     def _istft(
         self,
@@ -546,15 +904,87 @@ class RKNNMatchaVocoder:
             start = i * HOP_LENGTH
             window_sum[start:start + N_FFT] += window ** 2
 
-        audio = audio / np.maximum(window_sum, 1e-8)
+        # Overlap-add normalization.  The outermost N_FFT - HOP_LENGTH samples
+        # are covered by fewer than the full set of windows, so window_sum
+        # tapers to ~0 at both edges.  Dividing there amplifies whatever the
+        # vocoder emitted into a huge transient — the old
+        # `np.maximum(window_sum, 1e-8)` turned the final samples into a spike
+        # that then hijacked the peak normalization in synthesize() and ducked
+        # the whole utterance by 20-30 dB.  Zero the degenerate edge instead of
+        # dividing by a near-zero denominator.
+        steady = float(np.median(window_sum[window_sum > 0])) if np.any(window_sum > 0) else 0.0
+        floor = max(steady * 1e-2, 1e-8)
+        valid = window_sum > floor
+        audio[valid] /= window_sum[valid]
+        audio[~valid] = 0.0
 
         return audio
 
-    def _split_text(self, text: str) -> list[str]:
-        """将文本按句子分割，确保每段不超过 MAX_SEQ_LEN 个音素。"""
+    def _token_budget(self) -> int:
+        """Max tokens per segment the *acoustic* model can render.
+
+        The vocoder no longer constrains this — run_vocos() chunks whatever it
+        is given (see _run_vocos_frames).  What remains is the acoustic model:
+        the RKNN buckets are compiled at a fixed x_len (MAX_SEQ_LEN), while the
+        ORT path takes dynamic shapes and has no such limit.  Enforcing the
+        RKNN bucket width on ORT was silently dropping tokens off the end of
+        long segments for no reason.
+        """
+        if getattr(self, '_matcha_backend', None) == 'ort':
+            return int(os.environ.get('MATCHA_ORT_MAX_PHONEMES', '256'))
+        return MAX_SEQ_LEN
+
+    def _split_by_budget(self, seg: str, budget: int) -> list[str]:
+        """Hard-split a segment that has no usable punctuation left.
+
+        Breaks at word boundaries for latin text and at character boundaries
+        for CJK, accumulating until the token budget is reached.  Without this
+        a long unpunctuated clause fell through to the ``tokens[:MAX_SEQ_LEN]``
+        truncation and simply lost its tail.
+        """
         import re
-        # 按句末标点分割
-        segments = re.split(r'([。！？；!?;])', text)
+        atoms = re.findall(r'[一-鿿]|\S+\s*', seg)
+        if not atoms:
+            return [seg]
+
+        out: list[str] = []
+        cur = ''
+        for atom in atoms:
+            cand = cur + atom
+            if cur and len(self.text_to_tokens(cand)) > budget:
+                out.append(cur.strip())
+                cur = atom
+            else:
+                cur = cand
+        if cur.strip():
+            out.append(cur.strip())
+        return out or [seg]
+
+    def _split_text(self, text: str, speed: float = 1.0) -> list[str]:
+        """将文本按句子分割，确保每段不超过声学模型容量。
+
+        Three-tier cascade: sentence-end punctuation -> soft punctuation ->
+        hard token-budget split.
+        """
+        import re
+        budget = self._token_budget()
+
+        # 按句末标点分割。
+        #
+        # sherpa also cuts a chunk at commas, but we deliberately do not:
+        # punctuation now reaches the acoustic model as a token, so the pause
+        # is rendered by the model itself, and cutting again would splice two
+        # independently-generated clips together without sherpa's
+        # inter-sentence silence.  Measured: comma-chunking left English at
+        # 0.0% WER but pushed Chinese from 0.0% to 3.2% CER -- "空调调到"
+        # came out as "空调跳到" in 5/5 runs, the tone smeared across the
+        # splice.  Cutting only at sentence ends keeps both at 0.
+        #
+        # ASCII '.' needs a lookahead so decimals ("26.5") are not split;
+        # without it English statements -- which almost always end in '.' --
+        # were never sentence-split at all.
+        sentence_end = r'([。！？；;]|[!?.](?=\s|$))'
+        segments = re.split(sentence_end, text)
         # 将标点重新附加到前一段
         result = []
         for i in range(0, len(segments), 2):
@@ -567,24 +997,29 @@ class RKNNMatchaVocoder:
         if not result:
             return [text]
 
-        # 对仍超出 MAX_SEQ_LEN 的段，按逗号进一步拆分
+        # 对仍超出预算的段，按逗号等软标点进一步拆分
         final = []
         for seg in result:
-            tokens = self.text_to_tokens(seg)
-            if len(tokens) <= MAX_SEQ_LEN:
+            if len(self.text_to_tokens(seg)) <= budget:
                 final.append(seg)
-            else:
-                # 按逗号拆分
-                sub_segs = re.split(r'([，,])', seg)
-                sub_result = []
-                for j in range(0, len(sub_segs), 2):
-                    s = sub_segs[j]
-                    if j + 1 < len(sub_segs):
-                        s += sub_segs[j + 1]
-                    s = s.strip()
-                    if s:
-                        sub_result.append(s)
-                final.extend(sub_result if sub_result else [seg])
+                continue
+
+            sub_segs = re.split(r'([，,、：:])', seg)
+            sub_result = []
+            for j in range(0, len(sub_segs), 2):
+                s = sub_segs[j]
+                if j + 1 < len(sub_segs):
+                    s += sub_segs[j + 1]
+                s = s.strip()
+                if s:
+                    sub_result.append(s)
+
+            # 软标点也救不了的，按 token 预算硬切
+            for s in (sub_result or [seg]):
+                if len(self.text_to_tokens(s)) <= budget:
+                    final.append(s)
+                else:
+                    final.extend(self._split_by_budget(s, budget))
         return final
 
     @staticmethod
@@ -660,8 +1095,17 @@ class RKNNMatchaVocoder:
         if len(tokens) == 0:
             return np.zeros(0, dtype=np.float32), metadata
 
-        # 截断超长 tokens
-        tokens = tokens[:MAX_SEQ_LEN]
+        # 截断超长 tokens（_split_text 之后应当不再触发；触发即为漏网，必须留痕）
+        budget = self._token_budget()
+        if len(tokens) > budget:
+            import logging
+            logging.getLogger(__name__).warning(
+                "segment exceeded token budget (%d > %d, backend=%s) after "
+                "splitting — dropping %d tokens from %r",
+                len(tokens), budget, self._matcha_backend,
+                len(tokens) - budget, text[:60],
+            )
+            tokens = tokens[:budget]
 
         # Step 2: Matcha RKNN
         t0 = time.perf_counter()
@@ -698,7 +1142,7 @@ class RKNNMatchaVocoder:
             audio: 音频样本 (float32, [-1, 1])
             metadata: 元数据 (耗时等)
         """
-        segments = self._split_text(text)
+        segments = self._split_text(text, speed)
         all_audio = []
         total_text_frontend_ms = 0.0
         total_matcha_ms = 0.0
@@ -716,9 +1160,19 @@ class RKNNMatchaVocoder:
 
         audio = np.concatenate(all_audio) if all_audio else np.zeros(0, dtype=np.float32)
 
-        # 归一化 (guard against empty audio)
-        if len(audio) > 0 and np.abs(audio).max() > 0:
-            audio = audio / np.abs(audio).max() * 0.95
+        # 归一化 (guard against empty audio).
+        # Plain peak normalization lets a single transient decide the gain for
+        # the whole utterance: a 3-sample spike once ducked a 4 s clip by 23 dB.
+        # When the peak is a clear outlier (p99.9 far below it), normalize
+        # against p99.9 and clip the outlier instead of ducking everything.
+        if len(audio) > 0:
+            peak = float(np.abs(audio).max())
+            if peak > 0:
+                p999 = float(np.percentile(np.abs(audio), 99.9))
+                if p999 > 0 and p999 / peak < 0.25:
+                    audio = np.clip(audio / p999 * 0.95, -1.0, 1.0)
+                else:
+                    audio = audio / peak * 0.95
 
         metadata = {
             'num_tokens': total_num_tokens,
