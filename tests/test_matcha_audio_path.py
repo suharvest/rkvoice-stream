@@ -339,3 +339,89 @@ def test_gain_is_a_factor_so_streaming_can_reuse_it():
 def test_empty_and_silent_audio_get_a_neutral_gain():
     assert m.utterance_gain(np.zeros(0, dtype=np.float32)) == (1.0, False)
     assert m.utterance_gain(np.zeros(100, dtype=np.float32)) == (1.0, False)
+
+
+# ------------------------------------------------------ mel frame estimate
+
+
+@pytest.mark.parametrize(
+    "token,expected",
+    [
+        (" ", "boundary"),
+        (",", "punct"),
+        (".", "punct"),
+        ("?", "punct"),
+        ("qing3", "pinyin"),
+        ("zuo4", "pinyin"),
+        ("ai1", "pinyin"),
+        ("ð", "phoneme"),
+        ("ˈ", "phoneme"),
+        ("I", "phoneme"),
+        ("ʧ", "phoneme"),
+    ],
+)
+def test_token_cost_classes(token, expected):
+    assert m.classify_token(token) == expected
+
+
+def _estimator(token_to_id):
+    inst = object.__new__(Cls)
+    inst._token_to_id = token_to_id
+    inst._id_to_class = None
+    return inst
+
+
+def test_english_is_not_charged_the_chinese_frame_rate():
+    """The old estimate was `11.9 * n + 51` for every token alike.
+
+    11.9 is the Chinese pinyin rate; an English phoneme costs 4.7. Charging
+    English at the pinyin rate overshot by 2.5x, the estimate clamped at the
+    model's output width, and long English segments rendered the full padded
+    window -- 19.3 s of speech stretched to 34.6 s on RK3576.
+    """
+    table = {"ð": 65, "ə": 67, "l": 41, "ˈ": 105, "I": 23, "t": 49}
+    est = _estimator(table)
+
+    n = 30
+    tokens = [65] * n
+    predicted = est._estimate_mel_frames(tokens)
+    old = 11.9 * n + 51
+
+    assert predicted == pytest.approx(m._MEL_FRAMES_CONST + 4.7 * n)
+    assert old > predicted * 2, "regression witness is stale"
+
+
+def test_each_class_is_charged_its_measured_rate():
+    table = {" ": 1, ",": 4, "qing3": 1433, "ð": 65}
+    est = _estimator(table)
+
+    base = est._estimate_mel_frames([])
+    assert base == m._MEL_FRAMES_CONST
+
+    assert est._estimate_mel_frames([65]) - base == pytest.approx(4.7)
+    assert est._estimate_mel_frames([1433]) - base == pytest.approx(11.6)
+    assert est._estimate_mel_frames([4]) - base == pytest.approx(16.4)
+    assert est._estimate_mel_frames([1]) - base == pytest.approx(0.0)
+
+
+def test_word_boundaries_are_free_but_punctuation_is_not():
+    """Both were dropped entirely by the old frontend. Adding them back had to
+    not inflate the estimate -- boundaries are free, pauses genuinely are not.
+    """
+    table = {" ": 1, ",": 4, "ð": 65}
+    est = _estimator(table)
+
+    phonemes = [65] * 20
+    with_boundaries = phonemes + [1] * 6
+    with_punct = phonemes + [4] * 6
+
+    assert est._estimate_mel_frames(with_boundaries) == pytest.approx(
+        est._estimate_mel_frames(phonemes)
+    )
+    assert est._estimate_mel_frames(with_punct) > est._estimate_mel_frames(phonemes)
+
+
+def test_unknown_ids_fall_back_to_the_cheapest_sane_class():
+    est = _estimator({"ð": 65})
+    base = est._estimate_mel_frames([])
+    assert est._estimate_mel_frames([9999]) - base == pytest.approx(4.7)

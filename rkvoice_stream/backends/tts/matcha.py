@@ -215,6 +215,43 @@ def ipa_to_token_strings(ipa: str) -> list[str]:
     return out
 
 
+# Mel frames each class of token is worth, fitted against the ORT path's true
+# frame count over 74 measurements on RK3576 (37 texts x both tokenizations).
+#
+# The formula this replaces was `11.9 * num_tokens + 51`, which treated every
+# token alike.  11.9 is the *Chinese pinyin* rate: it was calibrated on Chinese
+# only, and the docstring's own calibration points are reproduced by the
+# pinyin-only law to within a couple of frames.  Applied to English -- where a
+# phoneme costs 4.7 frames, not 11.9 -- it overshot by 2.5x, and the estimate
+# then clamped at the model's output width, so every long English segment
+# rendered the full padded window (measured: 19.3s of speech stretched to
+# 34.6s).  MAE against ORT truth: 240 frames before, 11.7 after.
+#
+# Punctuation is the most expensive class, not a free one -- those tokens buy
+# real pauses (A/B: seven commas were worth 139 frames).  Word boundaries are
+# free to within measurement noise.
+_MEL_FRAMES_PER_TOKEN = {
+    'phoneme': 4.7,    # English/IPA
+    'pinyin': 11.6,    # Chinese syllable
+    'punct': 16.4,     # a rendered pause
+    'boundary': 0.0,   # fitted at 0.022
+}
+_MEL_FRAMES_CONST = 40.0
+
+_PINYIN_RE = re.compile(r'^[a-z]+[1-5]$')
+
+
+def classify_token(token: str) -> str:
+    """Which cost class a token string belongs to (see _MEL_FRAMES_PER_TOKEN)."""
+    if token == ' ':
+        return 'boundary'
+    if len(token) == 1 and not token.isalnum():
+        return 'punct'
+    if _PINYIN_RE.match(token):
+        return 'pinyin'
+    return 'phoneme'
+
+
 def utterance_gain(audio: np.ndarray) -> tuple[float, bool]:
     """Playback gain for one utterance, returned as (gain, needs_clip).
 
@@ -314,6 +351,7 @@ class RKNNMatchaVocoder:
         self._vocos = None
         self._lexicon = None
         self._token_to_id = None
+        self._id_to_class = None   # token id -> mel-cost class, built lazily
 
     def load(self):
         """加载所有模型和资源"""
@@ -332,6 +370,7 @@ class RKNNMatchaVocoder:
 
         # 加载 tokens
         self._token_to_id = parse_tokens_file(self.tokens_path)
+        self._id_to_class = None
 
         # 加载 Matcha 声学模型
         # Priority: 1) split RKNN (best FP16 precision), 2) single RKNN, 3) ORT fallback
@@ -785,16 +824,40 @@ class RKNNMatchaVocoder:
             # ORT produces dynamic output — all frames are valid.
             mel_frames = T
         else:
-            # RKNN produces fixed-size output (e.g., 600 frames for split, 599 for single).
-            # Estimate valid frames from token count. Calibrated against ORT:
-            #   n=1→65, n=5→114, n=9→150, n=14→226, n=17→253
-            # Linear fit: 11.9 * n + 51, with 20% safety margin to avoid truncation.
-            est = int((11.9 * num_tokens + 51) * length_scale * 1.2 + 0.5)
+            # RKNN produces fixed-size output (e.g., 600 frames for split, 599
+            # for single), so the valid frame count has to be estimated.
+            #
+            # Margin is multiplicative plus a floor: 20% of a short utterance
+            # is a thin cushion, and under-predicting truncates speech while
+            # over-predicting only renders a little extra tail.  Over the 74
+            # calibration measurements this leaves 16 frames of headroom in
+            # the worst case (6 without the floor) and never under-predicts.
+            est = int(
+                self._estimate_mel_frames(tokens) * length_scale * 1.2 + 10 + 0.5
+            )
             mel_frames = min(est, T)
             # Clamp to ORT-observed range as safety measure.
             mel = np.clip(mel, -25.0, 8.0)
 
         return mel, mel_frames
+
+    def _estimate_mel_frames(self, tokens: list[int]) -> float:
+        """Predict how many mel frames `tokens` will occupy.
+
+        Only the RKNN acoustic paths need this -- ORT reports the true count.
+        Costs are per token *class*, because a Chinese syllable, an English
+        phoneme and a punctuation pause are worth wildly different durations.
+        """
+        if self._id_to_class is None:
+            self._id_to_class = {
+                tid: classify_token(tok)
+                for tok, tid in (self._token_to_id or {}).items()
+            }
+        total = _MEL_FRAMES_CONST
+        for tid in tokens:
+            cls = self._id_to_class.get(tid, 'phoneme')
+            total += _MEL_FRAMES_PER_TOKEN[cls]
+        return total
 
     def run_vocos(self, mel: np.ndarray, mel_frames: int) -> np.ndarray:
         """
