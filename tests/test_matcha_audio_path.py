@@ -245,6 +245,39 @@ def test_unpunctuated_run_is_split_without_losing_words(splitter):
     assert sorted(" ".join(segs).split()) == sorted(text.split())
 
 
+# -------------------------------------------------------------- tokens.txt
+
+
+def test_tokens_parser_keeps_the_space_token(tmp_path):
+    """Line 1 of the real tokens.txt is ``"  1"`` -- the token IS a space.
+
+    sherpa-onnx requires it (``token2id_.at(" ")``,
+    matcha-tts-lexicon.cc:265) and inserts it at English word boundaries.  The
+    old ``line.strip().split()`` parse dropped it and registered a phantom
+    token ``"1"`` instead, leaving English with no word boundaries at all.
+    """
+    p = tmp_path / "tokens.txt"
+    p.write_text("  1\n; 2\n, 4\nðə 65\n", encoding="utf-8")
+
+    table = m.parse_tokens_file(str(p))
+
+    assert table[" "] == 1, "word-boundary token lost"
+    assert "1" not in table, "phantom token from the id column"
+    assert table[";"] == 2
+    assert table[","] == 4
+
+
+def test_tokens_parser_trusts_the_id_column(tmp_path):
+    """Ids come from the file, not from line order."""
+    p = tmp_path / "tokens.txt"
+    p.write_text("  1\nzuo4 2174\ng 2175\n", encoding="utf-8")
+
+    table = m.parse_tokens_file(str(p))
+
+    assert table["zuo4"] == 2174
+    assert table["g"] == 2175
+
+
 # ------------------------------------------------------------- normalization
 
 
