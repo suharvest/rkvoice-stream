@@ -308,8 +308,10 @@ class _RknnRuntime:
         ret = self.model.load_rknn(path)
         if ret != 0:
             raise RuntimeError(f"load_rknn({path}) failed: ret={ret}")
-        core = getattr(RKNNLite, core_mask, RKNNLite.NPU_CORE_AUTO)
-        ret = self.model.init_runtime(core_mask=core)
+        # Single-core parts (e.g. rv1126b) reject core_mask; the helper picks
+        # the maskless init_runtime() from the RK_PLATFORM profile.
+        from rkvoice_stream.platform import init_runtime_for_platform
+        ret = init_runtime_for_platform(self.model, core_mask=core_mask)
         if ret != 0:
             raise RuntimeError(f"init_runtime({path}, {core_mask}) failed: ret={ret}")
 

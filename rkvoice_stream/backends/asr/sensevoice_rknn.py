@@ -8,8 +8,27 @@ dynamic dims, so the encoder is converted to a fixed sequence length ``T_FIXED``
 and audio is padded/truncated to it.
 
 Verified on real RK3576 NPU (fp16, no overflow): zh + en decode correctly,
-byte-identical English vs the FP32 ONNX reference. Supports **both RK3576 and
-RK3588** — the per-SoC ``.rknn`` is selected by ``RK_PLATFORM``.
+byte-identical English vs the FP32 ONNX reference. Supports **RK3576, RK3588
+and RV1126B** — the per-SoC ``.rknn`` is selected by ``RK_PLATFORM``.
+
+Per-platform quantisation (pick the matching ``.rknn``; the wrong dtype either
+overflows attention → empty output, or is rejected by the toolkit):
+
+  ============  ==========================================================
+  Platform      SenseVoice-small encoder dtype
+  ============  ==========================================================
+  rv1126b       **w4a16** (single-core NPU; production-verified on
+                reCamera Pro). Plain ``init_runtime()`` — no core mask.
+  rk3576        **w4a16**.
+  rk3588        **scaling-fp16** — w4a16 is rejected by the toolkit on
+                rk3588; plain fp16 overflows the NPU attention on Chinese
+                activations (→ empty output). Use the happyme531 "scaling"
+                variant (last-layer Div÷2 + bias÷2) which keeps values in
+                fp16 range. NB: an older int8 rk3588 export also works.
+  ============  ==========================================================
+
+On multi-core parts (rk3576/rk3588) the encoder takes an NPU core mask; the
+single-core rv1126b has no core-mask concept (see platform/runtime.py).
 
 Front end (matches the lovemefan/sherpa SenseVoice export):
   80-dim kaldi fbank (dither=0, hamming, snip_edges) -> LFR(m=7,n=6) -> 560
@@ -17,14 +36,18 @@ Front end (matches the lovemefan/sherpa SenseVoice export):
 
 Environment variables
 ---------------------
-RK_PLATFORM               "rk3576" (default) or "rk3588" — selects the .rknn.
+RK_PLATFORM               "rk3576" (default), "rk3588" or "rv1126b" — selects
+                          the .rknn and the init_runtime() convention.
 SENSEVOICE_RKNN_MODEL_DIR Directory with the model + decode assets.
                           Default: /opt/asr/sensevoice-rknn
 SENSEVOICE_RKNN_MODEL     Explicit .rknn path override (skips RK_PLATFORM).
-SENSEVOICE_RKNN_CORE      NPU core mask (default NPU_CORE_0).
+SENSEVOICE_RKNN_CORE      NPU core mask (default NPU_CORE_0). "NONE" forces a
+                          maskless init_runtime() (single-core parts do this
+                          automatically from the platform profile).
 
 Model dir layout:
-  sense-voice-encoder.rk3576.fp16.rknn   (and/or .rk3588.)
+  sense-voice-encoder.rk3576.w4a16.rknn  (and/or .rk3588.scaling-fp16.,
+                                          .rv1126b.w4a16.)
   am.mvn                                 global CMVN (560-dim add + scale)
   embedding.npy                          (16, 560) prompt embedding table
   chn_jpn_yue_eng_ko_spectok.bpe.model   sentencepiece tokenizer (25055)
@@ -77,7 +100,7 @@ def _resample_linear(audio: np.ndarray, src_sr: int, dst_sr: int = 16000) -> np.
 
 
 class SenseVoiceRKNNBackend(ASRBackend):
-    """SenseVoice offline ASR on the Rockchip NPU (RK3576 / RK3588) via RKNNLite."""
+    """SenseVoice offline ASR on the Rockchip NPU (RK3576 / RK3588 / RV1126B) via RKNNLite."""
 
     # Opt into the generic offline→streaming adapter (OfflineAccumulateStream):
     # accumulate audio, transcribe the whole utterance on finalize, endpointing
@@ -117,9 +140,9 @@ class SenseVoiceRKNNBackend(ASRBackend):
             return explicit
         import glob
         platform = os.environ.get("RK_PLATFORM", "rk3576").lower()
-        # Precision-agnostic: RK3576 ships fp16, RK3588 ships int8 (fp16 overflows
-        # the RK3588 NPU on Chinese activations) — pick whichever .rknn is present
-        # for this SoC.
+        # Precision-agnostic: rk3576/rv1126b ship w4a16, rk3588 ships
+        # scaling-fp16 (plain fp16 overflows the rk3588 NPU on Chinese
+        # activations) — pick whichever .rknn is present for this SoC.
         hits = sorted(glob.glob(os.path.join(model_dir, f"sense-voice-encoder.{platform}.*.rknn")))
         if hits:
             return hits[0]
@@ -146,10 +169,28 @@ class SenseVoiceRKNNBackend(ASRBackend):
         rknn = RKNNLite(verbose=False)
         if rknn.load_rknn(model_path) != 0:
             raise RuntimeError(f"RKNNLite.load_rknn failed: {model_path!r}")
-        core_name = os.environ.get("SENSEVOICE_RKNN_CORE", "NPU_CORE_0")
-        core = getattr(RKNNLite, core_name, RKNNLite.NPU_CORE_AUTO)
-        if rknn.init_runtime(core_mask=core) != 0:
-            raise RuntimeError(f"RKNNLite.init_runtime failed (core={core_name})")
+
+        # NPU core mask: multi-core parts (rk3576/rk3588) take a core_mask;
+        # single-core SoCs (e.g. rv1126b) have NO core-mask concept and must be
+        # initialised with a plain init_runtime() — passing NPU_CORE_0 errors
+        # there. init_runtime_for_platform() makes that decision from the
+        # platform profile (npu_cores). An explicit SENSEVOICE_RKNN_CORE=NONE
+        # forces the maskless path even on a multi-core part.
+        from rkvoice_stream.platform import init_runtime_for_platform
+
+        platform = os.environ.get("RK_PLATFORM", "rk3576").lower()
+        core_name = os.environ.get("SENSEVOICE_RKNN_CORE", "").strip()
+        force_single = core_name.upper() == "NONE"
+        if init_runtime_for_platform(
+            rknn,
+            platform=platform,
+            core_mask=core_name or "NPU_CORE_0",
+            force_single_core=force_single,
+        ) != 0:
+            raise RuntimeError(
+                f"RKNNLite.init_runtime failed (platform={platform!r}, "
+                f"core={core_name or 'NPU_CORE_0'})"
+            )
         self._rknn = rknn
 
         self._cmvn_add, self._cmvn_scale = self._load_cmvn(os.path.join(model_dir, "am.mvn"))

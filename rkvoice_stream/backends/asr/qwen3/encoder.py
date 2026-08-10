@@ -46,10 +46,13 @@ class RknnEncoder:
                              Example: [2, 4] loads only 2s and 4s models.
         """
         from rknnlite.api import RKNNLite
+        from rkvoice_stream.platform import init_runtime_for_platform
 
         self.mel = MelExtractor(mel_filter_path)
         self._core_mask_str = npu_core_mask
-        core = getattr(RKNNLite, npu_core_mask, RKNNLite.NPU_CORE_0_1)
+        # Single-core parts (e.g. rv1126b) reject core_mask; the helper picks a
+        # maskless init_runtime() from the RK_PLATFORM profile, else the mask.
+        _init_rt = lambda m: init_runtime_for_platform(m, core_mask=npu_core_mask)
 
         # Scan for model files in encoder_dir and parent directory
         merged_files = {}    # {sec: path}
@@ -96,7 +99,7 @@ class RknnEncoder:
                 model = RKNNLite(verbose=False)
                 ret = model.load_rknn(merged_files[sec])
                 assert ret == 0, f"load_rknn failed: {merged_files[sec]}"
-                assert model.init_runtime(core_mask=core) == 0
+                assert _init_rt(model) == 0
                 mel_frames = sec * 100
                 max_tokens = self._compute_token_len(mel_frames)
                 self._models[sec] = (model, mel_frames, max_tokens)
@@ -112,10 +115,10 @@ class RknnEncoder:
             for sec in paired:
                 fe = RKNNLite(verbose=False)
                 assert fe.load_rknn(fe_files[sec]) == 0
-                assert fe.init_runtime(core_mask=core) == 0
+                assert _init_rt(fe) == 0
                 be = RKNNLite(verbose=False)
                 assert be.load_rknn(be_files[sec]) == 0
-                assert be.init_runtime(core_mask=core) == 0
+                assert _init_rt(be) == 0
                 mel_frames = sec * 100
                 max_tokens = self._compute_token_len(mel_frames)
                 self._models[sec] = (fe, be, mel_frames, max_tokens)
