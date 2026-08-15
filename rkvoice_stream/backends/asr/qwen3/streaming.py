@@ -175,7 +175,7 @@ class Qwen3TrueStreamingASRStream:
         # ``finish()`` joins that thread, so final text semantics stay the same,
         # while dialogue code can react to endpoint before final text is ready.
         self._vad_final_async = os.environ.get(
-            "QWEN3_ASR_VAD_FINAL_ASYNC", "1").lower() not in (
+            "QWEN3_ASR_VAD_FINAL_ASYNC", "0").lower() not in (
                 "0", "false", "no", "off"
             )
         self._debug_final_input = _env_bool("QWEN3_ASR_DEBUG_FINAL_INPUT", False)
