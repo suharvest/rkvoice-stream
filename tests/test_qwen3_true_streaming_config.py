@@ -104,6 +104,20 @@ def test_vad_endpoint_sync_decode_remains_available(monkeypatch):
     assert stream.finish()["text"] == "sync"
 
 
+def test_vad_endpoint_final_decode_defaults_to_sync(monkeypatch):
+    """Async close-out is platform-tuned, not a safe generic default.
+
+    RK3588 release profiles opt in explicitly; RK3576 measurements regress
+    when the same policy is inherited implicitly.
+    """
+    monkeypatch.setenv("QWEN3_ASR_VAD_BACKEND", "silero")
+    monkeypatch.delenv("QWEN3_ASR_VAD_FINAL_ASYNC", raising=False)
+
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+
+    assert stream._vad_final_async is False
+
+
 def test_auto_resume_after_endpoint_is_opt_in(monkeypatch):
     monkeypatch.setenv("QWEN3_ASR_VAD_BACKEND", "silero")
     monkeypatch.delenv("QWEN3_ASR_ALLOW_AUTO_RESUME_AFTER_ENDPOINT", raising=False)
