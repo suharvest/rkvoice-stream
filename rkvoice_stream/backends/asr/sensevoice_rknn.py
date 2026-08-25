@@ -117,9 +117,12 @@ class SenseVoiceRKNNBackend(ASRBackend):
             return explicit
         import glob
         platform = os.environ.get("RK_PLATFORM", "rk3576").lower()
-        # Precision-agnostic: RK3576 ships fp16, RK3588 ships int8 (fp16 overflows
-        # the RK3588 NPU on Chinese activations) — pick whichever .rknn is present
-        # for this SoC.
+        # Precision-agnostic: pick whichever .rknn is present for this SoC.
+        # Both RK3576 and RK3588 ship `fp16-scaled` — plain fp16 overflows the
+        # last encoder block's FFN on either NPU, and int8 collapses the
+        # 25055-way CTC projection. sorted()[0] is what makes the transition
+        # safe: `fp16-scaled.rknn` sorts before `fp16.rknn` ('-' < '.'), so a
+        # directory still holding a legacy unscaled file picks the scaled one.
         hits = sorted(glob.glob(os.path.join(model_dir, f"sense-voice-encoder.{platform}.*.rknn")))
         if hits:
             return hits[0]
