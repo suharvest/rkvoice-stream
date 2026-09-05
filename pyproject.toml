@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rkvoice-stream"
-version = "0.1.1"
+version = "0.2.0"
 description = "Streaming speech AI on Rockchip NPU platforms (ASR + TTS)"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -22,6 +22,61 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "requests", "websocket-client"]
 moss = ["onnxruntime", "sentencepiece"]
+# Kokoro EN uses Misaki's English frontend and the separately frozen
+# POS-only model wheel.  The model wheel is a local release input rather than
+# a registry dependency, so it is verified by the product packaging receipt.
+kokoro-en = [
+    "misaki==0.9.4",
+    "espeakng-loader==0.2.4",
+    "num2words==0.5.14",
+    "phonemizer-fork==3.3.2",
+    "spacy==3.8.7",
+]
+# ZH uses Misaki's Chinese frontend.  These are intentionally separate from
+# the default/core install and contain no Japanese frontend or dictionary.
+kokoro-zh = [
+    "misaki[zh]==0.9.4",
+    "espeakng-loader==0.2.4",
+    "num2words==0.5.14",
+    "phonemizer-fork==3.3.2",
+    "spacy==3.8.7",
+    "jieba==0.42.1",
+    "pypinyin==0.55.0",
+    "pypinyin-dict==0.9.0",
+    "ordered-set==4.1.0",
+    "cn2an==0.5.24",
+    "proces==0.1.7",
+    "addict==2.4.0",
+    "regex==2024.11.6",
+]
+# JA is explicit opt-in. Misaki 0.9.4's JAG2P() defaults to Cutlet and
+# imports pyopenjtalk at module scope. Keep its small UniDic dictionary and
+# all Japanese frontend packages out of the default EN/ZH closure. Do not use
+# misaki[ja], which selects full unidic instead of the frozen lite dictionary.
+kokoro-ja = [
+    "misaki==0.9.4",
+    "pyopenjtalk==0.4.1",
+    "fugashi==1.5.2",
+    "jaconv==0.4.0",
+    "mojimoji==0.0.13",
+    "unidic-lite==1.0.8",
+]
+kokoro-runtime = [
+    # ORT 1.19.2 publishes wheels for CPython 3.10 and remains compatible
+    # with the ConvOnly CPU fallback ABI.
+    "onnxruntime==1.19.2; python_version >= '3.10'",
+    "rknn-toolkit-lite2==2.3.2",
+]
 
 [tool.setuptools.packages.find]
 include = ["rkvoice_stream*"]
+
+[tool.setuptools.data-files]
+"share/rkvoice-stream/native/kokoro_convonly" = [
+    "native/kokoro_convonly/Makefile",
+    "native/kokoro_convonly/README.md",
+    "native/kokoro_convonly/kokoro_convonly_native.cpp",
+    "native/kokoro_convonly/kokoro_convonly_native.h",
+    "native/kokoro_convonly/kokoro_rk3588_bridge.cpp",
+    "native/kokoro_convonly/kokoro_rk3588_bridge.h",
+]

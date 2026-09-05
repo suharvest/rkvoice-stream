@@ -1,6 +1,6 @@
 """rkvoice-stream: Streaming speech AI on Rockchip NPU platforms."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .engine.asr import create_asr
 from .engine.tts import create_tts
@@ -101,6 +101,19 @@ def _apply_tts_env(cfg: dict) -> None:
         os.environ["TTS_BACKEND"] = str(backend)
     if "require_backend" in cfg:
         os.environ["REQUIRE_TTS_BACKEND"] = str(cfg["require_backend"])
+    if backend == "kokoro_convonly":
+        # This explicit bundle contract does not inherit legacy hybrid paths.
+        mapping = {
+            "bundle_root": "KOKORO_CONVONLY_ROOT",
+            "manifest_sha256": "KOKORO_CONVONLY_MANIFEST_SHA256",
+            "platform": "RK_PLATFORM",
+            "intra": "KOKORO_FRONTEND_INTRA_OP_THREADS",
+            "inter": "KOKORO_FRONTEND_INTER_OP_THREADS",
+        }
+        for key, env_name in mapping.items():
+            if key in cfg:
+                os.environ[env_name] = str(cfg[key])
+        return
     if model_dir:
         if backend == "piper_rknn":
             os.environ["PIPER_MODEL_DIR"] = str(model_dir)
