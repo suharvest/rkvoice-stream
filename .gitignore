@@ -15,3 +15,5 @@ __pycache__/
 **/.DS_Store
 build/
 dist/
+artifacts/
+:memory:.ses

@@ -68,7 +68,7 @@ It also supports the **RK1828 PCIe NPU coprocessor** for on-device TTS (`qwen3_t
 |---------|-----------|------|:----------:|:----------:|:-----------:|:-----------:|
 | **Matcha + Vocos** | zh, en | RKNN vocoder (NPU) | 0.13 | 0.05 | ~320ms | ~145ms |
 | **Piper VITS** | en, zh, de, fr, ja, … | Hybrid CPU + NPU | 0.17 | 0.13 | ~234ms | ~142ms |
-| **Kokoro** | en, zh | RKNN (NPU) | — | 0.77 | — | ~800ms / ~1.8s / ~3.5s |
+| **Kokoro** | en, zh, ja | RKNN (NPU) | — | 0.77 | — | ~800ms / ~1.8s / ~3.5s |
 | **Qwen3-TTS** | zh, en | RKNN (NPU) | — | — | — | — |
 | **Qwen3-TTS (RK1828)** | zh, en | RKNN3 on RK1828 PCIe NPU coprocessor | — | — | — | — |
 
@@ -104,6 +104,9 @@ Audio streamed at real-time pace (simulating live microphone). Qwen3-ASR (NPU) +
 - **Matcha + Vocos** — high-quality zh/en synthesis, NPU-accelerated vocoder; **145ms TTFA on RK3588**
 - **Piper VITS** — lightweight multi-language TTS (en, zh, de, fr, ja, …), hybrid CPU+NPU; **142ms TTFA**
 - **Kokoro RKNN** — multi-stage RKNN synthesis (en, zh), NPU-accelerated
+- **Kokoro ConvOnly** — first-class `TTSBackend` (`kokoro_convonly`) with EN/ZH/JA
+  frontends, sentence streaming, cancellation recovery, CPU fallback, and a
+  pinned external bundle for RK3576/RK3588
 - **Qwen3-TTS** — RKNN streaming TTS (zh, en) on NPU
 - **Qwen3-TTS (RK1828)** — `qwen3_tts_rk1828`, Qwen3-TTS on the RK1828 PCIe NPU coprocessor (RKNN3)
 
