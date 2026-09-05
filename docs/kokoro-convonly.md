@@ -8,9 +8,11 @@ The runtime supports English, Chinese, and Japanese. Frontend dependencies are
 optional extras (`kokoro-en`, `kokoro-zh`, `kokoro-ja`); the Japanese UniDic
 Lite dictionary remains an explicit opt-in dependency. RKNN model files,
 frontend data, and the Japanese dictionary are external read-only mounts.
-The release target is the Hugging Face dataset
+The published Hugging Face repository is
 `harvestsu/seeed-local-voice-rk-artifacts`, with platform paths
 `rk3576/kokoro-convonly-v1_0/` and `rk3588/kokoro-convonly-v1_0/`.
+The immutable release revision is
+`3f8d58c8446ec4b18891624ad4ae4ce75e0f3d3e`.
 The locally qualified manifest SHA256 values are `24244b7054bc3626fc22f4ee9bc013ef63aaa5cf409675cafbc10e1c53957ed9`
 for RK3576 and `83733c717e0ce5b76ac1295e4827cf3ad2e111955259e9d670897e100fabeb6e`
 for RK3588.

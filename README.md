@@ -177,7 +177,7 @@ docker-compose -f docker/docker-compose.yml up
 ### Option 2: Python library
 
 ```bash
-pip install /path/to/rkvoice-stream
+pip install "rkvoice-stream==0.2.0"
 ```
 
 ```python
