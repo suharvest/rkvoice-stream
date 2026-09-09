@@ -135,7 +135,11 @@ class ASRBackend(ABC):
     max_concurrent: int = 1
     """How many calls may be in flight when ``supports_parallel`` is True.
     Backends that build a worker pool report the number of workers they
-    actually built, which may be lower than what was configured."""
+    actually built, which may be lower than what was configured.
+
+    Read both off an instance, never off the class: a backend whose answer
+    depends on what it loaded overrides them as properties, and a class-level
+    read then yields the property object rather than a value."""
 
     prefer_backend_endpoint_vad: bool = False
     """Whether streams from this backend should receive audio before frontend

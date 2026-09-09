@@ -315,11 +315,16 @@ def test_repeated_unload_does_not_double_release(rknn_env, monkeypatch):
     assert [c.released for c in contexts] == [1, 1, 1]
 
 
-def test_unload_waits_for_an_in_flight_inference(rknn_env, monkeypatch):
+def test_unload_leaves_an_in_flight_context_to_its_borrower(rknn_env, monkeypatch):
+    """Releasing under a running inference faults the RKNN runtime.
+
+    unload() releases only what is free; whoever is holding a context releases
+    it when it finishes, so the count still comes out at exactly one each.
+    """
     be = _preloaded("rk3576", monkeypatch)
     entered = threading.Event()
     allow_finish = threading.Event()
-    victim = be._contexts[0]
+    victim, other = be._contexts[0], be._contexts[1]
     original = victim.inference
 
     def slow(inputs=None):
@@ -328,26 +333,104 @@ def test_unload_waits_for_an_in_flight_inference(rknn_env, monkeypatch):
         return original(inputs=inputs)
 
     victim.inference = slow
-    released_at = {}
-
-    def release():
-        released_at["t"] = time.perf_counter()
-        FakeRKNNLite.release(victim)
-
-    victim.release = release
-
     t = threading.Thread(
         target=be.transcribe_array, args=(np.zeros(16000, dtype=np.float32),)
     )
     t.start()
     assert entered.wait(5.0)
 
-    unloader = threading.Thread(target=be.unload)
-    unloader.start()
-    time.sleep(0.1)
-    # unload must still be waiting on the borrowed context.
-    assert "t" not in released_at
+    be.unload()
+    # The free context is gone; the borrowed one is untouched so far.
+    assert other.released == 1
+    assert victim.released == 0
+
     allow_finish.set()
     t.join(5.0)
-    unloader.join(5.0)
     assert victim.released == 1
+
+
+def test_borrow_after_unload_raises_instead_of_blocking(rknn_env, monkeypatch):
+    be = _preloaded("rk3576", monkeypatch)
+    be.unload()
+    with pytest.raises(RuntimeError, match="not ready"):
+        be.transcribe_array(np.zeros(16000, dtype=np.float32))
+
+
+def test_a_waiter_blocked_on_the_pool_wakes_when_unloaded(rknn_env, monkeypatch):
+    """A caller already inside pool.get() must not wait on a dead queue."""
+    monkeypatch.setenv("SENSEVOICE_RKNN_WORKERS", "1")
+    be = _preloaded("rk3576", monkeypatch)
+    entered = threading.Event()
+    allow_finish = threading.Event()
+    only = be._contexts[0]
+    original = only.inference
+
+    def slow(inputs=None):
+        entered.set()
+        assert allow_finish.wait(5.0)
+        return original(inputs=inputs)
+
+    only.inference = slow
+    audio = np.zeros(16000, dtype=np.float32)
+    holder = threading.Thread(target=be.transcribe_array, args=(audio,))
+    holder.start()
+    assert entered.wait(5.0)
+
+    outcome = {}
+
+    def waiter():
+        try:
+            be.transcribe_array(audio)
+        except RuntimeError as exc:
+            outcome["err"] = str(exc)
+
+    w = threading.Thread(target=waiter)
+    w.start()
+    time.sleep(0.1)
+    be.unload()
+    w.join(5.0)
+    allow_finish.set()
+    holder.join(5.0)
+    assert not w.is_alive()
+    assert "unloaded" in outcome.get("err", "")
+    assert only.released == 1
+
+
+# ---------------------------------------------------------------------------
+# Reload
+# ---------------------------------------------------------------------------
+
+
+def test_second_preload_does_not_build_a_second_pool(rknn_env, monkeypatch):
+    """Republishing over a live pool would hand out a borrowed context."""
+    be = _preloaded("rk3588", monkeypatch)
+    first = list(be._contexts)
+    be.preload()
+    assert be._contexts == first
+    assert be.npu_worker_count == 3
+    assert be._pool.qsize() == 3
+
+
+def test_preload_after_unload_builds_a_fresh_pool(rknn_env, monkeypatch):
+    be = _preloaded("rk3576", monkeypatch)
+    first = list(be._contexts)
+    be.unload()
+    be.preload()
+    assert be.npu_worker_count == 2
+    assert all(c not in first for c in be._contexts)
+    assert be.is_ready()
+
+
+def test_a_failure_after_the_contexts_are_built_leaves_nothing_loaded(
+    rknn_env, monkeypatch, tmp_path
+):
+    """Assets load after the contexts; a failure there must not leak them."""
+    (tmp_path / "embedding.npy").unlink()
+    monkeypatch.setenv("RK_PLATFORM", "rk3588")
+    be = sv.SenseVoiceRKNNBackend()
+    with pytest.raises(Exception):
+        be.preload()
+    assert be.npu_worker_count == 0
+    assert be._pool is None
+    assert be.is_ready() is False
+    assert [c.released for c in FakeRKNNLite.instances] == [1, 1, 1]
