@@ -27,6 +27,10 @@ SENSEVOICE_RKNN_WORKERS   Number of NPU worker contexts, one per NPU core
                           (default: 3 on rk3588, 2 on rk3576, 1 elsewhere).
                           Set to 1 to restore the previous single-context
                           behaviour.
+SENSEVOICE_RKNN_T_FIXED   Encoder sequence length the .rknn was frozen to.
+                          Normally left unset: it is read off the artifact
+                          filename (``...t172.rknn`` -> 172), falling back to
+                          344 for files that carry no ``tN`` token.
 
 Model dir layout:
   sense-voice-encoder.rk3576.fp16.rknn   (and/or .rk3588.)
@@ -51,9 +55,13 @@ from rkvoice_stream.engine.asr import ASRBackend, ASRCapability, ASRStream, Tran
 
 logger = logging.getLogger(__name__)
 
-# Fixed encoder sequence length the RKNN artifact was frozen to (prompt frames +
-# LFR frames). Must match the value used by sv_fix_shape.py at conversion time.
-T_FIXED = 344
+# Fixed encoder sequence length the RKNN artifact was frozen to (4 prompt frames
+# + LFR frames). Must match the value used by sv_fix_shape.py at conversion
+# time, so it is read off the artifact rather than assumed: a filename carrying
+# a ``tN`` token (``sense-voice-encoder.rk3588.fp16-scaled.t172.rknn``) pins N,
+# and anything else keeps the original 344.
+T_FIXED_DEFAULT = 344
+_T_IN_NAME = re.compile(r"\.t(\d+)\.")
 LFR_DIM = 560
 BLANK_ID = 0
 
@@ -98,6 +106,39 @@ def _resolve_worker_count(platform: str) -> int:
         )
         return len(_WORKER_CORE_NAMES)
     return n
+
+def _join_windows(parts: list) -> str:
+    """Concatenate per-window decodes, spacing only where scripts need it."""
+    text = ""
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        if text and (text[-1].isascii() and text[-1].isalnum()) and (
+            part[0].isascii() and part[0].isalnum()
+        ):
+            text += " "
+        text += part
+    return text
+
+
+def _resolve_t_fixed(model_path: str) -> int:
+    """Encoder length for this artifact: env override, else the filename."""
+    raw = os.environ.get("SENSEVOICE_RKNN_T_FIXED", "").strip()
+    if raw:
+        try:
+            n = int(raw)
+        except ValueError:
+            logger.warning("SENSEVOICE_RKNN_T_FIXED=%r is not an integer; ignoring", raw)
+        else:
+            if n > 4:
+                return n
+            logger.warning("SENSEVOICE_RKNN_T_FIXED=%d must exceed the 4 prompt frames; ignoring", n)
+    m = _T_IN_NAME.search(os.path.basename(model_path))
+    if m:
+        return int(m.group(1))
+    return T_FIXED_DEFAULT
+
 
 # Language → row index in embedding.npy (lovemefan SenseVoiceSmall prompt table).
 _LANG_IDS = {"auto": 0, "zh": 3, "en": 4, "yue": 7, "ja": 11, "ko": 12}
@@ -147,6 +188,9 @@ class SenseVoiceRKNNBackend(ASRBackend):
         # counter updates — never across an inference or a release.
         self._lifecycle_lock = threading.Lock()
         self._borrowed = 0
+        # Encoder length of the loaded artifact; the default stands until
+        # preload() reads the real one off the file it opened.
+        self._t_fixed = T_FIXED_DEFAULT
         self._cmvn_add: Optional[np.ndarray] = None
         self._cmvn_scale: Optional[np.ndarray] = None
         self._emb: Optional[np.ndarray] = None
@@ -223,7 +267,10 @@ class SenseVoiceRKNNBackend(ASRBackend):
 
         model_dir = os.environ.get("SENSEVOICE_RKNN_MODEL_DIR", "/opt/asr/sensevoice-rknn")
         model_path = self._resolve_model_path(model_dir)
-        logger.info("Loading SenseVoice RKNN encoder from %s", model_path)
+        t_fixed = _resolve_t_fixed(model_path)
+        logger.info(
+            "Loading SenseVoice RKNN encoder from %s (T_FIXED=%d)", model_path, t_fixed
+        )
 
         with self._lifecycle_lock:
             if self._pool is not None:
@@ -314,6 +361,7 @@ class SenseVoiceRKNNBackend(ASRBackend):
                 self._cmvn_add, self._cmvn_scale = cmvn_add, cmvn_scale
                 self._emb = emb
                 self._sp = sp
+                self._t_fixed = t_fixed
                 self._ready = True
         for worker in stale:
             self._discard(worker)
@@ -321,8 +369,10 @@ class SenseVoiceRKNNBackend(ASRBackend):
             return
 
         logger.info(
-            "SenseVoice RKNN worker pool: %d context(s) on %s (platform=%s)",
-            len(contexts), ", ".join(cores), platform,
+            "SenseVoice RKNN worker pool: %d context(s) on %s (platform=%s, "
+            "T_FIXED=%d, max %.1fs audio per encoder pass)",
+            len(contexts), ", ".join(cores), platform, t_fixed,
+            (t_fixed - 4) * 0.06,
         )
         logger.info("SenseVoice RKNN backend ready (vocab=%d).", sp.get_piece_size())
 
@@ -433,15 +483,20 @@ class SenseVoiceRKNNBackend(ASRBackend):
         tag = _map_language(language)
         # Feature extraction is pure numpy and needs no context; only the NPU
         # call borrows one, so the pool is held for the shortest span.
-        speech, valid = self._build_speech(audio, lang=tag)
-        pool, worker = self._borrow()
-        try:
-            out = worker.inference(inputs=[speech.astype(np.float32)])
-        finally:
-            self._give_back(pool, worker)
-        logits = out[0][0]  # [T_FIXED, 25055]
-        text = self._ctc_decode(logits, valid)
-        return TranscriptionResult(text=text, language=None)
+        windows = self._build_speech(audio, lang=tag)
+        # One borrow per window rather than one for the whole utterance: a long
+        # utterance must not hold a context across several NPU passes while
+        # other sessions queue behind it.
+        parts = []
+        for speech, valid in windows:
+            pool, worker = self._borrow()
+            try:
+                out = worker.inference(inputs=[speech.astype(np.float32)])
+            finally:
+                self._give_back(pool, worker)
+            logits = out[0][0]  # [T, 25055]
+            parts.append(self._ctc_decode(logits, valid))
+        return TranscriptionResult(text=_join_windows(parts), language=None)
 
     # ------------------------------------------------------------------
     # Front end + decode (validated against sherpa CPU baseline)
@@ -504,14 +559,32 @@ class SenseVoiceRKNNBackend(ASRBackend):
             self._emb[2],
             self._emb[_TEXTNORM_IDS[textnorm]],
         ]).astype(np.float32)
-        sp_in = np.concatenate([prefix, lfr], axis=0).astype(np.float32)
-        valid = sp_in.shape[0]
-        if valid > T_FIXED:
-            sp_in = sp_in[:T_FIXED]
-            valid = T_FIXED
-        else:
-            sp_in = np.vstack([sp_in, np.zeros((T_FIXED - valid, LFR_DIM), dtype=np.float32)])
-        return sp_in[None], valid
+        return self._windows(lfr, prefix)
+
+    def _windows(self, lfr: np.ndarray, prefix: np.ndarray) -> list:
+        """Split LFR features into ``[1, T, 560]`` encoder inputs.
+
+        The encoder is frozen to T frames, of which the 4 prompt frames are
+        fixed overhead, so at most ``T - 4`` LFR frames fit in one pass. Audio
+        longer than that used to be truncated here and the tail silently lost;
+        it is now cut into consecutive windows that each carry their own prompt
+        prefix and are decoded in order. Speech shorter than the window — the
+        normal case for a VAD-delimited utterance — still yields exactly one
+        window, unchanged.
+        """
+        t_fixed = self._t_fixed
+        span = t_fixed - prefix.shape[0]
+        out = []
+        for start in range(0, max(lfr.shape[0], 1), span):
+            chunk = lfr[start:start + span]
+            sp_in = np.concatenate([prefix, chunk], axis=0).astype(np.float32)
+            valid = sp_in.shape[0]
+            if valid < t_fixed:
+                sp_in = np.vstack(
+                    [sp_in, np.zeros((t_fixed - valid, LFR_DIM), dtype=np.float32)]
+                )
+            out.append((sp_in[None], valid))
+        return out
 
     def _ctc_decode(self, logits: np.ndarray, valid: int) -> str:
         ids = logits.argmax(-1).tolist()[:valid]

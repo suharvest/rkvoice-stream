@@ -63,7 +63,7 @@ class FakeRKNNLite:
         try:
             if FakeRKNNLite.inference_delay_s:
                 time.sleep(FakeRKNNLite.inference_delay_s)
-            return [np.zeros((1, sv.T_FIXED, 8), dtype=np.float32)]
+            return [np.zeros((1, sv.T_FIXED_DEFAULT, 8), dtype=np.float32)]
         finally:
             self.concurrent_entries -= 1
 
@@ -121,10 +121,9 @@ def rknn_env(monkeypatch, tmp_path):
     monkeypatch.setattr(
         sv.SenseVoiceRKNNBackend,
         "_build_speech",
-        lambda self, audio, lang="auto", textnorm="withitn": (
-            np.zeros((1, sv.T_FIXED, sv.LFR_DIM), dtype=np.float32),
-            8,
-        ),
+        lambda self, audio, lang="auto", textnorm="withitn": [
+            (np.zeros((1, sv.T_FIXED_DEFAULT, sv.LFR_DIM), dtype=np.float32), 8)
+        ],
     )
     monkeypatch.delenv("SENSEVOICE_RKNN_WORKERS", raising=False)
     monkeypatch.delenv("SENSEVOICE_RKNN_CORE", raising=False)
