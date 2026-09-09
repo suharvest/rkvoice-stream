@@ -65,6 +65,8 @@ _T_IN_NAME = re.compile(r"\.t(\d+)\.")
 LFR_DIM = 560
 # LFR frames a windowed pass re-reads from the previous window (1 frame = 60 ms).
 _WINDOW_OVERLAP_FRAMES = 16
+# Prompt frames (language / event / speech / textnorm) prepended to every window.
+_N_PROMPT_FRAMES = 4
 BLANK_ID = 0
 
 # NPU core each worker binds to, in build order. ``core_mask`` accepts only the
@@ -110,18 +112,13 @@ def _resolve_worker_count(platform: str) -> int:
     return n
 
 def _join_windows(parts: list) -> str:
-    """Concatenate per-window decodes, spacing only where scripts need it."""
-    text = ""
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
-        if text and (text[-1].isascii() and text[-1].isalnum()) and (
-            part[0].isascii() and part[0].isalnum()
-        ):
-            text += " "
-        text += part
-    return text
+    """Concatenate per-window decodes and strip once, at the ends.
+
+    No separator is inserted between windows. A window can start mid-word, and
+    the SentencePiece pieces already carry word boundaries, so adding a space
+    here would split a word that the cut happened to fall inside.
+    """
+    return "".join(parts).strip()
 
 
 def _resolve_t_fixed(model_path: str) -> int:
@@ -138,7 +135,16 @@ def _resolve_t_fixed(model_path: str) -> int:
             logger.warning("SENSEVOICE_RKNN_T_FIXED=%d must exceed the 4 prompt frames; ignoring", n)
     m = _T_IN_NAME.search(os.path.basename(model_path))
     if m:
-        return int(m.group(1))
+        # Same floor as the env override: at T <= 4 the prompt frames fill the
+        # window, leaving no room for audio, and the windowing loop would never
+        # advance.
+        n = int(m.group(1))
+        if n > 4:
+            return n
+        logger.warning(
+            "%s names T=%d, which leaves no room past the 4 prompt frames; using %d",
+            os.path.basename(model_path), n, T_FIXED_DEFAULT,
+        )
     return T_FIXED_DEFAULT
 
 
@@ -250,7 +256,12 @@ class SenseVoiceRKNNBackend(ASRBackend):
         # directory still holding a legacy unscaled file picks the scaled one.
         hits = sorted(glob.glob(os.path.join(model_dir, f"sense-voice-encoder.{platform}.*.rknn")))
         if hits:
-            return hits[0]
+            # An upgraded deployment keeps the file it already had next to the
+            # newly downloaded one. `fp16-scaled.rknn` sorts before
+            # `fp16-scaled.t172.rknn`, so plain sorted()[0] would go on serving
+            # the superseded 344 build; prefer whichever names a length.
+            tagged = [h for h in hits if _T_IN_NAME.search(os.path.basename(h))]
+            return tagged[0] if tagged else hits[0]
         # Last resort: any sense-voice .rknn in the dir.
         any_hits = sorted(glob.glob(os.path.join(model_dir, "sense-voice-encoder.*.rknn")))
         if any_hits:
@@ -604,18 +615,29 @@ class SenseVoiceRKNNBackend(ASRBackend):
         return out
 
     def _ctc_decode(self, logits: np.ndarray, valid: int, skip: int = 0) -> str:
-        ids = logits.argmax(-1).tolist()[skip:valid]
+        """Greedy CTC over ``[0, valid)``, emitting only what starts at ``skip``.
+
+        The repeat collapse runs from the first audio frame, not from ``skip``:
+        the frames between the two are the overlap this window re-read, and a
+        token held across the cut would otherwise look new here and be emitted a
+        second time. The 4 prompt frames stay out of it either way, so the
+        single-window case (``skip`` = the prompt frames) is untouched.
+
+        The result is NOT stripped — a window can begin mid-word, and the
+        SentencePiece pieces carry their own word boundaries as ``\u2581``.
+        """
+        ids = logits.argmax(-1).tolist()[:valid]
         collapsed = []
         prev = -1
-        for x in ids:
-            if x != prev and x != BLANK_ID:
+        for i in range(_N_PROMPT_FRAMES, len(ids)):
+            x = ids[i]
+            if x != prev and x != BLANK_ID and i >= skip:
                 collapsed.append(x)
             prev = x
         pieces = [self._sp.id_to_piece(i) for i in collapsed if 0 <= i < self._sp.get_piece_size()]
-        text = "".join(pieces).replace("▁", " ")
+        text = "".join(pieces).replace("\u2581", " ")
         # Strip SenseVoice prompt special tokens <|...|> (language/emotion/event/itn).
-        text = re.sub(r"<\|[^|]*\|>", "", text)
-        return text.strip()
+        return re.sub(r"<\|[^|]*\|>", "", text)
 
     @staticmethod
     def _decode_audio(audio_bytes: bytes) -> np.ndarray:

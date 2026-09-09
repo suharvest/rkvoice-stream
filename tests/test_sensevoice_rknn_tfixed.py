@@ -103,12 +103,73 @@ def test_overlap_never_exceeds_half_a_window():
 @pytest.mark.parametrize(
     "parts,expected",
     [
-        (["hello", "world"], "hello world"),
+        ([" hello", " world"], "hello world"),
         (["今天天气", "很好"], "今天天气很好"),
-        (["hello", ""], "hello"),
+        ([" hello", ""], "hello"),
         (["", ""], ""),
-        (["中文", "english"], "中文english"),
+        # a window that begins mid-word must not gain a space it never had
+        ([" won", "derful"], "wonderful"),
     ],
 )
-def test_window_join_spaces_only_between_ascii_words(parts, expected):
+def test_window_join_never_invents_a_separator(parts, expected):
     assert sv._join_windows(parts) == expected
+
+
+@pytest.mark.parametrize("name", ["m.t4.rknn", "m.t0.rknn", "m.t1.rknn"])
+def test_filename_t_below_the_prompt_frames_is_rejected(name, monkeypatch):
+    monkeypatch.delenv("SENSEVOICE_RKNN_T_FIXED", raising=False)
+    assert sv._resolve_t_fixed(name) == sv.T_FIXED_DEFAULT
+
+
+class _FakeSP:
+    def id_to_piece(self, i):
+        return {1: "\u2581a", 2: "\u2581b", 3: "c"}[i]
+
+    def get_piece_size(self):
+        return 8
+
+
+def _decode(rows, valid, skip):
+    be = sv.SenseVoiceRKNNBackend()
+    be._sp = _FakeSP()
+    logits = np.zeros((len(rows), 8), dtype=np.float32)
+    for i, tok in enumerate(rows):
+        logits[i, tok] = 1.0
+    return sv.SenseVoiceRKNNBackend._ctc_decode(be, logits, valid, skip)
+
+
+P = sv._N_PROMPT_FRAMES  # prompt frames every window carries before the audio
+
+
+def test_repeat_held_across_the_cut_is_emitted_once():
+    """The overlap must not re-emit a token the previous window already did."""
+    rows = [0] * P + [1, 1, 1, 1, 2]     # 'a' held over the cut, then 'b'
+    whole = _decode(rows, len(rows), P)
+    first = _decode(rows[:P + 3], P + 3, P)          # window 1 emits frames 0-2
+    second = _decode(rows, len(rows), P + 3)         # window 2 re-reads them
+    assert sv._join_windows([first, second]) == whole.strip()
+
+
+def test_word_split_across_the_cut_is_not_broken_in_two():
+    rows = [0] * P + [1, 3]              # '_a' + 'c' -> one word 'ac'
+    whole = _decode(rows, len(rows), P)
+    assert whole.strip() == "ac"
+    first = _decode(rows[:P + 1], P + 1, P)
+    second = _decode(rows, len(rows), P + 1)
+    assert sv._join_windows([first, second]) == "ac"
+
+
+def test_prompt_frames_never_suppress_the_first_real_token():
+    """A token equal to a prompt frame's argmax must still open the transcript."""
+    rows = [1] * P + [1, 2]
+    assert _decode(rows, len(rows), P).strip() == "a b"
+
+
+def test_a_directory_holding_both_builds_picks_the_tagged_one(tmp_path, monkeypatch):
+    monkeypatch.delenv("SENSEVOICE_RKNN_MODEL", raising=False)
+    monkeypatch.setenv("RK_PLATFORM", "rk3588")
+    for n in ("sense-voice-encoder.rk3588.fp16-scaled.rknn",
+              "sense-voice-encoder.rk3588.fp16-scaled.t172.rknn"):
+        (tmp_path / n).write_bytes(b"x")
+    be = sv.SenseVoiceRKNNBackend()
+    assert be._resolve_model_path(str(tmp_path)).endswith(".t172.rknn")
