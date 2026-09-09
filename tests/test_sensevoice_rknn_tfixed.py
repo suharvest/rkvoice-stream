@@ -50,28 +50,37 @@ def test_short_audio_is_one_padded_window():
     lfr = np.arange(50 * sv.LFR_DIM, dtype=np.float32).reshape(50, sv.LFR_DIM)
     windows = be._windows(lfr, _prefix())
     assert len(windows) == 1
-    speech, valid = windows[0]
+    speech, valid, skip = windows[0]
     assert speech.shape == (1, 172, sv.LFR_DIM)
     assert valid == 54
+    assert skip == 4  # the prompt frames only
     assert np.all(speech[0, valid:] == 0)
 
 
 def test_audio_longer_than_one_pass_is_windowed_not_truncated():
     be = _backend(172)
     span = 172 - 4
+    stride = span - sv._WINDOW_OVERLAP_FRAMES
     lfr = np.arange((span * 2 + 10) * sv.LFR_DIM, dtype=np.float32).reshape(-1, sv.LFR_DIM)
     windows = be._windows(lfr, _prefix())
-    assert len(windows) == 3
-    assert [v for _, v in windows] == [172, 172, 14]
-    # every window is the full encoder length, and no LFR frame is dropped
-    seen = np.vstack([sp[0, 4:v] for sp, v in windows])
+    assert len(windows) > 1
+    # the decoded regions tile the input exactly once, in order and with no gap
+    seen = np.vstack([sp[0, skip:v] for sp, v, skip in windows])
     assert np.array_equal(seen, lfr)
+    # and every window past the first re-reads the overlap as extra left context
+    assert [skip for _, _, skip in windows] == [4] + [4 + sv._WINDOW_OVERLAP_FRAMES] * (
+        len(windows) - 1
+    )
+    assert windows[1][0][0, 4:4 + sv._WINDOW_OVERLAP_FRAMES].tolist() == (
+        lfr[stride:stride + sv._WINDOW_OVERLAP_FRAMES].tolist()
+    )
 
 
 def test_window_count_follows_t_fixed():
     lfr = np.zeros((400, sv.LFR_DIM), dtype=np.float32)
-    assert len(_backend(344)._windows(lfr, _prefix())) == 2
-    assert len(_backend(172)._windows(lfr, _prefix())) == 3
+    assert len(_backend(344)._windows(lfr, _prefix())) < len(
+        _backend(172)._windows(lfr, _prefix())
+    )
 
 
 def test_empty_audio_still_yields_one_window():
@@ -79,6 +88,16 @@ def test_empty_audio_still_yields_one_window():
     windows = be._windows(np.zeros((0, sv.LFR_DIM), dtype=np.float32), _prefix())
     assert len(windows) == 1
     assert windows[0][1] == 4
+    assert windows[0][2] == 4
+
+
+def test_overlap_never_exceeds_half_a_window():
+    """A tiny encoder must still make forward progress rather than loop."""
+    be = _backend(40)
+    lfr = np.zeros((500, sv.LFR_DIM), dtype=np.float32)
+    windows = be._windows(lfr, _prefix())
+    seen = np.vstack([sp[0, skip:v] for sp, v, skip in windows])
+    assert np.array_equal(seen, lfr)
 
 
 @pytest.mark.parametrize(

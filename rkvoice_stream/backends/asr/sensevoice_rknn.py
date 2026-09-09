@@ -63,6 +63,8 @@ logger = logging.getLogger(__name__)
 T_FIXED_DEFAULT = 344
 _T_IN_NAME = re.compile(r"\.t(\d+)\.")
 LFR_DIM = 560
+# LFR frames a windowed pass re-reads from the previous window (1 frame = 60 ms).
+_WINDOW_OVERLAP_FRAMES = 16
 BLANK_ID = 0
 
 # NPU core each worker binds to, in build order. ``core_mask`` accepts only the
@@ -488,14 +490,14 @@ class SenseVoiceRKNNBackend(ASRBackend):
         # utterance must not hold a context across several NPU passes while
         # other sessions queue behind it.
         parts = []
-        for speech, valid in windows:
+        for speech, valid, skip in windows:
             pool, worker = self._borrow()
             try:
                 out = worker.inference(inputs=[speech.astype(np.float32)])
             finally:
                 self._give_back(pool, worker)
             logits = out[0][0]  # [T, 25055]
-            parts.append(self._ctc_decode(logits, valid))
+            parts.append(self._ctc_decode(logits, valid, skip))
         return TranscriptionResult(text=_join_windows(parts), language=None)
 
     # ------------------------------------------------------------------
@@ -567,15 +569,26 @@ class SenseVoiceRKNNBackend(ASRBackend):
         The encoder is frozen to T frames, of which the 4 prompt frames are
         fixed overhead, so at most ``T - 4`` LFR frames fit in one pass. Audio
         longer than that used to be truncated here and the tail silently lost;
-        it is now cut into consecutive windows that each carry their own prompt
-        prefix and are decoded in order. Speech shorter than the window — the
-        normal case for a VAD-delimited utterance — still yields exactly one
-        window, unchanged.
+        it is now cut into windows that are decoded in order. Speech shorter
+        than one window — the normal case for a VAD-delimited utterance — still
+        yields exactly one window, unchanged.
+
+        Every window past the first re-reads ``_WINDOW_OVERLAP_FRAMES`` of the
+        previous one and reports them as ``skip``, so the caller drops their
+        CTC rows. A hard cut costs the word sitting on the boundary, which has
+        no left context in the new window and is half gone from the old one;
+        re-reading gives the second pass that context while the overlap itself
+        is decoded exactly once. Each tuple is ``(speech, valid, skip)``:
+        decode rows ``[skip, valid)``.
         """
         t_fixed = self._t_fixed
-        span = t_fixed - prefix.shape[0]
+        n_prefix = prefix.shape[0]
+        span = t_fixed - n_prefix
+        overlap = min(_WINDOW_OVERLAP_FRAMES, span // 2)
+        stride = span - overlap
         out = []
-        for start in range(0, max(lfr.shape[0], 1), span):
+        start = 0
+        while True:
             chunk = lfr[start:start + span]
             sp_in = np.concatenate([prefix, chunk], axis=0).astype(np.float32)
             valid = sp_in.shape[0]
@@ -583,11 +596,15 @@ class SenseVoiceRKNNBackend(ASRBackend):
                 sp_in = np.vstack(
                     [sp_in, np.zeros((t_fixed - valid, LFR_DIM), dtype=np.float32)]
                 )
-            out.append((sp_in[None], valid))
+            skip = n_prefix if start == 0 else n_prefix + overlap
+            out.append((sp_in[None], valid, min(skip, valid)))
+            if start + span >= lfr.shape[0]:
+                break
+            start += stride
         return out
 
-    def _ctc_decode(self, logits: np.ndarray, valid: int) -> str:
-        ids = logits.argmax(-1).tolist()[:valid]
+    def _ctc_decode(self, logits: np.ndarray, valid: int, skip: int = 0) -> str:
+        ids = logits.argmax(-1).tolist()[skip:valid]
         collapsed = []
         prev = -1
         for x in ids:

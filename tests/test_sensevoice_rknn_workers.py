@@ -122,7 +122,7 @@ def rknn_env(monkeypatch, tmp_path):
         sv.SenseVoiceRKNNBackend,
         "_build_speech",
         lambda self, audio, lang="auto", textnorm="withitn": [
-            (np.zeros((1, sv.T_FIXED_DEFAULT, sv.LFR_DIM), dtype=np.float32), 8)
+            (np.zeros((1, sv.T_FIXED_DEFAULT, sv.LFR_DIM), dtype=np.float32), 8, 4)
         ],
     )
     monkeypatch.delenv("SENSEVOICE_RKNN_WORKERS", raising=False)
