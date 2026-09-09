@@ -27,6 +27,10 @@ SENSEVOICE_RKNN_WORKERS   Number of NPU worker contexts, one per NPU core
                           (default: 3 on rk3588, 2 on rk3576, 1 elsewhere).
                           Set to 1 to restore the previous single-context
                           behaviour.
+SENSEVOICE_RKNN_T_FIXED   Encoder sequence length the .rknn was frozen to.
+                          Normally left unset: it is read off the artifact
+                          filename (``...t172.rknn`` -> 172), falling back to
+                          344 for files that carry no ``tN`` token.
 
 Model dir layout:
   sense-voice-encoder.rk3576.fp16.rknn   (and/or .rk3588.)
@@ -51,10 +55,18 @@ from rkvoice_stream.engine.asr import ASRBackend, ASRCapability, ASRStream, Tran
 
 logger = logging.getLogger(__name__)
 
-# Fixed encoder sequence length the RKNN artifact was frozen to (prompt frames +
-# LFR frames). Must match the value used by sv_fix_shape.py at conversion time.
-T_FIXED = 344
+# Fixed encoder sequence length the RKNN artifact was frozen to (4 prompt frames
+# + LFR frames). Must match the value used by sv_fix_shape.py at conversion
+# time, so it is read off the artifact rather than assumed: a filename carrying
+# a ``tN`` token (``sense-voice-encoder.rk3588.fp16-scaled.t172.rknn``) pins N,
+# and anything else keeps the original 344.
+T_FIXED_DEFAULT = 344
+_T_IN_NAME = re.compile(r"\.t(\d+)\.")
 LFR_DIM = 560
+# LFR frames a windowed pass re-reads from the previous window (1 frame = 60 ms).
+_WINDOW_OVERLAP_FRAMES = 16
+# Prompt frames (language / event / speech / textnorm) prepended to every window.
+_N_PROMPT_FRAMES = 4
 BLANK_ID = 0
 
 # NPU core each worker binds to, in build order. ``core_mask`` accepts only the
@@ -98,6 +110,43 @@ def _resolve_worker_count(platform: str) -> int:
         )
         return len(_WORKER_CORE_NAMES)
     return n
+
+def _join_windows(parts: list) -> str:
+    """Concatenate per-window decodes and strip once, at the ends.
+
+    No separator is inserted between windows. A window can start mid-word, and
+    the SentencePiece pieces already carry word boundaries, so adding a space
+    here would split a word that the cut happened to fall inside.
+    """
+    return "".join(parts).strip()
+
+
+def _resolve_t_fixed(model_path: str) -> int:
+    """Encoder length for this artifact: env override, else the filename."""
+    raw = os.environ.get("SENSEVOICE_RKNN_T_FIXED", "").strip()
+    if raw:
+        try:
+            n = int(raw)
+        except ValueError:
+            logger.warning("SENSEVOICE_RKNN_T_FIXED=%r is not an integer; ignoring", raw)
+        else:
+            if n > 4:
+                return n
+            logger.warning("SENSEVOICE_RKNN_T_FIXED=%d must exceed the 4 prompt frames; ignoring", n)
+    m = _T_IN_NAME.search(os.path.basename(model_path))
+    if m:
+        # Same floor as the env override: at T <= 4 the prompt frames fill the
+        # window, leaving no room for audio, and the windowing loop would never
+        # advance.
+        n = int(m.group(1))
+        if n > 4:
+            return n
+        logger.warning(
+            "%s names T=%d, which leaves no room past the 4 prompt frames; using %d",
+            os.path.basename(model_path), n, T_FIXED_DEFAULT,
+        )
+    return T_FIXED_DEFAULT
+
 
 # Language → row index in embedding.npy (lovemefan SenseVoiceSmall prompt table).
 _LANG_IDS = {"auto": 0, "zh": 3, "en": 4, "yue": 7, "ja": 11, "ko": 12}
@@ -147,6 +196,9 @@ class SenseVoiceRKNNBackend(ASRBackend):
         # counter updates — never across an inference or a release.
         self._lifecycle_lock = threading.Lock()
         self._borrowed = 0
+        # Encoder length of the loaded artifact; the default stands until
+        # preload() reads the real one off the file it opened.
+        self._t_fixed = T_FIXED_DEFAULT
         self._cmvn_add: Optional[np.ndarray] = None
         self._cmvn_scale: Optional[np.ndarray] = None
         self._emb: Optional[np.ndarray] = None
@@ -204,7 +256,12 @@ class SenseVoiceRKNNBackend(ASRBackend):
         # directory still holding a legacy unscaled file picks the scaled one.
         hits = sorted(glob.glob(os.path.join(model_dir, f"sense-voice-encoder.{platform}.*.rknn")))
         if hits:
-            return hits[0]
+            # An upgraded deployment keeps the file it already had next to the
+            # newly downloaded one. `fp16-scaled.rknn` sorts before
+            # `fp16-scaled.t172.rknn`, so plain sorted()[0] would go on serving
+            # the superseded 344 build; prefer whichever names a length.
+            tagged = [h for h in hits if _T_IN_NAME.search(os.path.basename(h))]
+            return tagged[0] if tagged else hits[0]
         # Last resort: any sense-voice .rknn in the dir.
         any_hits = sorted(glob.glob(os.path.join(model_dir, "sense-voice-encoder.*.rknn")))
         if any_hits:
@@ -223,7 +280,10 @@ class SenseVoiceRKNNBackend(ASRBackend):
 
         model_dir = os.environ.get("SENSEVOICE_RKNN_MODEL_DIR", "/opt/asr/sensevoice-rknn")
         model_path = self._resolve_model_path(model_dir)
-        logger.info("Loading SenseVoice RKNN encoder from %s", model_path)
+        t_fixed = _resolve_t_fixed(model_path)
+        logger.info(
+            "Loading SenseVoice RKNN encoder from %s (T_FIXED=%d)", model_path, t_fixed
+        )
 
         with self._lifecycle_lock:
             if self._pool is not None:
@@ -314,6 +374,7 @@ class SenseVoiceRKNNBackend(ASRBackend):
                 self._cmvn_add, self._cmvn_scale = cmvn_add, cmvn_scale
                 self._emb = emb
                 self._sp = sp
+                self._t_fixed = t_fixed
                 self._ready = True
         for worker in stale:
             self._discard(worker)
@@ -321,8 +382,10 @@ class SenseVoiceRKNNBackend(ASRBackend):
             return
 
         logger.info(
-            "SenseVoice RKNN worker pool: %d context(s) on %s (platform=%s)",
-            len(contexts), ", ".join(cores), platform,
+            "SenseVoice RKNN worker pool: %d context(s) on %s (platform=%s, "
+            "T_FIXED=%d, max %.1fs audio per encoder pass)",
+            len(contexts), ", ".join(cores), platform, t_fixed,
+            (t_fixed - 4) * 0.06,
         )
         logger.info("SenseVoice RKNN backend ready (vocab=%d).", sp.get_piece_size())
 
@@ -433,15 +496,20 @@ class SenseVoiceRKNNBackend(ASRBackend):
         tag = _map_language(language)
         # Feature extraction is pure numpy and needs no context; only the NPU
         # call borrows one, so the pool is held for the shortest span.
-        speech, valid = self._build_speech(audio, lang=tag)
-        pool, worker = self._borrow()
-        try:
-            out = worker.inference(inputs=[speech.astype(np.float32)])
-        finally:
-            self._give_back(pool, worker)
-        logits = out[0][0]  # [T_FIXED, 25055]
-        text = self._ctc_decode(logits, valid)
-        return TranscriptionResult(text=text, language=None)
+        windows = self._build_speech(audio, lang=tag)
+        # One borrow per window rather than one for the whole utterance: a long
+        # utterance must not hold a context across several NPU passes while
+        # other sessions queue behind it.
+        parts = []
+        for speech, valid, skip in windows:
+            pool, worker = self._borrow()
+            try:
+                out = worker.inference(inputs=[speech.astype(np.float32)])
+            finally:
+                self._give_back(pool, worker)
+            logits = out[0][0]  # [T, 25055]
+            parts.append(self._ctc_decode(logits, valid, skip))
+        return TranscriptionResult(text=_join_windows(parts), language=None)
 
     # ------------------------------------------------------------------
     # Front end + decode (validated against sherpa CPU baseline)
@@ -504,28 +572,72 @@ class SenseVoiceRKNNBackend(ASRBackend):
             self._emb[2],
             self._emb[_TEXTNORM_IDS[textnorm]],
         ]).astype(np.float32)
-        sp_in = np.concatenate([prefix, lfr], axis=0).astype(np.float32)
-        valid = sp_in.shape[0]
-        if valid > T_FIXED:
-            sp_in = sp_in[:T_FIXED]
-            valid = T_FIXED
-        else:
-            sp_in = np.vstack([sp_in, np.zeros((T_FIXED - valid, LFR_DIM), dtype=np.float32)])
-        return sp_in[None], valid
+        return self._windows(lfr, prefix)
 
-    def _ctc_decode(self, logits: np.ndarray, valid: int) -> str:
+    def _windows(self, lfr: np.ndarray, prefix: np.ndarray) -> list:
+        """Split LFR features into ``[1, T, 560]`` encoder inputs.
+
+        The encoder is frozen to T frames, of which the 4 prompt frames are
+        fixed overhead, so at most ``T - 4`` LFR frames fit in one pass. Audio
+        longer than that used to be truncated here and the tail silently lost;
+        it is now cut into windows that are decoded in order. Speech shorter
+        than one window — the normal case for a VAD-delimited utterance — still
+        yields exactly one window, unchanged.
+
+        Every window past the first re-reads ``_WINDOW_OVERLAP_FRAMES`` of the
+        previous one and reports them as ``skip``, so the caller drops their
+        CTC rows. A hard cut costs the word sitting on the boundary, which has
+        no left context in the new window and is half gone from the old one;
+        re-reading gives the second pass that context while the overlap itself
+        is decoded exactly once. Each tuple is ``(speech, valid, skip)``:
+        decode rows ``[skip, valid)``.
+        """
+        t_fixed = self._t_fixed
+        n_prefix = prefix.shape[0]
+        span = t_fixed - n_prefix
+        overlap = min(_WINDOW_OVERLAP_FRAMES, span // 2)
+        stride = span - overlap
+        out = []
+        start = 0
+        while True:
+            chunk = lfr[start:start + span]
+            sp_in = np.concatenate([prefix, chunk], axis=0).astype(np.float32)
+            valid = sp_in.shape[0]
+            if valid < t_fixed:
+                sp_in = np.vstack(
+                    [sp_in, np.zeros((t_fixed - valid, LFR_DIM), dtype=np.float32)]
+                )
+            skip = n_prefix if start == 0 else n_prefix + overlap
+            out.append((sp_in[None], valid, min(skip, valid)))
+            if start + span >= lfr.shape[0]:
+                break
+            start += stride
+        return out
+
+    def _ctc_decode(self, logits: np.ndarray, valid: int, skip: int = 0) -> str:
+        """Greedy CTC over ``[0, valid)``, emitting only what starts at ``skip``.
+
+        The repeat collapse runs from the first audio frame, not from ``skip``:
+        the frames between the two are the overlap this window re-read, and a
+        token held across the cut would otherwise look new here and be emitted a
+        second time. The 4 prompt frames stay out of it either way, so the
+        single-window case (``skip`` = the prompt frames) is untouched.
+
+        The result is NOT stripped — a window can begin mid-word, and the
+        SentencePiece pieces carry their own word boundaries as ``\u2581``.
+        """
         ids = logits.argmax(-1).tolist()[:valid]
         collapsed = []
         prev = -1
-        for x in ids:
-            if x != prev and x != BLANK_ID:
+        for i in range(_N_PROMPT_FRAMES, len(ids)):
+            x = ids[i]
+            if x != prev and x != BLANK_ID and i >= skip:
                 collapsed.append(x)
             prev = x
         pieces = [self._sp.id_to_piece(i) for i in collapsed if 0 <= i < self._sp.get_piece_size()]
-        text = "".join(pieces).replace("▁", " ")
+        text = "".join(pieces).replace("\u2581", " ")
         # Strip SenseVoice prompt special tokens <|...|> (language/emotion/event/itn).
-        text = re.sub(r"<\|[^|]*\|>", "", text)
-        return text.strip()
+        return re.sub(r"<\|[^|]*\|>", "", text)
 
     @staticmethod
     def _decode_audio(audio_bytes: bytes) -> np.ndarray:
