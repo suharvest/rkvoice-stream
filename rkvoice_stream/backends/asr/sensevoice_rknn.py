@@ -21,7 +21,12 @@ RK_PLATFORM               "rk3576" (default) or "rk3588" — selects the .rknn.
 SENSEVOICE_RKNN_MODEL_DIR Directory with the model + decode assets.
                           Default: /opt/asr/sensevoice-rknn
 SENSEVOICE_RKNN_MODEL     Explicit .rknn path override (skips RK_PLATFORM).
-SENSEVOICE_RKNN_CORE      NPU core mask (default NPU_CORE_0).
+SENSEVOICE_RKNN_CORE      NPU core mask for the single-worker case
+                          (default NPU_CORE_0).
+SENSEVOICE_RKNN_WORKERS   Number of NPU worker contexts, one per NPU core
+                          (default: 3 on rk3588, 2 on rk3576, 1 elsewhere).
+                          Set to 1 to restore the previous single-context
+                          behaviour.
 
 Model dir layout:
   sense-voice-encoder.rk3576.fp16.rknn   (and/or .rk3588.)
@@ -35,7 +40,9 @@ from __future__ import annotations
 import io
 import logging
 import os
+import queue
 import re
+import threading
 from typing import Optional
 
 import numpy as np
@@ -49,6 +56,47 @@ logger = logging.getLogger(__name__)
 T_FIXED = 344
 LFR_DIM = 560
 BLANK_ID = 0
+
+# NPU core each worker binds to, in build order. ``core_mask`` accepts only the
+# driver's enum values ({0 AUTO, 1 core0, 2 core1, 4 core2, 3 core0+1,
+# 7 core0+1+2}); a bitwise combination such as 5 or 6 is rejected outright
+# ("The core mode 6 is not supported currently"), and NPU_CORE_AUTO binds a
+# single core rather than spreading work. So each worker takes exactly one
+# single-core enum and the pool provides the parallelism.
+_WORKER_CORE_NAMES = ("NPU_CORE_0", "NPU_CORE_1", "NPU_CORE_2")
+
+# Physical NPU cores per SoC — the ceiling on useful workers.
+_PLATFORM_WORKERS = {"rk3588": 3, "rk3576": 2}
+
+# Longest a single in-flight inference is expected to take, plus headroom.
+# unload() waits this long per worker before releasing regardless.
+_UNLOAD_DRAIN_TIMEOUT_S = 30.0
+
+
+def _resolve_worker_count(platform: str) -> int:
+    """Workers to attempt, from ``SENSEVOICE_RKNN_WORKERS`` else the SoC."""
+    default = _PLATFORM_WORKERS.get(platform, 1)
+    raw = os.environ.get("SENSEVOICE_RKNN_WORKERS", "").strip()
+    if not raw:
+        return default
+    try:
+        n = int(raw)
+    except ValueError:
+        logger.warning(
+            "SENSEVOICE_RKNN_WORKERS=%r is not an integer; using %d", raw, default
+        )
+        return default
+    if n < 1:
+        logger.warning("SENSEVOICE_RKNN_WORKERS=%d must be >= 1; using 1", n)
+        return 1
+    if n > len(_WORKER_CORE_NAMES):
+        logger.warning(
+            "SENSEVOICE_RKNN_WORKERS=%d exceeds the %d single-core masks the "
+            "driver exposes; using %d",
+            n, len(_WORKER_CORE_NAMES), len(_WORKER_CORE_NAMES),
+        )
+        return len(_WORKER_CORE_NAMES)
+    return n
 
 # Language → row index in embedding.npy (lovemefan SenseVoiceSmall prompt table).
 _LANG_IDS = {"auto": 0, "zh": 3, "en": 4, "yue": 7, "ja": 11, "ko": 12}
@@ -86,6 +134,14 @@ class SenseVoiceRKNNBackend(ASRBackend):
 
     def __init__(self) -> None:
         self._rknn = None
+        # One RKNNLite context per NPU core, plus a queue that hands exactly
+        # one context to one caller at a time. ``queue.Queue`` is the pool:
+        # borrowing blocks until a context is free, so more callers than
+        # workers is correct (they wait), not a race.
+        self._contexts: list = []
+        self._worker_cores: list[str] = []
+        self._pool: "Optional[queue.Queue]" = None
+        self._unload_lock = threading.Lock()
         self._cmvn_add: Optional[np.ndarray] = None
         self._cmvn_scale: Optional[np.ndarray] = None
         self._emb: Optional[np.ndarray] = None
@@ -99,6 +155,24 @@ class SenseVoiceRKNNBackend(ASRBackend):
     @property
     def capabilities(self) -> set[ASRCapability]:
         return {ASRCapability.OFFLINE, ASRCapability.MULTI_LANGUAGE}
+
+    @property
+    def npu_worker_count(self) -> int:
+        """Contexts actually built. 0 before ``preload()``."""
+        return len(self._contexts)
+
+    @property
+    def npu_worker_cores(self) -> list[str]:
+        """Core mask name of each built context, in build order."""
+        return list(self._worker_cores)
+
+    @property
+    def supports_parallel(self) -> bool:
+        return len(self._contexts) > 1
+
+    @property
+    def max_concurrent(self) -> int:
+        return max(1, len(self._contexts))
 
     @property
     def sample_rate(self) -> int:
@@ -146,14 +220,52 @@ class SenseVoiceRKNNBackend(ASRBackend):
         model_path = self._resolve_model_path(model_dir)
         logger.info("Loading SenseVoice RKNN encoder from %s", model_path)
 
-        rknn = RKNNLite(verbose=False)
-        if rknn.load_rknn(model_path) != 0:
-            raise RuntimeError(f"RKNNLite.load_rknn failed: {model_path!r}")
-        core_name = os.environ.get("SENSEVOICE_RKNN_CORE", "NPU_CORE_0")
-        core = getattr(RKNNLite, core_name, RKNNLite.NPU_CORE_AUTO)
-        if rknn.init_runtime(core_mask=core) != 0:
-            raise RuntimeError(f"RKNNLite.init_runtime failed (core={core_name})")
-        self._rknn = rknn
+        platform = os.environ.get("RK_PLATFORM", "rk3576").lower()
+        want = _resolve_worker_count(platform)
+        if want == 1:
+            # Single worker keeps the historical env: an operator who pinned
+            # the backend to one specific core still gets that core.
+            core_names = [os.environ.get("SENSEVOICE_RKNN_CORE", "NPU_CORE_0")]
+        else:
+            core_names = list(_WORKER_CORE_NAMES[:want])
+
+        for core_name in core_names:
+            core = getattr(RKNNLite, core_name, RKNNLite.NPU_CORE_AUTO)
+            worker = RKNNLite(verbose=False)
+            if worker.load_rknn(model_path) != 0:
+                self._discard(worker)
+                if not self._contexts:
+                    raise RuntimeError(f"RKNNLite.load_rknn failed: {model_path!r}")
+                logger.warning(
+                    "SenseVoice RKNN worker on %s: load_rknn failed; "
+                    "continuing with %d worker(s)", core_name, len(self._contexts),
+                )
+                break
+            if worker.init_runtime(core_mask=core) != 0:
+                self._discard(worker)
+                if not self._contexts:
+                    raise RuntimeError(
+                        f"RKNNLite.init_runtime failed (core={core_name})"
+                    )
+                # A later core failing is a degraded start, not a dead one:
+                # serve at the width that did come up and say so.
+                logger.warning(
+                    "SenseVoice RKNN worker on %s: init_runtime failed; "
+                    "continuing with %d worker(s)", core_name, len(self._contexts),
+                )
+                break
+            self._contexts.append(worker)
+            self._worker_cores.append(core_name)
+
+        self._pool = queue.Queue()
+        for worker in self._contexts:
+            self._pool.put(worker)
+        # Kept for callers (and tests) that still reach for a single context.
+        self._rknn = self._contexts[0]
+        logger.info(
+            "SenseVoice RKNN worker pool: %d context(s) on %s (platform=%s)",
+            len(self._contexts), ", ".join(self._worker_cores), platform,
+        )
 
         self._cmvn_add, self._cmvn_scale = self._load_cmvn(os.path.join(model_dir, "am.mvn"))
         self._emb = np.load(os.path.join(model_dir, "embedding.npy"))
@@ -163,14 +275,47 @@ class SenseVoiceRKNNBackend(ASRBackend):
         self._ready = True
         logger.info("SenseVoice RKNN backend ready (vocab=%d).", self._sp.get_piece_size())
 
+    @staticmethod
+    def _discard(worker) -> None:
+        """Release a context that failed to come up. Never raises."""
+        try:
+            worker.release()
+        except Exception:
+            logger.exception("RKNNLite.release failed on a half-built worker")
+
     def unload(self) -> None:
-        if self._rknn is not None:
+        """Release every worker context, exactly once, on the calling thread.
+
+        Held under a lock and with the context list cleared before the
+        releases run, so a concurrent second ``unload()`` cannot release the
+        same handle twice — a double release inside the RKNN runtime takes the
+        process down rather than raising.
+        """
+        with self._unload_lock:
+            contexts, self._contexts = self._contexts, []
+            pool, self._pool = self._pool, None
+            self._worker_cores = []
+            self._rknn = None
+            self._ready = False
+        # Take every context back out of the pool before releasing it: a
+        # borrowed context is inside ``inference()`` on another thread, and
+        # releasing under it faults the RKNN runtime rather than raising.
+        if pool is not None:
+            for _ in contexts:
+                try:
+                    pool.get(timeout=_UNLOAD_DRAIN_TIMEOUT_S)
+                except queue.Empty:
+                    logger.warning(
+                        "SenseVoice RKNN unload: a worker did not return within"
+                        " %.0fs; releasing the remaining contexts anyway",
+                        _UNLOAD_DRAIN_TIMEOUT_S,
+                    )
+                    break
+        for worker in contexts:
             try:
-                self._rknn.release()
+                worker.release()
             except Exception:
                 logger.exception("RKNNLite.release failed; continuing")
-        self._rknn = None
-        self._ready = False
 
     # ------------------------------------------------------------------
     # Transcribe (offline)
@@ -183,9 +328,18 @@ class SenseVoiceRKNNBackend(ASRBackend):
         return self.transcribe_array(audio, language)
 
     def transcribe_array(self, audio: np.ndarray, language: str = "auto") -> TranscriptionResult:
+        pool = self._pool
+        if pool is None:
+            raise RuntimeError("ASR backend not ready — call preload() first")
         tag = _map_language(language)
+        # Feature extraction is pure numpy and needs no context; only the NPU
+        # call borrows one, so the pool is held for the shortest span.
         speech, valid = self._build_speech(audio, lang=tag)
-        out = self._rknn.inference(inputs=[speech.astype(np.float32)])
+        worker = pool.get()
+        try:
+            out = worker.inference(inputs=[speech.astype(np.float32)])
+        finally:
+            pool.put(worker)
         logits = out[0][0]  # [T_FIXED, 25055]
         text = self._ctc_decode(logits, valid)
         return TranscriptionResult(text=text, language=None)
