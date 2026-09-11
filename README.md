@@ -24,13 +24,13 @@
 
 ## What is this?
 
-rkvoice-stream is the **Rockchip NPU speech engine** for [OpenVoiceStream](https://github.com/suharvest/openvoicestream) — the production voice AI service that runs across Jetson, Rockchip, and Raspberry Pi. It powers the RK3576/RK3588 backend of OpenVoiceStream's shipped Docker images (`seeed-local-voice:rk-*`).
+rkvoice-stream is the **Rockchip NPU speech engine** for [OpenVoiceStream](https://github.com/Seeed-Solution/openvoicestream) — the production voice AI service that runs across Jetson, Rockchip, and Raspberry Pi. It powers the RK3576/RK3588 backend of OpenVoiceStream's shipped Docker images (`seeed-local-voice:rk-*`).
 
-It runs ASR and TTS entirely on-device via RKNN/RKLLM acceleration — no cloud, no GPU, no internet required. Use it as a Python library (`from rkvoice_stream import create_asr, create_tts`) or ship it via [OpenVoiceStream](https://github.com/suharvest/openvoicestream)'s one-command installer.
+It runs ASR and TTS entirely on-device via RKNN/RKLLM acceleration — no cloud, no GPU, no internet required. Use it as a Python library (`from rkvoice_stream import create_asr, create_tts`) or ship it via [OpenVoiceStream](https://github.com/Seeed-Solution/openvoicestream)'s one-command installer.
 
 It also supports the **RK1828 PCIe NPU coprocessor** for on-device TTS (`qwen3_tts_rk1828`) and a multimodal **AudioLLM** (`gemma4_rk1828`, Gemma-4) that takes audio and streams text — collapsing ASR + LLM into a single model.
 
-> **Looking to deploy on-device voice?** Start with [OpenVoiceStream](https://github.com/suharvest/openvoicestream) — it wraps this engine with a FastAPI server, prebuilt Docker images, and a one-line installer for Jetson, Rockchip, and Raspberry Pi.
+> **Looking to deploy on-device voice?** Start with [OpenVoiceStream](https://github.com/Seeed-Solution/openvoicestream) — it wraps this engine with a FastAPI server, prebuilt Docker images, and a one-line installer for Jetson, Rockchip, and Raspberry Pi.
 
 ## Table of Contents
 
@@ -116,7 +116,7 @@ Audio streamed at real-time pace (simulating live microphone). Qwen3-ASR (NPU) +
 - **Streaming everywhere** — WebSocket ASR (real-time partials), streaming TTS (sentence-by-sentence PCM)
 - **Voice-to-voice pipeline** — ASR → LLM → TTS dialogue orchestrator, **~700ms first-audio on RK3588**
 - **Config profiles** — pre-validated YAML configs for common setups (ASR-only, TTS-only, full stack)
-- **[OpenVoiceStream](https://github.com/suharvest/openvoicestream) compatible** — same HTTP/WebSocket API used by the production multi-platform deployment
+- **[OpenVoiceStream](https://github.com/Seeed-Solution/openvoicestream) compatible** — same HTTP/WebSocket API used by the production multi-platform deployment
 
 ## AudioLLM — Gemma-4 (RK1828)
 
@@ -159,10 +159,10 @@ Used by the `/audio_dialogue` WebSocket endpoint for V2V: audio in → AudioLLM 
 
 ### Recommended: via OpenVoiceStream
 
-The fastest path to a running service is [OpenVoiceStream](https://github.com/suharvest/openvoicestream), which wraps this engine with prebuilt Docker images and a one-command installer:
+The fastest path to a running service is [OpenVoiceStream](https://github.com/Seeed-Solution/openvoicestream), which wraps this engine with prebuilt Docker images and a one-command installer:
 
 ```bash
-git clone --recurse-submodules https://github.com/suharvest/openvoicestream.git
+git clone --recurse-submodules https://github.com/Seeed-Solution/openvoicestream.git
 cd openvoicestream
 deploy/install.sh --target rk3576 --pull --verify   # or --target rk3588
 ```
@@ -221,7 +221,7 @@ asr, tts = create_from_config(config)
 
 ## API Reference
 
-All endpoints are compatible with [OpenVoiceStream](https://github.com/suharvest/openvoicestream) clients.
+All endpoints are compatible with [OpenVoiceStream](https://github.com/Seeed-Solution/openvoicestream) clients.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -365,10 +365,10 @@ Quality gates: CER < 0.5 per sentence, RTF < 1.0.
 
 ## Contributing
 
-This repo is the Rockchip speech engine component of [OpenVoiceStream](https://github.com/suharvest/openvoicestream). Bug reports and pull requests are welcome.
+This repo is the Rockchip speech engine component of [OpenVoiceStream](https://github.com/Seeed-Solution/openvoicestream). Bug reports and pull requests are welcome.
 
 - **Engine bugs / backend issues** — open an issue here (rkvoice-stream)
-- **Deployment / Docker / multi-platform** — open an issue in [openvoicestream](https://github.com/suharvest/openvoicestream)
+- **Deployment / Docker / multi-platform** — open an issue in [openvoicestream](https://github.com/Seeed-Solution/openvoicestream)
 - **Model conversion / build scripts** — see `models/` directory and open an issue here
 
 ## Acknowledgements
