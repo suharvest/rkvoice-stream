@@ -108,7 +108,7 @@ class _MisakiG2P:
 
     misaki v1.1 ZH frontend emits Bopomofo + ASCII tone digits + special
     CJK glyphs that match Kokoro's tokens.txt 1:1 (see
-    docs/specs/kokoro-rk-zh-fix-misaki.md). English path is left to the
+    docs/archive/specs/kokoro-rk-zh-fix-misaki.md). English path is left to the
     existing char-level lookup (tokens.txt already carries the Latin
     phoneme set used by Kokoro's English exports).
 
