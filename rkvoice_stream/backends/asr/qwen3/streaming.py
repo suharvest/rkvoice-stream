@@ -219,6 +219,12 @@ class Qwen3TrueStreamingASRStream:
         # considering the speaker active again; isolated True flips count as
         # silence and are absorbed by the accumulator.
         self._vad_sustain_frames = _env_int("QWEN3_ASR_VAD_SUSTAIN_FRAMES", 3)
+        # Energy gate for accepting a new utterance after an endpoint fired.
+        # The previous hardcoded 1e-3 assumed a close, hot mic; browser/AGC
+        # feeds with low input gain can sit below it on soft onsets, which
+        # presents as "the first syllables never arrive". Lower via env for
+        # such clients; raise on noisy far-field setups.
+        self._vad_resume_rms = _env_float("QWEN3_ASR_VAD_RESUME_RMS", 1e-3)
         # Backend selector for endpointing. "auto" prefers webrtcvad if importable.
         self._vad_backend_env = os.environ.get("QWEN3_ASR_VAD_BACKEND", "webrtc").lower()
         self._vad_webrtc_aggr = _env_int("QWEN3_ASR_VAD_WEBRTC_AGGR", 2)
@@ -670,7 +676,7 @@ class Qwen3TrueStreamingASRStream:
         if len(samples) == 0:
             return
         rms = float(np.sqrt(np.mean(np.square(samples, dtype=np.float64))))
-        if rms <= 1e-3:
+        if rms <= self._vad_resume_rms:
             return
         # Full reset for a new utterance.  In dictation mode we can carry a
         # short audio tail from the previous segment so the next final decode
