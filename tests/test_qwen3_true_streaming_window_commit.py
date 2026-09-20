@@ -288,22 +288,28 @@ def test_window_holding_two_sentences_commits_both(env):
 
 
 class _AbortingDecoder(_FakeDecoder):
-    def __init__(self, abort_full_calls: int):
+    def __init__(self, abort_full_calls: int, flag_aborted: bool = False):
         super().__init__()
         self.abort_left = abort_full_calls
+        self.flag_aborted = flag_aborted
 
     def run_embed(self, full_embd, n_tokens, keep_history=0):
         result = super().run_embed(full_embd, n_tokens, keep_history)
         if self._early_stop_tokens == 0 and self.abort_left > 0:
             self.abort_left -= 1
+            # Exactly what the RKLLM decoder returns after ``abort()`` or an
+            # async timeout: the reason is recorded, ``aborted`` stays False
+            # (decoder.py sets ``_aborted`` only for its own stop rules).
             result.update(text=" ".join(result["text"].split()[:3]),
-                          aborted=True, abort_reason="external")
+                          aborted=self.flag_aborted, abort_reason="external")
         return result
 
 
-def test_aborted_commit_is_not_committed_and_is_retried(env):
+@pytest.mark.parametrize("flag_aborted", [False, True])
+def test_aborted_commit_is_not_committed_and_is_retried(env, flag_aborted):
     engine = _FakeEngine()
-    engine.decoder = _AbortingDecoder(abort_full_calls=1)
+    engine.decoder = _AbortingDecoder(abort_full_calls=1,
+                                      flag_aborted=flag_aborted)
     stream = Qwen3TrueStreamingASRStream(engine)
 
     feed_all(stream, make_audio(12.0))
@@ -368,3 +374,21 @@ def test_cjk_dedup_keeps_the_remainders_own_spacing(env):
     assert stream._join_text("我们去你好", "你好 New York 见",
                              max_units=stream._window_dedup_units) == \
         "我们去你好New York 见"
+
+
+def test_real_decoder_reports_external_abort_by_reason_only():
+    """Pin the contract the commit guard relies on, against the real class."""
+    import inspect
+    from rkvoice_stream.backends.asr.qwen3 import decoder as dec
+    src = inspect.getsource(dec)
+    abort_body = src[src.index("    def abort(self):"):]
+    abort_body = abort_body[:abort_body.index("    def release(self):")]
+    assert "_abort_reason" in abort_body and "self._aborted = True" not in abort_body
+
+
+def test_retry_budget_does_not_leak_into_the_next_utterance(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    stream._window_commit_retries = 2
+    stream._episode_final = True
+    stream._maybe_resume_new_utterance(np.full(1600, 0.5, dtype=np.float32))
+    assert stream._window_commit_retries == 0

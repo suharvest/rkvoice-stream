@@ -770,6 +770,7 @@ class Qwen3TrueStreamingASRStream:
         self._final_decode_in_progress = False
         self._finalizing = False
         self._partial_text = ""
+        self._window_commit_retries = 0
         # Window commits belong to the utterance that just ended; they were
         # already folded into ``_archive_text`` by ``_commit_final_text``.
         # Carrying them over would prepend the old sentence to the new one.
@@ -1053,8 +1054,13 @@ class Qwen3TrueStreamingASRStream:
                 decoder._final_stop_on_punctuation = saved_stop
         raw, decoded_language = _normalize_decoder_text(result.get("text", ""))
         was_aborted = result.get("aborted", False)
+        # The RKLLM decoder only raises ``aborted`` for the stops it decides on
+        # itself (repeat, early stop, punctuation).  ``decoder.abort()`` and the
+        # async timeout leave ``aborted`` False and record just the reason, so
+        # either field means the generation did not run to its own end.
+        abort_reason = result.get("abort_reason") or ""
         self._last_final_abort_reason = (
-            (result.get("abort_reason") or "aborted") if was_aborted else "")
+            abort_reason or ("aborted" if was_aborted else ""))
         perf = result.get("perf") or {}
         logger.info(
             "Qwen3-true-stream final decode perf: input_tokens=%d "
