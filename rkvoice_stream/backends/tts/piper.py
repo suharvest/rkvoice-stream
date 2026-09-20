@@ -275,6 +275,15 @@ class _LangModel:
         self.length_scale: float = 1.0
         self.noise_w: float = 0.8
         self.sample_rate: int = SAMPLE_RATE
+        # Window sizes the LOADED artifacts actually use. Defaults are the
+        # module/class constants; _load_hybrid replaces them with the shapes
+        # baked into the encoder, which is where the truth lives for an export
+        # produced by models/tts/piper/split_piper_vits.py (both halves of that
+        # split are static). Hardcoding them cost us: three artifact sets in
+        # circulation are compiled at 128, 150 and 256 mel frames, and two of
+        # the three mismatches produce no error at all.
+        self.seq_len: int = SEQ_LEN
+        self.mel_len: int = self.MAX_MEL_LEN
 
     def _load_config(self) -> None:
         """Load phoneme config from model directory."""
@@ -328,6 +337,35 @@ class _LangModel:
                 "or model.rknn (legacy)."
             )
 
+    def _probe_decoder_window(self) -> int:
+        """Ask the decoder how many mel frames it was compiled for.
+
+        There is no rknn-lite API for tensor shapes, and the two failure modes
+        differ by runtime version: a decoder may reject a wrong length outright
+        (inference() returns None) or accept it and return its own frame count
+        anyway. Both are usable here — feed candidates until one returns, then
+        take the window from the OUTPUT size, which is the model's own answer
+        rather than what we guessed.
+        """
+        env = os.environ.get("PIPER_MEL_LEN", "").strip()
+        if env.isdigit() and int(env) > 0:
+            return int(env)
+
+        candidates = [self.mel_len, 512, 256, 150, 128, 1024]
+        seen = []
+        for cand in dict.fromkeys(candidates):
+            out = self._rknn.inference(inputs=[
+                np.zeros((1, 192, cand), dtype=np.float32),
+                np.zeros((1, 1, cand), dtype=np.float32),
+            ])
+            if out and len(out):
+                return out[0].size // self.HOP_SIZE
+            seen.append(cand)
+        raise RuntimeError(
+            f"Piper {self.lang}: the decoder rejected every probed mel window "
+            f"({seen}). Set PIPER_MEL_LEN to the value it was exported with."
+        )
+
     def _load_hybrid(self, encoder_path: Path, fd_rknn_path: Path) -> None:
         """Load hybrid mode: encoder ORT CPU + flow_decoder RKNN NPU."""
         import onnxruntime as ort
@@ -345,11 +383,65 @@ class _LangModel:
         if ret != 0:
             raise RuntimeError(f"Failed to init RKNN runtime for {self.lang}: ret={ret}")
 
+        # Read the compiled window out of the encoder when it is static.
+        # A dynamic encoder (upstream Piper ONNX, not our split) leaves the
+        # defaults in place and says so, because then only the decoder knows.
+        enc_in = {i.name: i.shape for i in self._encoder.get_inputs()}
+        enc_out = [o.shape for o in self._encoder.get_outputs()]
+        seq_dim = (enc_in.get("input") or [None, None])[-1]
+        mel_dim = enc_out[0][-1] if enc_out and len(enc_out[0]) == 3 else None
+        if isinstance(seq_dim, int):
+            self.seq_len = seq_dim
+        if isinstance(mel_dim, int):
+            self.mel_len = mel_dim
+            source = "encoder graph"
+        else:
+            # A dynamic encoder is the normal shape for an export where only
+            # the decoder half is frozen (split_piper_vits.py leaves the
+            # encoder dynamic; some older exports froze both). The decoder is
+            # then the only thing that knows the window, so ask it.
+            self.mel_len = self._probe_decoder_window()
+            source = "decoder probe"
+        logger.info(
+            "Piper %s: mel window %d frames (from %s)",
+            self.lang, self.mel_len, source,
+        )
+
+        # Prove the decoder agrees, with one zero-input decode. rknn-lite does
+        # NOT reliably reject a wrong length: measured 2026-09-20, a 128-frame
+        # decoder accepted 150/256/512 inputs without error and returned its own
+        # 128 frames every time (silently truncated audio), while a 150-frame
+        # one rejected 128 with RKNN_ERR_PARAM_INVALID and inference() returned
+        # None, which this backend then turned into empty audio. Neither is
+        # visible without checking, so check.
+        probe = self._rknn.inference(inputs=[
+            np.zeros((1, 192, self.mel_len), dtype=np.float32),
+            np.zeros((1, 1, self.mel_len), dtype=np.float32),
+        ])
+        if probe is None or len(probe) == 0:
+            raise RuntimeError(
+                f"Piper {self.lang}: decoder rejected a {self.mel_len}-frame "
+                f"input ({fd_rknn_path}). The encoder and the decoder were "
+                f"compiled for different windows; re-export both with the same "
+                f"--mel-len (models/tts/piper/split_piper_vits.py)."
+            )
+        got_frames = probe[0].size // self.HOP_SIZE
+        if got_frames != self.mel_len:
+            raise RuntimeError(
+                f"Piper {self.lang}: decoder returned {got_frames} frames for a "
+                f"{self.mel_len}-frame input ({fd_rknn_path}) — it was compiled "
+                f"for a different window, and rknn-lite did not report it. "
+                f"Audio would be silently truncated to "
+                f"{got_frames * self.HOP_SIZE / self.sample_rate:.2f}s."
+            )
+
         self._hybrid = True
         logger.info(
-            "Loaded Piper HYBRID model for %s (voice=%s, sr=%d) "
-            "encoder=ORT_CPU, decoder=RKNN_NPU",
-            self.lang, self.espeak_voice, self.sample_rate,
+            "Loaded Piper HYBRID model for %s (voice=%s, sr=%d, seq_len=%d, "
+            "mel_len=%d → %.2fs max per inference) encoder=ORT_CPU, "
+            "decoder=RKNN_NPU",
+            self.lang, self.espeak_voice, self.sample_rate, self.seq_len,
+            self.mel_len, self.mel_len * self.HOP_SIZE / self.sample_rate,
         )
 
     def _load_legacy(self, rknn_path: Path) -> None:
@@ -399,10 +491,10 @@ class _LangModel:
         noise_w: float,
     ) -> np.ndarray:
         """Hybrid inference: encoder on CPU, flow+decoder on NPU."""
-        n = min(len(token_ids), SEQ_LEN)
+        n = min(len(token_ids), self.seq_len)
 
-        # Pad tokens to fixed SEQ_LEN (the encoder expects fixed-size inputs)
-        tokens = np.zeros((1, SEQ_LEN), dtype=np.int64)
+        # Pad tokens to the encoder's compiled phoneme length
+        tokens = np.zeros((1, self.seq_len), dtype=np.int64)
         tokens[0, :n] = token_ids[:n]
         lengths = np.array([n], dtype=np.int64)
         scales = np.array([noise_scale, length_scale, noise_w], dtype=np.float32)
@@ -419,7 +511,7 @@ class _LangModel:
             enc_inputs["sid"] = np.array([0], dtype=np.int64)
         # Add x_mask if encoder expects it (hoisted from internal in fixed ONNX)
         if "x_mask" in enc_input_names:
-            x_mask = np.zeros((1, 1, SEQ_LEN), dtype=np.float32)
+            x_mask = np.zeros((1, 1, self.seq_len), dtype=np.float32)
             x_mask[0, 0, :n] = 1.0
             enc_inputs["x_mask"] = x_mask
         # Add audio_length if encoder expects it
@@ -428,7 +520,7 @@ class _LangModel:
         # Add cumulative_durations if encoder expects it
         if "cumulative_durations" in enc_input_names:
             enc_inputs["cumulative_durations"] = np.zeros(
-                (SEQ_LEN, 1), dtype=np.float32
+                (self.seq_len, 1), dtype=np.float32
             )
 
         enc_out = self._encoder.run(None, enc_inputs)
@@ -437,23 +529,77 @@ class _LangModel:
         mel_len = z.shape[2]
 
         # Step 2: Pad to fixed size for NPU
-        actual_mel = min(mel_len, self.MAX_MEL_LEN)
-        z_pad = np.zeros((1, 192, self.MAX_MEL_LEN), dtype=np.float32)
-        z_pad[:, :, :actual_mel] = z[:, :, :actual_mel]
+        # Step 3: Flow+Decoder on NPU, in as many windows as the mel needs
+        return self._decode_mel(z, y_mask, mel_len)
 
-        mask_pad = np.zeros((1, 1, self.MAX_MEL_LEN), dtype=np.float32)
-        mask_pad[:, :, :actual_mel] = y_mask[:, :, :actual_mel]
+    def _decode_mel(
+        self,
+        z: np.ndarray,
+        y_mask: np.ndarray,
+        total_frames: int,
+    ) -> np.ndarray:
+        """Render `total_frames` mel frames through the fixed-window decoder.
 
-        # Step 3: Flow+Decoder on NPU
-        dec_out = self._rknn.inference(inputs=[z_pad, mask_pad])
-        if dec_out is None or len(dec_out) == 0:
-            return np.zeros(0, dtype=np.float32)
+        Mirrors the window schedule matcha.py uses for its equally fixed-window
+        vocoder (_run_vocos_frames): each chunk carries `ctx` frames of context
+        on both sides which are then discarded, so the convolutional receptive
+        field is fed properly across the seams.
 
-        # Trim to actual audio length (actual_mel * hop_size)
-        audio = dec_out[0].flatten()
-        actual_samples = actual_mel * self.HOP_SIZE
-        audio = audio[:actual_samples]
-        return audio.astype(np.float32)
+        It stitches AUDIO rather than spectra, which is the one place it has to
+        differ: matcha concatenates (mag, cos, sin) and runs a single ISTFT at
+        the end, and this decoder is a HiFi-GAN that emits samples directly.
+        Discarding context is what keeps the seams clean here.
+
+        Before this, anything past one window was dropped without a trace, and
+        one window is only a few seconds — ordinary sentences hit it.
+        """
+        cap = self.mel_len
+
+        def _emit(w_start: int, w_end: int, keep_lo: int, keep_hi: int) -> np.ndarray:
+            z_pad = np.zeros((1, 192, cap), dtype=np.float32)
+            mask_pad = np.zeros((1, 1, cap), dtype=np.float32)
+            n = w_end - w_start
+            z_pad[:, :, :n] = z[:, :, w_start:w_end]
+            mask_pad[:, :, :n] = y_mask[:, :, w_start:w_end]
+
+            out = self._rknn.inference(inputs=[z_pad, mask_pad])
+            if out is None or len(out) == 0:
+                # Not recoverable and not silent: returning an empty array here
+                # made a shape mismatch look like a successful synthesis of
+                # nothing.
+                raise RuntimeError(
+                    f"Piper {self.lang}: decoder inference returned nothing for "
+                    f"a {cap}-frame input. The artifacts loaded fine, so this is "
+                    f"a runtime failure rather than a window mismatch (that is "
+                    f"checked at load)."
+                )
+            audio = out[0].flatten()
+            lo = (keep_lo - w_start) * self.HOP_SIZE
+            hi = (keep_hi - w_start) * self.HOP_SIZE
+            return audio[lo:hi]
+
+        if total_frames <= cap:
+            return _emit(0, total_frames, 0, total_frames).astype(np.float32)
+
+        ctx = min(32, cap // 8)
+        stride = cap - 2 * ctx
+        if stride <= 0:  # pathologically small window
+            ctx, stride = 0, cap
+
+        parts = []
+        pos = 0
+        while pos < total_frames:
+            w_end = min(total_frames, max(pos - ctx, 0) + cap)
+            w_start = max(0, w_end - cap)
+            keep_end = min(total_frames, pos + stride)
+            parts.append(_emit(w_start, w_end, pos, keep_end))
+            pos = keep_end
+
+        logger.debug(
+            "Piper %s: %d mel frames rendered in %d windows of %d (ctx=%d)",
+            self.lang, total_frames, len(parts), cap, ctx,
+        )
+        return np.concatenate(parts).astype(np.float32)
 
     def _infer_legacy(
         self,
@@ -711,8 +857,9 @@ class PiperRKNNBackend:
             logger.warning("No token IDs for text %r (phonemes: %r)", text, phoneme_str)
             return np.zeros(0, dtype=np.float32), meta
 
-        # Truncate to SEQ_LEN
-        token_ids = token_ids[:SEQ_LEN]
+        # Truncate to the phoneme length THIS model was built for. The module
+        # constant is only the default; a static encoder carries its own.
+        token_ids = token_ids[:getattr(lang_model, "seq_len", SEQ_LEN)]
 
         length_scale = lang_model.length_scale / max(speed, 0.1)
         ns = noise_scale if noise_scale is not None else lang_model.noise_scale
