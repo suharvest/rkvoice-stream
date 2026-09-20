@@ -46,6 +46,21 @@ logger = logging.getLogger(__name__)
 
 # ── True-streaming parameters ─────────────────────────────────────────────
 ENCODER_HOP_SAMPLES = 1280                  # mel hop 160 × conv stride 8
+ENCODER_FRAMES_PER_SEC = 13                 # encoder output rate (~13 fps)
+
+# How many text units (English words/punctuation, CJK characters) of the
+# already-committed text may be re-matched against the start of the next
+# window when stitching window commits together.  The acoustic overlap is
+# ~1 s, i.e. ≲4 English words or ≲8 CJK characters; 16 leaves headroom for a
+# fast speaker without letting an unrelated repetition far back in the
+# sentence swallow real words.  Not an env knob: it is a property of the
+# overlap window, not something an operator tunes independently.
+WINDOW_COMMIT_OVERLAP_UNITS = 16
+
+# Characters ignored when matching text units across a window boundary, and
+# the sentence terminators stripped from a mid-utterance commit.
+_MATCH_STRIP_CHARS = ".,!?;:'\"。，！？；：、…—-"
+_MIDSTREAM_TERMINATORS = ".。!！?？…"
 
 
 def _env_float(name: str, default: float) -> float:
@@ -130,6 +145,25 @@ _RE_PROMPT_LEAK_PREFIX = re.compile(
 )
 
 
+def _strip_midstream_terminator(text: str) -> str:
+    """Drop one trailing sentence terminator from a mid-utterance commit.
+
+    A window commit cuts the utterance at an arbitrary acoustic point, and the
+    decoder (``final_stop_on_punctuation``) happily ends its output with a full
+    stop there.  Keeping it would (a) read as a sentence boundary that the
+    speaker never made — "…the product. Such as…" — and (b) break overlap
+    dedup, because the next window decodes the same audio *without* that
+    invented terminator, so the unit sequences no longer line up.  The cost of
+    stripping is one piece of punctuation in the rare case the cut really did
+    land on a sentence end; the cost of keeping it is a duplicated word plus a
+    false boundary, so we strip.
+    """
+    stripped = (text or "").rstrip()
+    if stripped and stripped[-1] in _MIDSTREAM_TERMINATORS:
+        return stripped[:-1].rstrip()
+    return stripped
+
+
 def _strip_prompt_leaks(text: str) -> str:
     """Remove short prompt fragments that RKLLM may emit after weak EOS."""
     if not text:
@@ -160,6 +194,12 @@ class Qwen3TrueStreamingASRStream:
         self._chunk_size_sec = _env_float("QWEN3_ASR_TRUE_CHUNK_SEC", 0.4)
         self._left_context_sec = _env_float("QWEN3_ASR_TRUE_LCTX_SEC", 1.0)
         self._rolling_buffer_sec = _env_float("QWEN3_ASR_TRUE_ROLL_SEC", 5.0)
+        # Acoustic overlap carried into the next window after a window commit.
+        # Without it the cut can fall inside a word and that word is lost from
+        # both sides.  0 disables overlap (commit exactly at the boundary).
+        self._roll_overlap_sec = max(
+            0.0, _env_float("QWEN3_ASR_TRUE_ROLL_OVERLAP_SEC", 1.0)
+        )
         self._partial_max_tokens = _env_int("QWEN3_ASR_TRUE_PARTIAL_TOKENS", 12)
         # Minimum wall-clock interval between partial decodes (ms). On RK each
         # partial costs ~600-900 ms of NPU time; running one per 400 ms chunk
@@ -242,11 +282,23 @@ class Qwen3TrueStreamingASRStream:
         # Each entry is (T_frames, 1024).
         self._encoder_frames: list[np.ndarray] = []
         self._total_encoder_frames = 0
-        self._max_encoder_frames = int(self._rolling_buffer_sec * 13)  # ~13 fps
+        self._max_encoder_frames = int(
+            self._rolling_buffer_sec * ENCODER_FRAMES_PER_SEC)
+        self._roll_overlap_frames = min(
+            int(self._roll_overlap_sec * ENCODER_FRAMES_PER_SEC),
+            max(0, self._max_encoder_frames - 1),
+        )
 
         # Output state
         self._archive_text: str = ""
         self._partial_text: str = ""
+        # Text of windows already decoded and retired from the rolling buffer
+        # within the *current* utterance.  Distinct from ``_archive_text``,
+        # which means "finalized segments" and is cleared/overwritten by
+        # ``_commit_final_text`` whenever ``_accumulate_segments`` is off —
+        # window commits must survive in that (default) configuration too.
+        self._window_committed_text: str = ""
+        self._window_commits: int = 0
         self._current_language: str = language or ""
         self._episode_final: bool = False
         self._vad_endpoint_detected: bool = False
@@ -493,6 +545,9 @@ class Qwen3TrueStreamingASRStream:
             if self._encoder_frames:
                 text = self._final_decode_text()
                 self._commit_final_text(text)
+            elif self._window_committed_text:
+                # Buffer already retired into window commits — keep that text.
+                self._commit_final_text("")
             else:
                 # No audio buffered → empty result.
                 if not self._accumulate_segments:
@@ -701,6 +756,10 @@ class Qwen3TrueStreamingASRStream:
         self._final_decode_in_progress = False
         self._finalizing = False
         self._partial_text = ""
+        # Window commits belong to the utterance that just ended; they were
+        # already folded into ``_archive_text`` by ``_commit_final_text``.
+        # Carrying them over would prepend the old sentence to the new one.
+        self._window_committed_text = ""
         if not self._accumulate_segments:
             self._archive_text = ""
         self._episode_final = False
@@ -733,10 +792,18 @@ class Qwen3TrueStreamingASRStream:
         # Append to rolling encoder buffer.
         self._encoder_frames.append(enc_out)
         self._total_encoder_frames += enc_out.shape[0]
-        while (self._total_encoder_frames > self._max_encoder_frames
-               and len(self._encoder_frames) > 1):
-            dropped = self._encoder_frames.pop(0)
-            self._total_encoder_frames -= dropped.shape[0]
+        if self._total_encoder_frames > self._max_encoder_frames:
+            committed = self._commit_window_overflow()
+            if not committed:
+                # Could not decode right now (a final decode owns the decoder,
+                # or the episode is closing).  Fall back to the historical
+                # drop so the buffer still respects its cap; the drained tail
+                # is at most one chunk, since a successful commit leaves only
+                # the overlap frames behind.
+                while (self._total_encoder_frames > self._max_encoder_frames
+                       and len(self._encoder_frames) > 1):
+                    dropped = self._encoder_frames.pop(0)
+                    self._total_encoder_frames -= dropped.shape[0]
 
         if self._episode_final or not self._encoder_frames or self._finalizing:
             return
@@ -760,6 +827,93 @@ class Qwen3TrueStreamingASRStream:
         self._last_partial_ts = time.monotonic() * 1000
         if text:
             self._partial_text = text.strip()
+
+    # ── Internal: window commit ───────────────────────────────────────
+
+    def _window_commit_allowed(self) -> bool:
+        """Whether it is safe to run a decode from the ``feed_audio`` thread.
+
+        The RKLLM decoder is a single, non-reentrant resource (see
+        ``_run_decoder``): a second ``run_embed`` while a final decode is in
+        flight would corrupt both.  The VAD-triggered final decode may run on
+        its own thread (``QWEN3_ASR_VAD_FINAL_ASYNC=1``), so check for it
+        explicitly.  Once the episode is closing there is also nothing to gain
+        — ``finish()`` decodes the remaining window anyway.
+        """
+        if self._episode_final or self._finalizing:
+            return False
+        if self._final_decode_in_progress:
+            return False
+        thread = self._final_decode_thread
+        if thread is not None and thread.is_alive():
+            return False
+        return True
+
+    def _keep_tail_frames(self, keep_frames: int) -> None:
+        """Retain only the last ``keep_frames`` encoder frames."""
+        if keep_frames <= 0:
+            self._encoder_frames = []
+            self._total_encoder_frames = 0
+            return
+        kept: list[np.ndarray] = []
+        total = 0
+        for arr in reversed(self._encoder_frames):
+            if total >= keep_frames:
+                break
+            need = keep_frames - total
+            if arr.shape[0] > need:
+                arr = arr[-need:, :]
+            kept.append(arr)
+            total += arr.shape[0]
+        kept.reverse()
+        self._encoder_frames = kept
+        self._total_encoder_frames = total
+
+    def _commit_window_overflow(self) -> bool:
+        """Decode the full window before retiring it, instead of dropping it.
+
+        The rolling buffer only holds ``QWEN3_ASR_TRUE_ROLL_SEC`` of encoder
+        output.  Dropping the oldest frames on overflow lost the *text* too:
+        both partial and final decode only ever see the frames still in the
+        buffer, so a 9 s sentence came back as its last ~5 s.  Here we run one
+        full decode (no early stop — this text is permanent, unlike a partial)
+        and keep the result, then restart the window from the trailing overlap
+        frames.
+
+        Returns True when the window was committed.
+        """
+        if not self._window_commit_allowed() or not self._encoder_frames:
+            return False
+
+        all_frames = np.concatenate(self._encoder_frames, axis=0)
+        t0 = time.perf_counter()
+        try:
+            text = self._decode_final(all_frames)
+        except Exception as exc:  # pragma: no cover - decoder-specific
+            logger.warning("Window commit decode failed: %s", exc)
+            return False
+        self._total_dec_ms += (time.perf_counter() - t0) * 1000
+
+        text = _strip_midstream_terminator(_strip_prompt_leaks(text or ""))
+        self._window_committed_text = self._join_text(
+            self._window_committed_text, text,
+            max_units=WINDOW_COMMIT_OVERLAP_UNITS)
+        self._window_commits += 1
+
+        self._keep_tail_frames(self._roll_overlap_frames)
+        # The partial belonged to the window we just retired; its content is
+        # now inside ``_window_committed_text``.  Reset the throttle as well so
+        # the very next chunk doesn't immediately spend another decode on the
+        # (near-empty) new window right after this ~750 ms commit.
+        self._partial_text = ""
+        self._last_partial_ts = time.monotonic() * 1000
+
+        logger.info(
+            "Qwen3-true-stream window commit #%d: kept %d overlap frames, "
+            "text=%r",
+            self._window_commits, self._total_encoder_frames, text[:60],
+        )
+        return True
 
     # ── Internal: decode ─────────────────────────────────────────────
 
@@ -872,6 +1026,9 @@ class Qwen3TrueStreamingASRStream:
         """VAD-triggered early final decode."""
         self._vad_endpoint_detected = True
         if not self._encoder_frames:
+            if self._window_committed_text:
+                # Everything decoded so far lives in the window commits.
+                self._commit_final_text("")
             self._episode_final = True
             return
         self._final_decode_in_progress = True
@@ -925,37 +1082,56 @@ class Qwen3TrueStreamingASRStream:
             return [ch for ch in re.sub(r"\s+", "", text) if ch]
         return re.findall(r"[A-Za-z0-9']+|[^\w\s]", text.lower())
 
-    def _drop_overlapping_prefix(self, left: str, right: str) -> str:
-        max_units = self._segment_text_overlap_tokens
+    @staticmethod
+    def _match_units(units: list[str]) -> list[str]:
+        """Normalize units for cross-boundary comparison only.
+
+        Case and edge punctuation differ between two decodes of the same audio
+        ("product." vs "Product"), and the real final output must keep them, so
+        normalization happens here and never on the text we write back.
+        """
+        return [u.casefold().strip(_MATCH_STRIP_CHARS) for u in units]
+
+    def _drop_overlapping_prefix(self, left: str, right: str,
+                                 max_units: Optional[int] = None) -> str:
+        if max_units is None:
+            max_units = self._segment_text_overlap_tokens
         if max_units <= 0 or not left or not right:
             return right
-        left_units = self._text_units(left)
-        right_units = self._text_units(right)
+        left_units = self._match_units(self._text_units(left))
+        right_units = self._match_units(self._text_units(right))
         max_k = min(max_units, len(left_units), len(right_units))
         best = 0
         for k in range(max_k, 0, -1):
-            if left_units[-k:] == right_units[:k]:
+            # Require at least one real token in the match: normalization maps
+            # every punctuation unit to "", so a bare "." would otherwise
+            # "match" a "," and eat a word boundary.
+            if left_units[-k:] == right_units[:k] and any(right_units[:k]):
                 best = k
                 break
         if best <= 0:
             return right
 
         if any(_is_cjk(ch) for ch in right):
-            return "".join([ch for ch in right if ch][best:]).lstrip()
+            # ``_text_units`` counts whitespace-free characters, so slice the
+            # same representation — slicing the raw string would be off by the
+            # number of spaces in it.
+            return re.sub(r"\s+", "", right)[best:].lstrip()
 
         matches = list(re.finditer(r"[A-Za-z0-9']+|[^\w\s]", right))
         if best >= len(matches):
             return ""
         return right[matches[best].start():].lstrip()
 
-    def _join_text(self, left: str, right: str) -> str:
+    def _join_text(self, left: str, right: str,
+                   max_units: Optional[int] = None) -> str:
         left = (left or "").strip()
         right = (right or "").strip()
         if not left:
             return right
         if not right:
             return left
-        right = self._drop_overlapping_prefix(left, right)
+        right = self._drop_overlapping_prefix(left, right, max_units)
         if not right:
             return left
         sep = "" if _is_cjk(left[-1]) or _is_cjk(right[0]) else " "
@@ -963,14 +1139,36 @@ class Qwen3TrueStreamingASRStream:
 
     def _commit_final_text(self, text: str) -> None:
         text = _strip_prompt_leaks(text or "")
+        # Fold the windows retired during this utterance in front of the last
+        # window's text, then clear them: from here on ``_archive_text`` is the
+        # single source of truth for the finished utterance (``finish()`` and
+        # ``_composed_text`` both read it), and leaving the prefix behind would
+        # duplicate it.
+        if self._window_committed_text:
+            text = self._join_text(
+                self._window_committed_text, text,
+                max_units=WINDOW_COMMIT_OVERLAP_UNITS)
+            self._window_committed_text = ""
         if self._accumulate_segments:
             self._archive_text = self._join_text(self._archive_text, text)
         else:
             self._archive_text = text
 
     def _composed_text(self) -> str:
+        # No window has been retired yet → identical to the pre-window-commit
+        # behaviour, byte for byte.
+        head = self._archive_text
+        if self._window_committed_text:
+            head = self._join_text(
+                head, self._window_committed_text,
+                max_units=WINDOW_COMMIT_OVERLAP_UNITS)
         if self._episode_final or not self._partial_text:
-            return self._archive_text
-        if not self._archive_text:
+            return head
+        if not head:
             return self._partial_text
-        return self._join_text(self._archive_text, self._partial_text)
+        # The partial re-decodes the overlap frames, so dedup against the
+        # committed tail when there is one.
+        return self._join_text(
+            head, self._partial_text,
+            max_units=(WINDOW_COMMIT_OVERLAP_UNITS
+                       if self._window_committed_text else None))

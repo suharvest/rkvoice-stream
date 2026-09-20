@@ -1,0 +1,241 @@
+"""Window-commit behaviour of the true-streaming Qwen3 ASR session.
+
+The rolling encoder buffer only holds ``QWEN3_ASR_TRUE_ROLL_SEC`` seconds.
+Before window commits existed, overflow dropped the oldest frames outright, so
+an utterance longer than the window came back missing its beginning.  These
+tests use a fake encoder/decoder pair whose "transcript" is a deterministic
+function of the audio, which makes word-level loss, duplication and ordering
+directly assertable without an NPU.
+"""
+
+import numpy as np
+import pytest
+
+from rkvoice_stream.backends.asr.qwen3.streaming import (
+    ENCODER_HOP_SAMPLES,
+    Qwen3TrueStreamingASRStream,
+)
+
+SAMPLE_RATE = 16000
+CHUNK_SEC = 0.4
+LCTX_SEC = 0.8  # block-aligned left context keeps fake frame ids exact
+CHUNK_SAMPLES = int(CHUNK_SEC * SAMPLE_RATE)
+FRAMES_PER_CHUNK = CHUNK_SAMPLES // ENCODER_HOP_SAMPLES  # 5
+
+
+def make_audio(seconds: float) -> np.ndarray:
+    """Audio whose every 1280-sample block carries its own word id."""
+    n_blocks = int(seconds * SAMPLE_RATE) // ENCODER_HOP_SAMPLES
+    blocks = [
+        np.full(ENCODER_HOP_SAMPLES, float(i), dtype=np.float32)
+        for i in range(n_blocks)
+    ]
+    return np.concatenate(blocks)
+
+
+class _FakeEncoder:
+    def encode(self, audio):
+        n = len(audio) // ENCODER_HOP_SAMPLES
+        frames = np.zeros((n, 4), dtype=np.float32)
+        for i in range(n):
+            frames[i, 0] = audio[i * ENCODER_HOP_SAMPLES]
+        return frames
+
+
+class _FakeDecoder:
+    _early_stop_tokens = 0
+
+    def __init__(self):
+        self.calls = []
+
+    def run_embed(self, full_embd, n_tokens, keep_history=0):
+        words = ["w%d" % int(round(v)) for v in full_embd[:, 0]]
+        if self._early_stop_tokens > 0:
+            words = words[: self._early_stop_tokens]
+        self.calls.append(("early" if self._early_stop_tokens else "full",
+                           len(words)))
+        return {
+            "text": " ".join(words),
+            "n_tokens_generated": len(words),
+            "aborted": False,
+            "perf": {},
+        }
+
+    def abort(self):
+        pass
+
+
+class _FakeEngine:
+    def __init__(self):
+        self.encoder = _FakeEncoder()
+        self.decoder = _FakeDecoder()
+
+    def build_embed(self, all_frames, **kwargs):
+        return all_frames, all_frames.shape[0]
+
+
+@pytest.fixture
+def env(monkeypatch):
+    monkeypatch.setenv("QWEN3_ASR_VAD_BACKEND", "silero")
+    monkeypatch.setenv("QWEN3_ASR_TRUE_CHUNK_SEC", str(CHUNK_SEC))
+    monkeypatch.setenv("QWEN3_ASR_TRUE_LCTX_SEC", str(LCTX_SEC))
+    monkeypatch.setenv("QWEN3_ASR_TRUE_ROLL_SEC", "5")
+    monkeypatch.setenv("QWEN3_ASR_TRUE_PARTIAL_TOKENS", "1000")
+    monkeypatch.setenv("QWEN3_ASR_TRUE_PARTIAL_INTERVAL_MS", "0")
+    monkeypatch.setenv("QWEN3_ASR_TRUE_PARTIAL_WARMUP", "0")
+    monkeypatch.delenv("QWEN3_ASR_TRUE_ROLL_OVERLAP_SEC", raising=False)
+    monkeypatch.delenv("QWEN3_ASR_ACCUMULATE_SEGMENTS", raising=False)
+    monkeypatch.delenv("QWEN3_ASR_ALLOW_AUTO_RESUME_AFTER_ENDPOINT",
+                       raising=False)
+    return monkeypatch
+
+
+def feed_all(stream, audio):
+    texts = []
+    for i in range(0, len(audio), CHUNK_SAMPLES):
+        texts.append(stream.feed_audio(audio[i:i + CHUNK_SAMPLES])["text"])
+    return texts
+
+
+def expected_words(seconds: float) -> list[str]:
+    n_chunks = int(seconds * SAMPLE_RATE) // CHUNK_SAMPLES
+    return ["w%d" % i for i in range(n_chunks * FRAMES_PER_CHUNK)]
+
+
+# ── long utterance ────────────────────────────────────────────────────
+
+
+def test_long_utterance_keeps_every_word(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._max_encoder_frames == 65
+    assert stream._roll_overlap_frames == 13
+
+    feed_all(stream, make_audio(12.0))
+    result = stream.finish(apply_itn_flag=False)
+
+    words = result["text"].split()
+    assert stream._window_commits >= 2
+    assert words == expected_words(12.0)          # nothing lost, order kept
+    assert len(words) == len(set(words))          # no duplicates from overlap
+    assert "." not in result["text"]              # no mid-sentence terminator
+
+
+def test_partials_grow_monotonically_and_keep_the_opening(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+
+    texts = [t for t in feed_all(stream, make_audio(12.0)) if t]
+
+    assert len(texts) > 5
+    prev: list[str] = []
+    for text in texts:
+        cur = text.split()
+        assert cur[0] == "w0", text[:40]
+        assert cur[:len(prev)] == prev, (prev[-3:], cur[:len(prev)][-3:])
+        prev = cur
+
+
+def test_overlap_zero_still_loses_no_word(env):
+    env.setenv("QWEN3_ASR_TRUE_ROLL_OVERLAP_SEC", "0")
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._roll_overlap_frames == 0
+
+    feed_all(stream, make_audio(12.0))
+    result = stream.finish(apply_itn_flag=False)
+
+    assert stream._window_commits >= 1
+    assert result["text"].split() == expected_words(12.0)
+
+
+# ── unchanged behaviour when the window never overflows ───────────────
+
+
+def test_short_utterance_takes_no_new_path(env):
+    engine = _FakeEngine()
+    stream = Qwen3TrueStreamingASRStream(engine)
+
+    feed_all(stream, make_audio(4.0))
+    result = stream.finish(apply_itn_flag=False)
+
+    assert stream._window_commits == 0
+    assert stream._window_committed_text == ""
+    assert result["text"].split() == expected_words(4.0)
+    # Every decode was either a throttled partial or the single final.
+    assert sum(1 for kind, _ in engine.decoder.calls if kind == "full") == 1
+
+
+# ── boundary stitching ────────────────────────────────────────────────
+
+
+def test_commit_strips_invented_terminator_and_dedups_case(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    stream._window_committed_text = "computers that you are selling"
+
+    # Next window re-decodes the overlap: same words, different case, and the
+    # previous commit's invented full stop is already gone.
+    merged = stream._join_text(
+        stream._window_committed_text,
+        "Selling in the online store",
+        max_units=16,
+    )
+
+    assert merged == "computers that you are selling in the online store"
+
+
+def test_midstream_terminator_does_not_survive_a_commit(env):
+    engine = _FakeEngine()
+
+    def run_embed(full_embd, n_tokens, keep_history=0):
+        return {"text": "the product.", "aborted": False, "perf": {}}
+
+    engine.decoder.run_embed = run_embed
+    stream = Qwen3TrueStreamingASRStream(engine)
+    stream._encoder_frames = [np.zeros((70, 4), dtype=np.float32)]
+    stream._total_encoder_frames = 70
+
+    assert stream._commit_window_overflow() is True
+    assert stream._window_committed_text == "the product"
+
+
+# ── lifecycle ─────────────────────────────────────────────────────────
+
+
+def test_new_utterance_clears_committed_window_text(env):
+    env.setenv("QWEN3_ASR_ALLOW_AUTO_RESUME_AFTER_ENDPOINT", "1")
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    stream._window_committed_text = "first sentence"
+    stream._archive_text = "first sentence"
+    stream._episode_final = True
+
+    stream.feed_audio(np.full(CHUNK_SAMPLES, 0.2, dtype=np.float32))
+
+    assert stream._episode_final is False
+    assert stream._window_committed_text == ""
+    assert stream._archive_text == ""
+
+
+def test_commit_is_skipped_while_a_final_decode_owns_the_decoder(env):
+    engine = _FakeEngine()
+    stream = Qwen3TrueStreamingASRStream(engine)
+    stream._encoder_frames = [np.zeros((70, 4), dtype=np.float32)]
+    stream._total_encoder_frames = 70
+
+    for attr in ("_finalizing", "_episode_final", "_final_decode_in_progress"):
+        setattr(stream, attr, True)
+        assert stream._window_commit_allowed() is False
+        assert stream._commit_window_overflow() is False
+        setattr(stream, attr, False)
+
+    assert engine.decoder.calls == []
+    assert stream._window_commit_allowed() is True
+
+
+def test_overflow_while_finalizing_falls_back_to_dropping(env):
+    engine = _FakeEngine()
+    stream = Qwen3TrueStreamingASRStream(engine)
+    feed_all(stream, make_audio(2.0))
+    stream._finalizing = True
+
+    feed_all(stream, make_audio(12.0))
+
+    assert stream._window_commits == 0
+    assert stream._total_encoder_frames <= stream._max_encoder_frames
