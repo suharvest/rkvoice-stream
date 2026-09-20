@@ -156,30 +156,84 @@ def split_model(onnx_path: str, output_dir: str,
     print(f"  Inputs:  {[i.name for i in flow_decoder.graph.input]}")
     print(f"  Outputs: {[o.name for o in flow_decoder.graph.output]}")
 
-    # --- Simplify flow_decoder with fixed shapes ---
-    print(f"\nSimplifying flow_decoder with fixed shapes (mel_len={mel_len})...")
+    # --- Fix the flow_decoder input shapes (and simplify when we can) ---
+    #
+    # Two separate things happen here, and only the first is mandatory:
+    #
+    #  1. graph.input must declare literal dims. RKNN reads exactly those and
+    #     refuses anything symbolic ("The input shape ['unk__1689', 192,
+    #     'unk__1684'] of '/Add_output_0' is not support!"). ORT does not care,
+    #     so --verify passes either way and the problem only surfaces at
+    #     conversion time, on another machine, minutes later.
+    #  2. onnxsim folds the now-known shapes through the graph. Nice to have;
+    #     it is version-sensitive (observed failing with "Field 'shape' of
+    #     'type' is required but missing" on one host and succeeding on
+    #     another), so a failure here is a warning, not a stop.
+    #
+    # Pinning is therefore done unconditionally, on whichever model we ended up
+    # with, and the result is re-read and asserted. Before this, a failed
+    # simplify printed one WARNING and left a fully dynamic model behind.
+    print(f"\nFixing flow_decoder input shapes (mel_len={mel_len})...")
+    z_shape = {z_tensor: [1, 192, mel_len]}
+    mask_shape = {mask_tensor: [1, 1, mel_len]}
+    input_shapes = {**z_shape, **mask_shape}
+
+    fd_model = onnx.load(flow_decoder_path)
     try:
         import onnxsim
 
-        z_shape = {z_tensor: [1, 192, mel_len]}
-        mask_shape = {mask_tensor: [1, 1, mel_len]}
-        input_shapes = {**z_shape, **mask_shape}
-
-        fd_model = onnx.load(flow_decoder_path)
         fd_simplified, ok = onnxsim.simplify(
             fd_model,
             overwrite_input_shapes=input_shapes,
         )
         if ok:
-            onnx.save(fd_simplified, flow_decoder_path)
-            fd_size2 = os.path.getsize(flow_decoder_path) / (1024 * 1024)
-            print(f"  Simplified OK: {fd_size2:.1f} MB, nodes={len(fd_simplified.graph.node)}")
+            fd_model = fd_simplified
+            print(f"  Simplified: nodes={len(fd_model.graph.node)}")
         else:
-            print("  WARNING: onnxsim simplification failed, keeping unsimplified version")
+            print("  WARNING: onnxsim reported failure; continuing unsimplified")
     except ImportError:
-        print("  WARNING: onnxsim not installed, skipping simplification")
-    except Exception as e:
-        print(f"  WARNING: onnxsim failed ({e}), keeping unsimplified version")
+        print("  WARNING: onnxsim not installed; continuing unsimplified")
+    except Exception as exc:
+        print(f"  WARNING: onnxsim failed ({exc}); continuing unsimplified")
+
+    for value_info in fd_model.graph.input:
+        want = input_shapes.get(value_info.name)
+        if not want:
+            continue
+        tensor_type = value_info.type.tensor_type
+        dims = tensor_type.shape.dim
+        if len(dims) == 0:
+            # onnx.utils.Extractor can emit a graph input carrying no shape at
+            # all (observed when onnxsim is unavailable, so nothing later fills
+            # it in). Write the whole shape rather than treat it as a mismatch.
+            for value in want:
+                tensor_type.shape.dim.add().dim_value = value
+            continue
+        if len(dims) != len(want):
+            raise RuntimeError(
+                f"{value_info.name} has {len(dims)} dims, expected {len(want)} "
+                f"({want}); the split point is not what this script assumes."
+            )
+        for dim, value in zip(dims, want):
+            dim.ClearField("dim_param")
+            dim.dim_value = value
+
+    onnx.save(fd_model, flow_decoder_path)
+
+    reloaded = onnx.load(flow_decoder_path)
+    for value_info in reloaded.graph.input:
+        shape = [
+            d.dim_value if d.HasField("dim_value") else d.dim_param
+            for d in value_info.type.tensor_type.shape.dim
+        ]
+        if any(isinstance(v, str) for v in shape):
+            raise RuntimeError(
+                f"flow_decoder input {value_info.name} is still dynamic "
+                f"({shape}); RKNN conversion would fail at load_onnx."
+            )
+        print(f"  Input shape fixed: {value_info.name} {shape}")
+    fd_size2 = os.path.getsize(flow_decoder_path) / (1024 * 1024)
+    print(f"  Saved: {fd_size2:.1f} MB")
 
     return encoder_path, flow_decoder_path
 
