@@ -358,9 +358,21 @@ class _LangModel:
                 np.zeros((1, 192, cand), dtype=np.float32),
                 np.zeros((1, 1, cand), dtype=np.float32),
             ])
-            if out and len(out):
-                return out[0].size // self.HOP_SIZE
-            seen.append(cand)
+            if not out or not len(out):
+                seen.append(cand)
+                continue
+            samples = int(out[0].size)
+            # A window is a whole number of hops by construction. Anything else
+            # means the output is not what this code thinks it is, and guessing
+            # from it would set a window that silently mis-slices every decode.
+            if samples <= 0 or samples % self.HOP_SIZE:
+                raise RuntimeError(
+                    f"Piper {self.lang}: decoder returned {samples} samples for a "
+                    f"{cand}-frame probe, which is not a whole number of "
+                    f"{self.HOP_SIZE}-sample hops. The artifacts do not match what "
+                    f"this backend expects."
+                )
+            return samples // self.HOP_SIZE
         raise RuntimeError(
             f"Piper {self.lang}: the decoder rejected every probed mel window "
             f"({seen}). Set PIPER_MEL_LEN to the value it was exported with."
@@ -554,6 +566,13 @@ class _LangModel:
         one window is only a few seconds — ordinary sentences hit it.
         """
         cap = self.mel_len
+        if cap <= 0:
+            # Everything below divides the work into windows of this size; a
+            # zero would make the loop advance by nothing and spin forever.
+            raise RuntimeError(
+                f"Piper {self.lang}: decoder window is {cap}, which cannot be "
+                f"used. Set PIPER_MEL_LEN to the exported value."
+            )
 
         def _emit(w_start: int, w_end: int, keep_lo: int, keep_hi: int) -> np.ndarray:
             z_pad = np.zeros((1, 192, cap), dtype=np.float32)
