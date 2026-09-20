@@ -13,6 +13,7 @@ import pytest
 
 from rkvoice_stream.backends.asr.qwen3.streaming import (
     ENCODER_HOP_SAMPLES,
+    WINDOW_COMMIT_RETRY_CHUNKS,
     Qwen3TrueStreamingASRStream,
 )
 
@@ -239,3 +240,155 @@ def test_overflow_while_finalizing_falls_back_to_dropping(env):
 
     assert stream._window_commits == 0
     assert stream._total_encoder_frames <= stream._max_encoder_frames
+
+
+# ── review follow-ups ────────────────────────────────────────────────
+
+
+class _PunctStopDecoder(_FakeDecoder):
+    """Ends every window with "." and honours the final punctuation stop.
+
+    Mirrors the RKLLM decoder: with ``_early_stop_tokens == 0`` and
+    ``_final_stop_on_punctuation`` set, generation is aborted at the first
+    sentence terminator.  Here a terminator follows every 10th word.
+    """
+
+    _final_stop_on_punctuation = True
+
+    def run_embed(self, full_embd, n_tokens, keep_history=0):
+        ids = [int(round(v)) for v in full_embd[:, 0]]
+        out, aborted = [], False
+        for i in ids:
+            out.append("w%d" % i + ("." if i % 10 == 9 else ""))
+            if (self._early_stop_tokens == 0 and self._final_stop_on_punctuation
+                    and out[-1].endswith(".")):
+                aborted = True
+                break
+        self.calls.append(("stopped" if aborted else "whole", len(out)))
+        return {"text": " ".join(out), "n_tokens_generated": len(out),
+                "aborted": aborted,
+                "abort_reason": "final_punctuation" if aborted else "",
+                "perf": {}}
+
+
+def test_window_holding_two_sentences_commits_both(env):
+    engine = _FakeEngine()
+    engine.decoder = _PunctStopDecoder()
+    stream = Qwen3TrueStreamingASRStream(engine)
+
+    feed_all(stream, make_audio(8.0))
+
+    assert stream._window_commits == 1
+    committed = [w.rstrip(".") for w in stream._window_committed_text.split()]
+    # The whole 65+ frame window, not just its first sentence (w0..w9).
+    assert committed[:12] == ["w%d" % i for i in range(12)]
+    assert len(committed) > 60
+    # The punctuation stop is back on for the real final decode.
+    assert engine.decoder._final_stop_on_punctuation is True
+
+
+class _AbortingDecoder(_FakeDecoder):
+    def __init__(self, abort_full_calls: int, flag_aborted: bool = False):
+        super().__init__()
+        self.abort_left = abort_full_calls
+        self.flag_aborted = flag_aborted
+
+    def run_embed(self, full_embd, n_tokens, keep_history=0):
+        result = super().run_embed(full_embd, n_tokens, keep_history)
+        if self._early_stop_tokens == 0 and self.abort_left > 0:
+            self.abort_left -= 1
+            # Exactly what the RKLLM decoder returns after ``abort()`` or an
+            # async timeout: the reason is recorded, ``aborted`` stays False
+            # (decoder.py sets ``_aborted`` only for its own stop rules).
+            result.update(text=" ".join(result["text"].split()[:3]),
+                          aborted=self.flag_aborted, abort_reason="external")
+        return result
+
+
+@pytest.mark.parametrize("flag_aborted", [False, True])
+def test_aborted_commit_is_not_committed_and_is_retried(env, flag_aborted):
+    engine = _FakeEngine()
+    engine.decoder = _AbortingDecoder(abort_full_calls=1,
+                                      flag_aborted=flag_aborted)
+    stream = Qwen3TrueStreamingASRStream(engine)
+
+    feed_all(stream, make_audio(12.0))
+    result = stream.finish(apply_itn_flag=False)
+
+    # The truncated decode was thrown away, the frames were kept, the retry on
+    # the next chunk committed them: still every word, once.
+    assert result["text"].split() == expected_words(12.0)
+
+
+def test_commit_that_keeps_aborting_drops_with_a_warning(env, caplog):
+    engine = _FakeEngine()
+    engine.decoder = _AbortingDecoder(abort_full_calls=10**6)
+    stream = Qwen3TrueStreamingASRStream(engine)
+
+    with caplog.at_level("WARNING"):
+        feed_all(stream, make_audio(12.0))
+
+    assert stream._window_commits == 0
+    assert stream._window_committed_text == ""
+    # Bounded: the cap plus the chunks a retry is allowed to wait for.
+    assert stream._total_encoder_frames <= (
+        stream._max_encoder_frames
+        + WINDOW_COMMIT_RETRY_CHUNKS * FRAMES_PER_CHUNK)
+    assert any("without committing their text" in r.message for r in caplog.records)
+
+
+def test_abort_partial_decode_cannot_reach_a_window_commit(env):
+    engine = _FakeEngine()
+    aborts = []
+    engine.decoder.abort = lambda: aborts.append(1)
+    stream = Qwen3TrueStreamingASRStream(engine)
+
+    stream._window_commit_in_progress = True
+    stream.abort_partial_decode()
+    assert aborts == []
+    stream._window_commit_in_progress = False
+    stream.abort_partial_decode()
+    assert aborts == [1]
+
+
+def test_no_overlap_means_no_dedup(env):
+    env.setenv("QWEN3_ASR_TRUE_ROLL_OVERLAP_SEC", "0")
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._window_dedup_units == 0
+    # "no" on both sides of a seam with nothing decoded twice is the speaker.
+    assert stream._join_text("he said no", "no I mean yes",
+                             max_units=stream._window_dedup_units) == \
+        "he said no no I mean yes"
+
+
+def test_overlap_dedup_still_applies_with_overlap(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._window_dedup_units > 0
+    assert stream._join_text("such as the speaker", "The speaker and a case",
+                             max_units=stream._window_dedup_units) == \
+        "such as the speaker and a case"
+
+
+def test_cjk_dedup_keeps_the_remainders_own_spacing(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._join_text("我们去你好", "你好 New York 见",
+                             max_units=stream._window_dedup_units) == \
+        "我们去你好New York 见"
+
+
+def test_real_decoder_reports_external_abort_by_reason_only():
+    """Pin the contract the commit guard relies on, against the real class."""
+    import inspect
+    from rkvoice_stream.backends.asr.qwen3 import decoder as dec
+    src = inspect.getsource(dec)
+    abort_body = src[src.index("    def abort(self):"):]
+    abort_body = abort_body[:abort_body.index("    def release(self):")]
+    assert "_abort_reason" in abort_body and "self._aborted = True" not in abort_body
+
+
+def test_retry_budget_does_not_leak_into_the_next_utterance(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    stream._window_commit_retries = 2
+    stream._episode_final = True
+    stream._maybe_resume_new_utterance(np.full(1600, 0.5, dtype=np.float32))
+    assert stream._window_commit_retries == 0

@@ -52,10 +52,17 @@ ENCODER_FRAMES_PER_SEC = 13                 # encoder output rate (~13 fps)
 # already-committed text may be re-matched against the start of the next
 # window when stitching window commits together.  The acoustic overlap is
 # ~1 s, i.e. ≲4 English words or ≲8 CJK characters; 16 leaves headroom for a
-# fast speaker without letting an unrelated repetition far back in the
-# sentence swallow real words.  Not an env knob: it is a property of the
-# overlap window, not something an operator tunes independently.
+# fast speaker.  The match is anchored to the very end of the committed text
+# and the very start of the new window and the longest match wins, so a larger
+# cap admits no false match that a smaller one would not.  Not an env knob: it
+# is a property of the overlap window.  With no acoustic overlap nothing is
+# decoded twice, so nothing is de-duplicated (see ``_window_dedup_units``).
 WINDOW_COMMIT_OVERLAP_UNITS = 16
+
+# A window commit that came back aborted is retried on the following chunks
+# rather than committed; the buffer may run this many chunks past its cap before
+# the oldest frames are dropped after all.
+WINDOW_COMMIT_RETRY_CHUNKS = 2
 
 # Characters ignored when matching text units across a window boundary, and
 # the sentence terminators stripped from a mid-utterance commit.
@@ -299,6 +306,13 @@ class Qwen3TrueStreamingASRStream:
         # window commits must survive in that (default) configuration too.
         self._window_committed_text: str = ""
         self._window_commits: int = 0
+        self._window_commit_in_progress: bool = False
+        self._window_commit_retries: int = 0
+        # Nothing is decoded twice without an acoustic overlap, so an equal
+        # word on both sides of the seam is the speaker repeating it.
+        self._window_dedup_units: int = (
+            WINDOW_COMMIT_OVERLAP_UNITS if self._roll_overlap_frames > 0 else 0)
+        self._last_final_abort_reason: str = ""
         self._current_language: str = language or ""
         self._episode_final: bool = False
         self._vad_endpoint_detected: bool = False
@@ -522,7 +536,7 @@ class Qwen3TrueStreamingASRStream:
         audio; this hook only interrupts stale partial work so the ingest queue
         can drain before the real finalize marker is processed.
         """
-        if self._final_decode_in_progress:
+        if self._final_decode_in_progress or self._window_commit_in_progress:
             return
         try:
             self._engine.decoder.abort()
@@ -756,6 +770,7 @@ class Qwen3TrueStreamingASRStream:
         self._final_decode_in_progress = False
         self._finalizing = False
         self._partial_text = ""
+        self._window_commit_retries = 0
         # Window commits belong to the utterance that just ended; they were
         # already folded into ``_archive_text`` by ``_commit_final_text``.
         # Carrying them over would prepend the old sentence to the new one.
@@ -794,16 +809,34 @@ class Qwen3TrueStreamingASRStream:
         self._total_encoder_frames += enc_out.shape[0]
         if self._total_encoder_frames > self._max_encoder_frames:
             committed = self._commit_window_overflow()
-            if not committed:
-                # Could not decode right now (a final decode owns the decoder,
-                # or the episode is closing).  Fall back to the historical
-                # drop so the buffer still respects its cap; the drained tail
-                # is at most one chunk, since a successful commit leaves only
-                # the overlap frames behind.
+            if committed:
+                self._window_commit_retries = 0
+            elif (self._window_commit_allowed()
+                    and self._window_commit_retries < WINDOW_COMMIT_RETRY_CHUNKS):
+                # The decode ran but came back aborted (external abort, repeat
+                # collapse, timeout): its text is not the window's text, so it
+                # was not committed and the frames were kept.  Try again with
+                # the next chunk before giving anything up.
+                self._window_commit_retries += 1
+            else:
+                # A final decode owns the decoder / the episode is closing (it
+                # will decode these frames itself), or the retries ran out.
+                # Drop the oldest frames so the buffer keeps a bound -- loudly,
+                # because their text is gone.
+                dropped_frames = 0
                 while (self._total_encoder_frames > self._max_encoder_frames
                        and len(self._encoder_frames) > 1):
                     dropped = self._encoder_frames.pop(0)
                     self._total_encoder_frames -= dropped.shape[0]
+                    dropped_frames += dropped.shape[0]
+                if dropped_frames:
+                    logger.warning(
+                        "Qwen3-true-stream dropped %d encoder frames without "
+                        "committing their text (retries=%d finalizing=%s "
+                        "episode_final=%s)",
+                        dropped_frames, self._window_commit_retries,
+                        self._finalizing, self._episode_final)
+                self._window_commit_retries = 0
 
         if self._episode_final or not self._encoder_frames or self._finalizing:
             return
@@ -887,17 +920,37 @@ class Qwen3TrueStreamingASRStream:
 
         all_frames = np.concatenate(self._encoder_frames, axis=0)
         t0 = time.perf_counter()
+        # ``abort_partial_decode`` must not reach this decode: it exists to
+        # interrupt throwaway partial work, and this text is permanent.
+        self._window_commit_in_progress = True
         try:
-            text = self._decode_final(all_frames)
+            # Decode the WHOLE window.  The final-decode punctuation stop ends
+            # generation at the first sentence terminator, which is right for a
+            # one-sentence turn and wrong here: a window holding "…today. And
+            # tomorrow we…" would commit the first sentence and then retire the
+            # frames of the second.
+            text = self._decode_final(all_frames, stop_on_punctuation=False)
         except Exception as exc:  # pragma: no cover - decoder-specific
             logger.warning("Window commit decode failed: %s", exc)
             return False
+        finally:
+            self._window_commit_in_progress = False
         self._total_dec_ms += (time.perf_counter() - t0) * 1000
+
+        if self._last_final_abort_reason:
+            # Aborted output is a prefix of the window (external abort,
+            # timeout) or garbage (repeat collapse).  Committing it and
+            # trimming the frames would lose the rest for good; keep the
+            # frames and let the caller retry.
+            logger.warning(
+                "Window commit decode aborted (%s); keeping the window",
+                self._last_final_abort_reason)
+            return False
 
         text = _strip_midstream_terminator(_strip_prompt_leaks(text or ""))
         self._window_committed_text = self._join_text(
             self._window_committed_text, text,
-            max_units=WINDOW_COMMIT_OVERLAP_UNITS)
+            max_units=self._window_dedup_units)
         self._window_commits += 1
 
         self._keep_tail_frames(self._roll_overlap_frames)
@@ -952,7 +1005,8 @@ class Qwen3TrueStreamingASRStream:
             self._current_language = lang or decoded_language or self._current_language
         return text or ""
 
-    def _decode_final(self, all_frames: np.ndarray) -> str:
+    def _decode_final(self, all_frames: np.ndarray,
+                      stop_on_punctuation: bool = True) -> str:
         prefix_text = (
             self._archive_text
             if self._accumulate_segments and self._segment_context_prefix
@@ -989,9 +1043,24 @@ class Qwen3TrueStreamingASRStream:
                 self._vad_silence_samples * 1000 / SAMPLE_RATE,
                 self._processed_samples / SAMPLE_RATE,
             )
-        result = self._run_decoder(full_embd, n_tokens, 0)
+        decoder = self._engine.decoder
+        saved_stop = getattr(decoder, "_final_stop_on_punctuation", None)
+        if not stop_on_punctuation and saved_stop is not None:
+            decoder._final_stop_on_punctuation = False
+        try:
+            result = self._run_decoder(full_embd, n_tokens, 0)
+        finally:
+            if not stop_on_punctuation and saved_stop is not None:
+                decoder._final_stop_on_punctuation = saved_stop
         raw, decoded_language = _normalize_decoder_text(result.get("text", ""))
         was_aborted = result.get("aborted", False)
+        # The RKLLM decoder only raises ``aborted`` for the stops it decides on
+        # itself (repeat, early stop, punctuation).  ``decoder.abort()`` and the
+        # async timeout leave ``aborted`` False and record just the reason, so
+        # either field means the generation did not run to its own end.
+        abort_reason = result.get("abort_reason") or ""
+        self._last_final_abort_reason = (
+            abort_reason or ("aborted" if was_aborted else ""))
         perf = result.get("perf") or {}
         logger.info(
             "Qwen3-true-stream final decode perf: input_tokens=%d "
@@ -1113,10 +1182,16 @@ class Qwen3TrueStreamingASRStream:
             return right
 
         if any(_is_cjk(ch) for ch in right):
-            # ``_text_units`` counts whitespace-free characters, so slice the
-            # same representation — slicing the raw string would be off by the
-            # number of spaces in it.
-            return re.sub(r"\s+", "", right)[best:].lstrip()
+            # ``_text_units`` counts whitespace-free characters; walk the raw
+            # string to the same count so the remainder keeps its own spacing
+            # ("你好 New York" must not come back as "NewYork").
+            seen = 0
+            for idx, ch in enumerate(right):
+                if seen >= best:
+                    return right[idx:].lstrip()
+                if not ch.isspace():
+                    seen += 1
+            return ""
 
         matches = list(re.finditer(r"[A-Za-z0-9']+|[^\w\s]", right))
         if best >= len(matches):
@@ -1147,7 +1222,7 @@ class Qwen3TrueStreamingASRStream:
         if self._window_committed_text:
             text = self._join_text(
                 self._window_committed_text, text,
-                max_units=WINDOW_COMMIT_OVERLAP_UNITS)
+                max_units=self._window_dedup_units)
             self._window_committed_text = ""
         if self._accumulate_segments:
             self._archive_text = self._join_text(self._archive_text, text)
@@ -1161,7 +1236,7 @@ class Qwen3TrueStreamingASRStream:
         if self._window_committed_text:
             head = self._join_text(
                 head, self._window_committed_text,
-                max_units=WINDOW_COMMIT_OVERLAP_UNITS)
+                max_units=self._window_dedup_units)
         if self._episode_final or not self._partial_text:
             return head
         if not head:
@@ -1170,5 +1245,5 @@ class Qwen3TrueStreamingASRStream:
         # committed tail when there is one.
         return self._join_text(
             head, self._partial_text,
-            max_units=(WINDOW_COMMIT_OVERLAP_UNITS
+            max_units=(self._window_dedup_units
                        if self._window_committed_text else None))
