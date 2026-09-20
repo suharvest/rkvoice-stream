@@ -148,7 +148,8 @@ _CLAUSE_END_RE = re.compile(
 # A "." that belongs to the word before it, not to the end of anything. There is
 # no lexicon here, so each rule is the narrowest that covers its common case:
 #  - a title is always followed by a name;
-#  - a dotted chain ("U.S.", "p.m.", "e.g.") is an abbreviation, unless a word
+#  - a dotted chain of single letters ("U.S.", "p.m.", "e.g.") is an abbreviation
+#    -- "example.com" is not one -- unless a word
 #    that plainly starts a sentence follows ("...in the U.S. They ship...");
 #  - a single letter counts only as one of a run of initials ("J. K. Rowling").
 #    On its own it is far more often the end of a sentence ("Plan B. Then...",
@@ -178,7 +179,9 @@ def _is_abbreviation_dot(text: str, m: "re.Match") -> bool:
     if w.lower() in _TITLES:
         return True
     after = text[m.start() + 1:]
-    if "." in w:
+    if "." in w and all(len(part) == 1 for part in w.split(".")):
+        # Single letters only: "U.S", "p.m", "e.g". "example.com" and "x.io"
+        # are words with a dot in them, and the "." after one ends the sentence.
         nxt = _NEXT_WORD_RE.match(after)
         return not (nxt and nxt.group(1) in _SENTENCE_STARTERS)
     if len(w) == 1:

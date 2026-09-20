@@ -238,3 +238,13 @@ def test_single_letters_and_chains_still_end_sentences(text, expected):
 
 def test_fullwidth_closer_does_not_hide_the_final_mark():
     assert piper._segment_pause_ms("他说「停。」") == 300.0
+
+
+def test_a_domain_is_not_a_dotted_abbreviation():
+    text = "See example.com. Contact support. Mail a.b@x.io. Done."
+    assert piper._split_sentences(text) == [
+        "See example.com.", "Contact support.", "Mail a.b@x.io.", "Done.",
+    ]
+    assert piper._split_sentences("Dr. Smith paid 3.14 at example.com. Plan B. Then go.") == [
+        "Dr. Smith paid 3.14 at example.com.", "Plan B.", "Then go.",
+    ]
