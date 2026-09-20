@@ -32,6 +32,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import math
 import os
 import re
 import subprocess
@@ -128,7 +129,62 @@ except ImportError:
     logger.debug("piper_phonemize not available — falling back to espeak-ng subprocess")
 
 
+# Clause terminators. Piper voices are trained on phoneme sequences that carry
+# these as tokens (phoneme_id_map has ids for them) -- the token is what makes
+# the model render the pause and the falling/rising contour. `espeak-ng --ipa`
+# drops them: it prints one bare line per clause and nothing else (measured on
+# the speech image, espeak-ng 1.51: "Hello, world." -> "həlˈoʊ\nwˈɜːld"). The
+# reference frontend (piper_phonemize) re-attaches the terminator after each
+# clause; _phonemize_subprocess does the same.
+_PUNCT_NORMALIZE = {
+    '，': ',', '、': ',', '。': '.', '！': '!', '？': '?', '；': ';', '：': ':',
+}
+# An ASCII terminator only ends a clause when whitespace, a closing quote or
+# bracket, or the end of the text follows, so "1,000", "10:30" and "3.5" stay
+# whole -- the same call espeak makes. Full-width marks need no lookahead.
+_CLAUSE_END_RE = re.compile(
+    r'([,.;:!?]+)(?=[\s"\'”’)\]]|$)|([，、。！？；：]+)'
+)
+
+
+def _split_clauses(text: str) -> list[tuple[str, str]]:
+    """Split text into (clause, terminator) pairs; terminator may be ''."""
+    clauses: list[tuple[str, str]] = []
+    pos = 0
+    for m in _CLAUSE_END_RE.finditer(text):
+        # A run ("?!", "...") collapses onto its first mark.
+        mark = (m.group(1) or m.group(2))[0]
+        clauses.append((text[pos:m.start()].strip(), _PUNCT_NORMALIZE.get(mark, mark)))
+        pos = m.end()
+    tail = text[pos:].strip()
+    if tail:
+        clauses.append((tail, ""))
+    return [(c, p) for c, p in clauses if c]
+
+
 def _phonemize_subprocess(text: str, voice: str) -> str:
+    """Phonemize via the espeak-ng CLI, keeping the clause terminators."""
+    clauses = _split_clauses(text)
+    if not clauses:
+        return ""
+    # One espeak call for the whole text, one clause per input line. espeak may
+    # still break a clause further (it has its own clause rules), and then the
+    # lines no longer pair up with ours -- fall back to one call per clause.
+    lines = [
+        ln.strip()
+        for ln in _run_espeak("\n".join(c for c, _ in clauses), voice).splitlines()
+        if ln.strip()
+    ]
+    if len(lines) != len(clauses):
+        lines = [
+            " ".join(_run_espeak(c, voice).split()) for c, _ in clauses
+        ]
+    return " ".join(
+        f"{ipa}{mark}" for ipa, (_, mark) in zip(lines, clauses) if ipa
+    )
+
+
+def _run_espeak(text: str, voice: str) -> str:
     """Call espeak-ng via subprocess to get IPA phonemes."""
     try:
         result = subprocess.run(
@@ -158,14 +214,14 @@ def text_to_phonemes(text: str, voice: str) -> str:
         try:
             result = _phonemize_espeak_lib(text, voice)
             if isinstance(result, list):
-                # [[phoneme_str, ...], ...] or [str, ...]
-                parts = []
-                for item in result:
-                    if isinstance(item, list):
-                        parts.extend(item)
-                    else:
-                        parts.append(str(item))
-                return " ".join(parts)
+                # One list of single-codepoint phonemes per sentence, word
+                # separators (" ") and terminators included. Joining a
+                # sentence with "" keeps both; joining with " " turned every
+                # phoneme into its own word.
+                return " ".join(
+                    "".join(item) if isinstance(item, list) else str(item)
+                    for item in result
+                )
             return str(result)
         except Exception as exc:
             logger.warning("piper_phonemize failed (%s), falling back to subprocess", exc)
@@ -193,8 +249,15 @@ def phonemes_to_ids(phoneme_str: str, phoneme_id_map: dict) -> list[int]:
         ids.extend(phoneme_id_map["^"])
         ids.append(pad_id)
 
-    # Split on whitespace; each token is either a phoneme or a word boundary
-    for token in phoneme_str.split():
+    # Split on whitespace into words. The separator goes BETWEEN words only, as
+    # in the reference id sequence: a terminator rides on the word before it
+    # ("wˈɜːld." -> ... d . $), and nothing sits between the last phoneme and
+    # EOS. Emitting it after every word put a " " before EOS that the voices
+    # never saw in training.
+    for i, token in enumerate(phoneme_str.split()):
+        if i > 0 and " " in phoneme_id_map:
+            ids.extend(phoneme_id_map[" "])
+            ids.append(pad_id)
         if token in phoneme_id_map:
             ids.extend(phoneme_id_map[token])
             ids.append(pad_id)
@@ -203,10 +266,6 @@ def phonemes_to_ids(phoneme_str: str, phoneme_id_map: dict) -> list[int]:
                 if ch in phoneme_id_map:
                     ids.extend(phoneme_id_map[ch])
                     ids.append(pad_id)
-        # Word separator
-        if " " in phoneme_id_map:
-            ids.extend(phoneme_id_map[" "])
-            ids.append(pad_id)
 
     # EOS
     if "$" in phoneme_id_map:
@@ -241,6 +300,37 @@ def _trim_silence(audio: np.ndarray, threshold: float = SILENCE_RMS_THRESHOLD) -
     start = nonsilent[0] * frame_size
     end = (nonsilent[-1] + 1) * frame_size
     return audio[start:end]
+
+
+# Pause appended after a segment, by its final mark. _trim_silence removes the
+# silence the model rendered for that mark, and segments are played back to
+# back -- within one synthesize() call and across the per-sentence calls a
+# dialogue server makes -- so without this sentences run into each other.
+# Marks INSIDE a segment need nothing here: they reach the model as tokens.
+_SENTENCE_END = frozenset(".!?。！？")
+_CLAUSE_END = frozenset(",;:，、；：")
+_TRAILING_CLOSERS = " \t\n\"'”’)]"
+
+
+def _segment_pause_ms(text: str) -> float:
+    """Pause for the segment's final mark; 0 when it ends mid-phrase.
+
+    Read per call, not at import: a module-level read goes stale across a
+    profile hot-reload.
+    """
+    last = text.rstrip(_TRAILING_CLOSERS)[-1:]
+    if last in _SENTENCE_END:
+        name, default = "PIPER_SENTENCE_PAUSE_MS", 300.0
+    elif last in _CLAUSE_END:
+        name, default = "PIPER_CLAUSE_PAUSE_MS", 150.0
+    else:
+        return 0.0
+    try:
+        value = float(os.environ.get(name, "") or default)
+    except ValueError:
+        logger.warning("Ignoring invalid %s=%r", name, os.environ.get(name))
+        return default
+    return value if math.isfinite(value) and value >= 0 else default
 
 
 # ---------------------------------------------------------------------------
@@ -888,6 +978,13 @@ class PiperRKNNBackend:
         meta["infer_ms"] = (time.perf_counter() - t0) * 1000
 
         audio = _trim_silence(audio)
+        # The pause is speech timing, so it follows the requested speed.
+        pause_ms = _segment_pause_ms(text) / max(speed, 0.1)
+        if len(audio) > 0 and pause_ms > 0:
+            pad = np.zeros(
+                int(lang_model.sample_rate * pause_ms / 1000.0), dtype=audio.dtype
+            )
+            audio = np.concatenate([audio, pad])
         meta["duration_s"] = len(audio) / lang_model.sample_rate
         total_ms = meta["phonemize_ms"] + meta["infer_ms"]
         meta["total_ms"] = total_ms
