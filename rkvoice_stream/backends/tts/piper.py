@@ -156,6 +156,8 @@ _CLAUSE_END_RE = re.compile(
 #    "vitamin C. It helps"), so "J. Smith" is the case given up.
 # "etc." and "No." end real sentences too often to be listed.
 _TITLES = frozenset({"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs"})
+# Dotted abbreviations whose parts are not all single letters.
+_DOTTED_ABBREVIATIONS = frozenset({"ph.d"})
 _SENTENCE_STARTERS = frozenset({
     "The", "They", "We", "It", "He", "She", "I", "You", "This", "That", "These",
     "Those", "There", "Then", "But", "And", "So", "If", "When", "In", "On", "At",
@@ -179,7 +181,8 @@ def _is_abbreviation_dot(text: str, m: "re.Match") -> bool:
     if w.lower() in _TITLES:
         return True
     after = text[m.start() + 1:]
-    if "." in w and all(len(part) == 1 for part in w.split(".")):
+    if "." in w and (w.lower() in _DOTTED_ABBREVIATIONS
+                     or all(len(part) == 1 for part in w.split("."))):
         # Single letters only: "U.S", "p.m", "e.g". "example.com" and "x.io"
         # are words with a dot in them, and the "." after one ends the sentence.
         nxt = _NEXT_WORD_RE.match(after)

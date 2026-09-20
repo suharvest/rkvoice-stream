@@ -183,7 +183,7 @@ def test_segment_gets_trailing_pause_and_punctuated_ids(monkeypatch):
 @pytest.mark.parametrize("text", [
     "Pi is 3.14 roughly", "Visit example.com today", "Ask Dr. Smith about it",
     "The U.S. market grew", "J. K. Rowling wrote it", "Use e.g. a fan",
-    "We left at 5 p.m. sharp",
+    "We left at 5 p.m. sharp", "She is a Ph.D. student", "Made in the U.S.A. last year",
 ])
 def test_inner_periods_split_neither_sentences_nor_clauses(text):
     assert piper._split_sentences(text) == [text]
