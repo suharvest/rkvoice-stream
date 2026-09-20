@@ -176,3 +176,65 @@ def test_segment_gets_trailing_pause_and_punctuated_ids(monkeypatch):
     _fake_espeak(monkeypatch, {"Hello": "ab"})
     audio3, _ = backend._synthesize_segment("Hello", model, speed=1.0)
     assert len(audio3) == speech
+
+
+# -- review follow-ups: one boundary rule for sentences and clauses ---------
+
+@pytest.mark.parametrize("text", [
+    "Pi is 3.14 roughly", "Visit example.com today", "Ask Dr. Smith about it",
+    "The U.S. market grew", "J. K. Rowling wrote it", "Use e.g. a fan",
+    "We left at 5 p.m. sharp",
+])
+def test_inner_periods_split_neither_sentences_nor_clauses(text):
+    assert piper._split_sentences(text) == [text]
+    assert piper._split_clauses(text) == [(text, "")]
+
+
+def test_sentences_split_only_at_real_ends():
+    assert piper._split_sentences(
+        "Pi is 3.14. Dr. Smith agrees! See example.com; then call."
+    ) == ["Pi is 3.14.", "Dr. Smith agrees!", "See example.com;", "then call."]
+
+
+def test_sentence_keeps_its_closing_quote():
+    assert piper._split_sentences('He said "stop." Then he left.') == [
+        'He said "stop."', "Then he left.",
+    ]
+    assert piper._segment_pause_ms('He said "stop."') == 300.0
+
+
+def test_sentences_fullwidth_and_newlines():
+    assert piper._split_sentences("你好。世界！\n再见") == ["你好。", "世界！", "再见"]
+
+
+def test_abbreviation_at_the_very_end_still_ends_the_clause_list():
+    # No following sentence to protect; the mark is simply not re-attached.
+    assert piper._split_clauses("Ask the Dr.") == [("Ask the Dr.", "")]
+
+
+def test_truncation_keeps_eos(monkeypatch):
+    _fake_espeak(monkeypatch, {"Hello": "ab" * 40})
+    model = _FakeModel()
+    model.seq_len = 24
+    backend = piper.PiperRKNNBackend.__new__(piper.PiperRKNNBackend)
+    backend._synthesize_segment("Hello.", model, speed=1.0)
+    ids = model.seen[0]
+    assert len(ids) == 24
+    assert ids[-2:] == [2, 0]          # EOS + pad survive the cut
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Plan B. Then we go.", ["Plan B.", "Then we go."]),
+    ("I got an A. Great.", ["I got an A.", "Great."]),
+    ("It has vitamin C. It helps.", ["It has vitamin C.", "It helps."]),
+    ("We sell in the U.S. They ship today.", ["We sell in the U.S.", "They ship today."]),
+    ("We left at 5 p.m. We were late.", ["We left at 5 p.m.", "We were late."]),
+])
+def test_single_letters_and_chains_still_end_sentences(text, expected):
+    assert piper._split_sentences(text) == expected
+    # Clauses agree: the same marks end a clause.
+    assert [c + p for c, p in piper._split_clauses(text)] == expected
+
+
+def test_fullwidth_closer_does_not_hide_the_final_mark():
+    assert piper._segment_pause_ms("他说「停。」") == 300.0

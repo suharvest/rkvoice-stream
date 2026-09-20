@@ -145,6 +145,46 @@ _PUNCT_NORMALIZE = {
 _CLAUSE_END_RE = re.compile(
     r'([,.;:!?]+)(?=[\s"\'”’)\]]|$)|([，、。！？；：]+)'
 )
+# A "." that belongs to the word before it, not to the end of anything. There is
+# no lexicon here, so each rule is the narrowest that covers its common case:
+#  - a title is always followed by a name;
+#  - a dotted chain ("U.S.", "p.m.", "e.g.") is an abbreviation, unless a word
+#    that plainly starts a sentence follows ("...in the U.S. They ship...");
+#  - a single letter counts only as one of a run of initials ("J. K. Rowling").
+#    On its own it is far more often the end of a sentence ("Plan B. Then...",
+#    "vitamin C. It helps"), so "J. Smith" is the case given up.
+# "etc." and "No." end real sentences too often to be listed.
+_TITLES = frozenset({"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs"})
+_SENTENCE_STARTERS = frozenset({
+    "The", "They", "We", "It", "He", "She", "I", "You", "This", "That", "These",
+    "Those", "There", "Then", "But", "And", "So", "If", "When", "In", "On", "At",
+    "A", "An", "Our", "My", "Your", "Please", "Do", "Does", "Is", "Are", "What",
+})
+_WORD_BEFORE_RE = re.compile(r"([A-Za-z][A-Za-z.]*)$")
+_INITIAL_BEFORE_RE = re.compile(r"(?:^|\s)[A-Za-z]\.\s+$")
+_INITIAL_AFTER_RE = re.compile(r"\s+[A-Za-z]\.(?=\s|$)")
+_NEXT_WORD_RE = re.compile(r"\s+([A-Za-z]+)")
+
+
+def _is_abbreviation_dot(text: str, m: "re.Match") -> bool:
+    """Whether the ASCII mark matched by ``m`` is a lone abbreviation period."""
+    if m.group(1) != ".":
+        return False
+    before = text[:m.start()]
+    word = _WORD_BEFORE_RE.search(before)
+    if not word:
+        return False
+    w = word.group(1)
+    if w.lower() in _TITLES:
+        return True
+    after = text[m.start() + 1:]
+    if "." in w:
+        nxt = _NEXT_WORD_RE.match(after)
+        return not (nxt and nxt.group(1) in _SENTENCE_STARTERS)
+    if len(w) == 1:
+        return bool(_INITIAL_AFTER_RE.match(after)
+                    or _INITIAL_BEFORE_RE.search(before[:word.start()]))
+    return False
 
 
 def _split_clauses(text: str) -> list[tuple[str, str]]:
@@ -152,6 +192,8 @@ def _split_clauses(text: str) -> list[tuple[str, str]]:
     clauses: list[tuple[str, str]] = []
     pos = 0
     for m in _CLAUSE_END_RE.finditer(text):
+        if _is_abbreviation_dot(text, m):
+            continue
         # A run ("?!", "...") collapses onto its first mark.
         mark = (m.group(1) or m.group(2))[0]
         clauses.append((text[pos:m.start()].strip(), _PUNCT_NORMALIZE.get(mark, mark)))
@@ -309,7 +351,7 @@ def _trim_silence(audio: np.ndarray, threshold: float = SILENCE_RMS_THRESHOLD) -
 # Marks INSIDE a segment need nothing here: they reach the model as tokens.
 _SENTENCE_END = frozenset(".!?。！？")
 _CLAUSE_END = frozenset(",;:，、；：")
-_TRAILING_CLOSERS = " \t\n\"'”’)]"
+_TRAILING_CLOSERS = " \t\n\"'”’)]）」』"
 
 
 def _segment_pause_ms(text: str) -> float:
@@ -828,12 +870,27 @@ class _JaKokoroModel:
 # Sentence splitting
 # ---------------------------------------------------------------------------
 
-_SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?;。！？；\n])\s*')
+# Same boundary rule as _CLAUSE_END_RE, for the marks that end a segment. The
+# old pattern split after ANY "." -- inside "3.14", "example.com" and after
+# "Dr." -- and each of those stray segments now also earns a sentence pause, so
+# the two splitters have to agree on what a boundary is. Closing quotes and
+# brackets stay with the sentence they close.
+_SENTENCE_END_RE = re.compile(
+    r'([.!?;]+)(?=[\s"\'”’)\]]|$)["\'”’)\]]*|([。！？；]+)[”’）」』]*|\n+'
+)
 
 
 def _split_sentences(text: str) -> list[str]:
     """Split text into sentences for streaming synthesis."""
-    parts = _SENTENCE_SPLIT_RE.split(text.strip())
+    text = text.strip()
+    parts: list[str] = []
+    pos = 0
+    for m in _SENTENCE_END_RE.finditer(text):
+        if m.group(1) is not None and _is_abbreviation_dot(text, m):
+            continue
+        parts.append(text[pos:m.end()])
+        pos = m.end()
+    parts.append(text[pos:])
     return [p.strip() for p in parts if p.strip()]
 
 
@@ -968,7 +1025,18 @@ class PiperRKNNBackend:
 
         # Truncate to the phoneme length THIS model was built for. The module
         # constant is only the default; a static encoder carries its own.
-        token_ids = token_ids[:getattr(lang_model, "seq_len", SEQ_LEN)]
+        seq_len = getattr(lang_model, "seq_len", SEQ_LEN)
+        if len(token_ids) > seq_len:
+            # Cut, but keep the sequence ending the way the model expects: a
+            # bare prefix loses EOS, and the terminators now in the sequence
+            # make long sentences reach the limit sooner than they used to.
+            logger.warning(
+                "Piper: %d phoneme ids exceed seq_len=%d, truncating %r",
+                len(token_ids), seq_len, text[:60])
+            id_map = lang_model.phoneme_id_map
+            tail = list(id_map.get("$", [])) + [id_map.get("_", [0])[0]]
+            tail = tail if "$" in id_map and len(tail) < seq_len else []
+            token_ids = token_ids[:seq_len - len(tail)] + tail
 
         length_scale = lang_model.length_scale / max(speed, 0.1)
         ns = noise_scale if noise_scale is not None else lang_model.noise_scale
