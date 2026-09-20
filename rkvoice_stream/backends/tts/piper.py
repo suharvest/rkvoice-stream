@@ -145,25 +145,46 @@ _PUNCT_NORMALIZE = {
 _CLAUSE_END_RE = re.compile(
     r'([,.;:!?]+)(?=[\s"\'”’)\]]|$)|([，、。！？；：]+)'
 )
-# A "." after one of these, or after a single letter ("J. Smith", "U.S."), is
-# part of the word, not the end of anything. Deliberately short: "etc." and
-# "No." end real sentences too often to be listed.
-_ABBREVIATIONS = frozenset({
-    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs", "e.g", "i.e",
+# A "." that belongs to the word before it, not to the end of anything. There is
+# no lexicon here, so each rule is the narrowest that covers its common case:
+#  - a title is always followed by a name;
+#  - a dotted chain ("U.S.", "p.m.", "e.g.") is an abbreviation, unless a word
+#    that plainly starts a sentence follows ("...in the U.S. They ship...");
+#  - a single letter counts only as one of a run of initials ("J. K. Rowling").
+#    On its own it is far more often the end of a sentence ("Plan B. Then...",
+#    "vitamin C. It helps"), so "J. Smith" is the case given up.
+# "etc." and "No." end real sentences too often to be listed.
+_TITLES = frozenset({"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "mt", "vs"})
+_SENTENCE_STARTERS = frozenset({
+    "The", "They", "We", "It", "He", "She", "I", "You", "This", "That", "These",
+    "Those", "There", "Then", "But", "And", "So", "If", "When", "In", "On", "At",
+    "A", "An", "Our", "My", "Your", "Please", "Do", "Does", "Is", "Are", "What",
 })
 _WORD_BEFORE_RE = re.compile(r"([A-Za-z][A-Za-z.]*)$")
+_INITIAL_BEFORE_RE = re.compile(r"(?:^|\s)[A-Za-z]\.\s+$")
+_INITIAL_AFTER_RE = re.compile(r"\s+[A-Za-z]\.(?=\s|$)")
+_NEXT_WORD_RE = re.compile(r"\s+([A-Za-z]+)")
 
 
 def _is_abbreviation_dot(text: str, m: "re.Match") -> bool:
     """Whether the ASCII mark matched by ``m`` is a lone abbreviation period."""
     if m.group(1) != ".":
         return False
-    word = _WORD_BEFORE_RE.search(text[:m.start()])
+    before = text[:m.start()]
+    word = _WORD_BEFORE_RE.search(before)
     if not word:
         return False
-    w = word.group(1).lower()
-    # Last dotted component: "U.S" -> "s", "e.g" stays whole via the table.
-    return w in _ABBREVIATIONS or len(w.rsplit(".", 1)[-1]) == 1
+    w = word.group(1)
+    if w.lower() in _TITLES:
+        return True
+    after = text[m.start() + 1:]
+    if "." in w:
+        nxt = _NEXT_WORD_RE.match(after)
+        return not (nxt and nxt.group(1) in _SENTENCE_STARTERS)
+    if len(w) == 1:
+        return bool(_INITIAL_AFTER_RE.match(after)
+                    or _INITIAL_BEFORE_RE.search(before[:word.start()]))
+    return False
 
 
 def _split_clauses(text: str) -> list[tuple[str, str]]:
@@ -330,7 +351,7 @@ def _trim_silence(audio: np.ndarray, threshold: float = SILENCE_RMS_THRESHOLD) -
 # Marks INSIDE a segment need nothing here: they reach the model as tokens.
 _SENTENCE_END = frozenset(".!?。！？")
 _CLAUSE_END = frozenset(",;:，、；：")
-_TRAILING_CLOSERS = " \t\n\"'”’)]"
+_TRAILING_CLOSERS = " \t\n\"'”’)]）」』"
 
 
 def _segment_pause_ms(text: str) -> float:

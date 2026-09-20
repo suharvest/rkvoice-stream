@@ -183,6 +183,7 @@ def test_segment_gets_trailing_pause_and_punctuated_ids(monkeypatch):
 @pytest.mark.parametrize("text", [
     "Pi is 3.14 roughly", "Visit example.com today", "Ask Dr. Smith about it",
     "The U.S. market grew", "J. K. Rowling wrote it", "Use e.g. a fan",
+    "We left at 5 p.m. sharp",
 ])
 def test_inner_periods_split_neither_sentences_nor_clauses(text):
     assert piper._split_sentences(text) == [text]
@@ -220,3 +221,20 @@ def test_truncation_keeps_eos(monkeypatch):
     ids = model.seen[0]
     assert len(ids) == 24
     assert ids[-2:] == [2, 0]          # EOS + pad survive the cut
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Plan B. Then we go.", ["Plan B.", "Then we go."]),
+    ("I got an A. Great.", ["I got an A.", "Great."]),
+    ("It has vitamin C. It helps.", ["It has vitamin C.", "It helps."]),
+    ("We sell in the U.S. They ship today.", ["We sell in the U.S.", "They ship today."]),
+    ("We left at 5 p.m. We were late.", ["We left at 5 p.m.", "We were late."]),
+])
+def test_single_letters_and_chains_still_end_sentences(text, expected):
+    assert piper._split_sentences(text) == expected
+    # Clauses agree: the same marks end a clause.
+    assert [c + p for c, p in piper._split_clauses(text)] == expected
+
+
+def test_fullwidth_closer_does_not_hide_the_final_mark():
+    assert piper._segment_pause_ms("他说「停。」") == 300.0
