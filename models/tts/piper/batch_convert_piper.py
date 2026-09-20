@@ -255,7 +255,11 @@ def main():
     results = []
     for lang in langs:
         print(f"\n{'='*60}")
-        print(f"Processing: {lang} (mode={args.mode})")
+        # Not args.mode: argparse never defines it, and there is only one
+        # conversion path left -- convert_language_hybrid below. The reference
+        # survived a refactor and raised AttributeError on every invocation, so
+        # this entry point could not run at all.
+        print(f"Processing: {lang} (hybrid: ORT encoder + RKNN flow_decoder)")
         print('='*60)
         t0 = time.time()
 
