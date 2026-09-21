@@ -392,3 +392,65 @@ def test_retry_budget_does_not_leak_into_the_next_utterance(env):
     stream._episode_final = True
     stream._maybe_resume_new_utterance(np.full(1600, 0.5, dtype=np.float32))
     assert stream._window_commit_retries == 0
+
+
+# ── seam junk (measured through the service on RK3588, 2026-09-21) ────
+
+
+def test_seam_survives_a_stray_token_at_the_start_of_the_window(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    left = ("I would like to know more about the speaker and the edge computers that you are "
+            "selling in the online store today, because our team is planning to build a voice "
+            "assistant for the factory")
+    right = ("Assistant: Assistant for the factory floor, and we need hardware that can run "
+             "speech recognition locally without any cloud connection.")
+    assert stream._join_window(left, right) == (
+        left + " floor, and we need hardware that can run speech recognition locally "
+        "without any cloud connection.")
+
+
+def test_seam_survives_a_clipped_first_word(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._join_window("please briefly introduce your corporate",
+                               "Duce your corporate product such as this") == \
+        "please briefly introduce your corporate product such as this"
+
+
+def test_seam_match_ignores_punctuation_inside_the_overlap(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._join_window("for the factory floor, and we", "factory floor and we need hardware") == \
+        "for the factory floor, and we need hardware"
+    # ...and what remains may open on punctuation: no space before it.
+    assert stream._join_window("store today", "Today, because our team") == \
+        "store today, because our team"
+
+
+def test_one_word_after_junk_is_not_a_seam(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    # "the" two units in is a coincidence; nothing may be dropped.
+    assert stream._join_window("we went to the", "and then the dog barked") == \
+        "we went to the and then the dog barked"
+
+
+def test_junk_tolerance_is_bounded(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    # The repeat sits four words in -- past the skip limit -- so it is speech.
+    assert stream._join_window("turn on the light", "now please go and turn on the light again") == \
+        "turn on the light now please go and turn on the light again"
+
+
+def test_no_junk_tolerance_without_overlap_or_outside_window_joins(env):
+    env.setenv("QWEN3_ASR_TRUE_ROLL_OVERLAP_SEC", "0")
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._join_window("assistant for the factory", "Assistant: Assistant for the factory floor") == \
+        "assistant for the factory Assistant: Assistant for the factory floor"
+    # Dictation-mode joins keep their old exact-prefix behaviour.
+    stream2 = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream2._join_text("assistant for the factory", "um assistant for the factory floor", max_units=8) == \
+        "assistant for the factory um assistant for the factory floor"
+
+
+def test_cjk_seam_skips_a_stray_character(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._join_window("桥下垂直净空十五米", "嗯空十五米，该项目于二零一一年") == \
+        "桥下垂直净空十五米，该项目于二零一一年"

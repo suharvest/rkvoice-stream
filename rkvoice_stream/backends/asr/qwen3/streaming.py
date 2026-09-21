@@ -59,6 +59,15 @@ ENCODER_FRAMES_PER_SEC = 13                 # encoder output rate (~13 fps)
 # decoded twice, so nothing is de-duplicated (see ``_window_dedup_units``).
 WINDOW_COMMIT_OVERLAP_UNITS = 16
 
+# The window after a commit starts on a re-decode of the overlap, but not always
+# cleanly: the cut can clip a word, and the decoder sometimes opens with a stray
+# token before it locks on (measured through the service on RK3588: a window
+# came back as "Assistant: Assistant for the factory floor, ..." after one that
+# ended "... a voice assistant for the factory"). Up to this many leading units
+# of the new window may be discarded to find where it rejoins the committed
+# text; a match found that way has to be at least two words long.
+WINDOW_SEAM_MAX_SKIP_UNITS = 3
+
 # A window commit that came back aborted is retried on the following chunks
 # rather than committed; the buffer may run this many chunks past its cap before
 # the oldest frames are dropped after all.
@@ -948,9 +957,8 @@ class Qwen3TrueStreamingASRStream:
             return False
 
         text = _strip_midstream_terminator(_strip_prompt_leaks(text or ""))
-        self._window_committed_text = self._join_text(
-            self._window_committed_text, text,
-            max_units=self._window_dedup_units)
+        self._window_committed_text = self._join_window(
+            self._window_committed_text, text)
         self._window_commits += 1
 
         self._keep_tail_frames(self._roll_overlap_frames)
@@ -1162,23 +1170,36 @@ class Qwen3TrueStreamingASRStream:
         return [u.casefold().strip(_MATCH_STRIP_CHARS) for u in units]
 
     def _drop_overlapping_prefix(self, left: str, right: str,
-                                 max_units: Optional[int] = None) -> str:
+                                 max_units: Optional[int] = None,
+                                 max_skip: int = 0) -> str:
         if max_units is None:
             max_units = self._segment_text_overlap_tokens
         if max_units <= 0 or not left or not right:
             return right
-        left_units = self._match_units(self._text_units(left))
-        right_units = self._match_units(self._text_units(right))
-        max_k = min(max_units, len(left_units), len(right_units))
-        best = 0
-        for k in range(max_k, 0, -1):
-            # Require at least one real token in the match: normalization maps
-            # every punctuation unit to "", so a bare "." would otherwise
-            # "match" a "," and eat a word boundary.
-            if left_units[-k:] == right_units[:k] and any(right_units[:k]):
-                best = k
+        # Compare words only. Two decodes of the same audio punctuate it
+        # differently ("factory floor, and" / "factory floor and"), so a
+        # punctuation unit in the middle of the overlap must not break the
+        # match; ``right_at`` remembers where each word sits among ALL of
+        # right's units, which is what the cut below is counted in.
+        left_words = [u for u in self._match_units(self._text_units(left)) if u]
+        right_all = self._match_units(self._text_units(right))
+        right_at = [i for i, u in enumerate(right_all) if u]
+        right_words = [right_all[i] for i in right_at]
+
+        cut = 0  # number of right's units (words and punctuation) to drop
+        for k in range(min(max_units, len(left_words), len(right_words)), 0, -1):
+            # Longest match wins; among equals, the one that skips least.
+            for skip in range(0, max_skip + 1):
+                if skip and k < 2:
+                    break  # one word after junk is a coincidence, not a seam
+                if skip + k > len(right_words):
+                    break
+                if left_words[-k:] == right_words[skip:skip + k]:
+                    cut = right_at[skip + k - 1] + 1
+                    break
+            if cut:
                 break
-        if best <= 0:
+        if not cut:
             return right
 
         if any(_is_cjk(ch) for ch in right):
@@ -1187,30 +1208,41 @@ class Qwen3TrueStreamingASRStream:
             # ("你好 New York" must not come back as "NewYork").
             seen = 0
             for idx, ch in enumerate(right):
-                if seen >= best:
+                if seen >= cut:
                     return right[idx:].lstrip()
                 if not ch.isspace():
                     seen += 1
             return ""
 
         matches = list(re.finditer(r"[A-Za-z0-9']+|[^\w\s]", right))
-        if best >= len(matches):
+        if cut >= len(matches):
             return ""
-        return right[matches[best].start():].lstrip()
+        return right[matches[cut].start():].lstrip()
 
     def _join_text(self, left: str, right: str,
-                   max_units: Optional[int] = None) -> str:
+                   max_units: Optional[int] = None,
+                   max_skip: int = 0) -> str:
         left = (left or "").strip()
         right = (right or "").strip()
         if not left:
             return right
         if not right:
             return left
-        right = self._drop_overlapping_prefix(left, right, max_units)
+        right = self._drop_overlapping_prefix(left, right, max_units, max_skip)
         if not right:
             return left
-        sep = "" if _is_cjk(left[-1]) or _is_cjk(right[0]) else " "
+        # What is left of the new window can open on the punctuation that
+        # followed the overlap ("..., and we need"): it belongs to the word
+        # before it, no space.
+        sep = "" if (_is_cjk(left[-1]) or _is_cjk(right[0])
+                     or right[0] in _MATCH_STRIP_CHARS) else " "
         return (left + sep + right).strip()
+
+    def _join_window(self, left: str, right: str) -> str:
+        """Join text across a window seam: de-dup the overlap, tolerate junk."""
+        return self._join_text(
+            left, right, max_units=self._window_dedup_units,
+            max_skip=WINDOW_SEAM_MAX_SKIP_UNITS if self._window_dedup_units else 0)
 
     def _commit_final_text(self, text: str) -> None:
         text = _strip_prompt_leaks(text or "")
@@ -1220,9 +1252,7 @@ class Qwen3TrueStreamingASRStream:
         # ``_composed_text`` both read it), and leaving the prefix behind would
         # duplicate it.
         if self._window_committed_text:
-            text = self._join_text(
-                self._window_committed_text, text,
-                max_units=self._window_dedup_units)
+            text = self._join_window(self._window_committed_text, text)
             self._window_committed_text = ""
         if self._accumulate_segments:
             self._archive_text = self._join_text(self._archive_text, text)
@@ -1243,7 +1273,6 @@ class Qwen3TrueStreamingASRStream:
             return self._partial_text
         # The partial re-decodes the overlap frames, so dedup against the
         # committed tail when there is one.
-        return self._join_text(
-            head, self._partial_text,
-            max_units=(self._window_dedup_units
-                       if self._window_committed_text else None))
+        if self._window_committed_text:
+            return self._join_window(head, self._partial_text)
+        return self._join_text(head, self._partial_text)
