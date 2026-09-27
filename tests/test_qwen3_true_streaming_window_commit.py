@@ -392,3 +392,212 @@ def test_retry_budget_does_not_leak_into_the_next_utterance(env):
     stream._episode_final = True
     stream._maybe_resume_new_utterance(np.full(1600, 0.5, dtype=np.float32))
     assert stream._window_commit_retries == 0
+
+
+# ── seam junk (measured through the service on RK3588, 2026-09-21) ────
+
+
+def _overlap_seam(stream):
+    """Put the stream in the state a no-pause commit leaves it in."""
+    stream._seam_overlap = stream._roll_overlap_frames > 0
+    return stream
+
+
+def test_seam_survives_a_stray_token_at_the_start_of_the_window(env):
+    stream = _overlap_seam(Qwen3TrueStreamingASRStream(_FakeEngine()))
+    left = ("I would like to know more about the speaker and the edge computers that you are "
+            "selling in the online store today, because our team is planning to build a voice "
+            "assistant for the factory")
+    right = ("Assistant: Assistant for the factory floor, and we need hardware that can run "
+             "speech recognition locally without any cloud connection.")
+    assert stream._join_window(left, right) == (
+        left + " floor, and we need hardware that can run speech recognition locally "
+        "without any cloud connection.")
+
+
+def test_seam_survives_a_clipped_first_word(env):
+    stream = _overlap_seam(Qwen3TrueStreamingASRStream(_FakeEngine()))
+    assert stream._join_window("please briefly introduce your corporate",
+                               "Duce your corporate product such as this") == \
+        "please briefly introduce your corporate product such as this"
+
+
+def test_seam_match_ignores_punctuation_inside_the_overlap(env):
+    stream = _overlap_seam(Qwen3TrueStreamingASRStream(_FakeEngine()))
+    assert stream._join_window("for the factory floor, and we", "factory floor and we need hardware") == \
+        "for the factory floor, and we need hardware"
+    # ...and what remains may open on punctuation: no space before it.
+    assert stream._join_window("store today", "Today, because our team") == \
+        "store today, because our team"
+
+
+def test_one_word_after_junk_is_not_a_seam(env):
+    stream = _overlap_seam(Qwen3TrueStreamingASRStream(_FakeEngine()))
+    # "the" two units in is a coincidence; nothing may be dropped.
+    assert stream._join_window("we went to the", "and then the dog barked") == \
+        "we went to the and then the dog barked"
+
+
+def test_junk_tolerance_is_bounded(env):
+    stream = _overlap_seam(Qwen3TrueStreamingASRStream(_FakeEngine()))
+    # The repeat sits four words in -- past the skip limit -- so it is speech.
+    assert stream._join_window("turn on the light", "now please go and turn on the light again") == \
+        "turn on the light now please go and turn on the light again"
+
+
+def test_no_junk_tolerance_without_overlap_or_outside_window_joins(env):
+    env.setenv("QWEN3_ASR_TRUE_ROLL_OVERLAP_SEC", "0")
+    stream = _overlap_seam(Qwen3TrueStreamingASRStream(_FakeEngine()))
+    assert stream._join_window("assistant for the factory", "Assistant: Assistant for the factory floor") == \
+        "assistant for the factory Assistant: Assistant for the factory floor"
+    # Dictation-mode joins keep their old exact-prefix behaviour.
+    stream2 = _overlap_seam(Qwen3TrueStreamingASRStream(_FakeEngine()))
+    assert stream2._join_text("assistant for the factory", "um assistant for the factory floor", max_units=8) == \
+        "assistant for the factory um assistant for the factory floor"
+
+
+def test_cjk_seam_skips_a_stray_character(env):
+    stream = _overlap_seam(Qwen3TrueStreamingASRStream(_FakeEngine()))
+    assert stream._join_window("桥下垂直净空十五米", "嗯空十五米，该项目于二零一一年") == \
+        "桥下垂直净空十五米，该项目于二零一一年"
+
+
+# ── cut at a pause ────────────────────────────────────────────────────
+
+
+class _CountingEncoder:
+    """One frame per 1280-sample block, numbered in order; the audio's level is free.
+
+    The word-id encoder above reads the id out of the sample value, so it cannot
+    also carry a quiet stretch. Needs QWEN3_ASR_TRUE_LCTX_SEC=0 (no context frames
+    to trim, so the running count stays the frame index).
+    """
+
+    def __init__(self):
+        self.n = 0
+
+    def encode(self, audio):
+        k = len(audio) // ENCODER_HOP_SAMPLES
+        frames = np.zeros((k, 4), dtype=np.float32)
+        frames[:, 0] = np.arange(self.n, self.n + k)
+        self.n += k
+        return frames
+
+
+def _speech_with_pauses(seconds: float, pauses: list[tuple[float, float]]) -> np.ndarray:
+    """Level 0.5 everywhere except the (start_s, length_s) stretches at 0.001."""
+    x = np.full(int(seconds * SAMPLE_RATE), 0.5, dtype=np.float32)
+    for start, length in pauses:
+        x[int(start * SAMPLE_RATE):int((start + length) * SAMPLE_RATE)] = 0.001
+    return x
+
+
+@pytest.fixture
+def pause_env(env):
+    env.setenv("QWEN3_ASR_TRUE_LCTX_SEC", "0")
+    return env
+
+
+def _pause_stream():
+    engine = _FakeEngine()
+    engine.encoder = _CountingEncoder()
+    return Qwen3TrueStreamingASRStream(engine), engine
+
+
+def test_window_is_cut_in_the_pause_and_nothing_is_decoded_twice(pause_env):
+    stream, engine = _pause_stream()
+    # 0.4 s pause at 4.0 s: frames 50-54, inside the last 2 s of the first window.
+    feed_all(stream, _speech_with_pauses(8.0, [(4.0, 0.4)]))
+
+    assert stream._pause_cuts == 1 and stream._window_commits == 1
+    assert stream._seam_overlap is False
+    committed = stream._window_committed_text.split()
+    assert committed[0] == "w0"
+    assert 50 <= int(committed[-1][1:]) <= 54          # the cut sits inside the pause
+    # The buffer restarts on the very next frame: no frame on both sides.
+    first_kept = int(round(float(stream._encoder_frames[0][0, 0])))
+    assert first_kept == int(committed[-1][1:]) + 1
+
+    words = stream.finish(apply_itn_flag=False)["text"].split()
+    assert words == expected_words(8.0)                # every frame once, in order
+
+
+def test_a_pause_cut_keeps_the_decoders_terminator(pause_env):
+    engine = _FakeEngine()
+    engine.encoder = _CountingEncoder()
+
+    class _EndsWithStop(_FakeDecoder):
+        def run_embed(self, full_embd, n_tokens, keep_history=0):
+            r = super().run_embed(full_embd, n_tokens, keep_history)
+            r["text"] += "."
+            return r
+    engine.decoder = _EndsWithStop()
+    stream = Qwen3TrueStreamingASRStream(engine)
+    feed_all(stream, _speech_with_pauses(6.0, [(4.0, 0.4)]))
+    assert stream._pause_cuts == 1
+    assert stream._window_committed_text.endswith(".")   # a pause is where sentences end
+
+
+def test_a_repeat_across_a_pause_cut_is_the_speaker(pause_env):
+    stream, _ = _pause_stream()
+    stream._seam_overlap = False
+    assert stream._join_window("he said no", "no I mean yes") == "he said no no I mean yes"
+
+
+def test_without_a_pause_the_overlap_path_still_runs(pause_env):
+    stream, _ = _pause_stream()
+    feed_all(stream, _speech_with_pauses(8.0, []))
+    assert stream._window_commits >= 1 and stream._pause_cuts == 0
+    assert stream._seam_overlap is True
+    assert stream._total_encoder_frames < stream._max_encoder_frames
+
+
+def test_one_quiet_frame_is_not_a_pause(pause_env):
+    stream, _ = _pause_stream()
+    feed_all(stream, _speech_with_pauses(8.0, [(4.0, 0.08)]))     # 80 ms: a gap between words
+    assert stream._pause_cuts == 0
+
+
+def test_a_pause_in_the_first_half_is_not_used(pause_env):
+    stream, _ = _pause_stream()
+    # Cutting at 1.0 s would give back a fifth of the window and leave it nearly full.
+    feed_all(stream, _speech_with_pauses(8.0, [(1.0, 0.4)]))
+    assert stream._pause_cuts == 0
+
+
+def test_the_longest_pause_in_range_wins(pause_env):
+    stream, _ = _pause_stream()
+    feed_all(stream, _speech_with_pauses(6.0, [(3.6, 0.16), (4.4, 0.48)]))
+    last = int(stream._window_committed_text.split()[-1][1:])
+    assert 55 <= last <= 60                                         # inside the 0.48 s pause
+
+
+def test_pause_level_is_relative_to_the_window(pause_env):
+    stream, _ = _pause_stream()
+    # A quiet speaker in a quiet room: same shape, 50x lower level.
+    feed_all(stream, _speech_with_pauses(8.0, [(4.0, 0.4)]) * 0.02)
+    assert stream._pause_cuts == 1
+
+
+def test_pause_search_can_be_switched_off(pause_env):
+    pause_env.setenv("QWEN3_ASR_TRUE_ROLL_CUT_SEARCH_SEC", "0")
+    stream, _ = _pause_stream()
+    feed_all(stream, _speech_with_pauses(8.0, [(4.0, 0.4)]))
+    assert stream._pause_cuts == 0 and stream._window_commits >= 1
+
+
+def test_frame_levels_stay_in_step_with_the_frames(pause_env):
+    stream, _ = _pause_stream()
+    feed_all(stream, _speech_with_pauses(14.0, [(4.0, 0.4), (9.0, 0.4)]))
+    assert sum(len(r) for r in stream._frame_rms) == stream._total_encoder_frames
+    assert len(stream._frame_rms) == len(stream._encoder_frames)
+    words = stream.finish(apply_itn_flag=False)["text"].split()
+    assert words == expected_words(14.0)
+
+
+def test_a_new_utterance_starts_without_a_seam(pause_env):
+    stream, _ = _pause_stream()
+    stream._seam_overlap = True
+    stream._episode_final = True
+    stream._maybe_resume_new_utterance(np.full(1600, 0.5, dtype=np.float32))
+    assert stream._seam_overlap is False and stream._frame_rms == []

@@ -59,6 +59,20 @@ ENCODER_FRAMES_PER_SEC = 13                 # encoder output rate (~13 fps)
 # decoded twice, so nothing is de-duplicated (see ``_window_dedup_units``).
 WINDOW_COMMIT_OVERLAP_UNITS = 16
 
+# The window after a commit starts on a re-decode of the overlap, but not always
+# cleanly: the cut can clip a word, and the decoder sometimes opens with a stray
+# token before it locks on (measured through the service on RK3588: a window
+# came back as "Assistant: Assistant for the factory floor, ..." after one that
+# ended "... a voice assistant for the factory"). Up to this many leading units
+# of the new window may be discarded to find where it rejoins the committed
+# text; a match found that way has to be at least two words long.
+WINDOW_SEAM_MAX_SKIP_UNITS = 3
+
+# A pause is a run of at least this many encoder frames (80 ms each) whose level
+# stays under QWEN3_ASR_TRUE_ROLL_PAUSE_RATIO of the window's loud frames. Two
+# frames is a breath or a comma; gaps between words in running speech are shorter.
+WINDOW_PAUSE_MIN_FRAMES = 2
+
 # A window commit that came back aborted is retried on the following chunks
 # rather than committed; the buffer may run this many chunks past its cap before
 # the oldest frames are dropped after all.
@@ -207,6 +221,20 @@ class Qwen3TrueStreamingASRStream:
         self._roll_overlap_sec = max(
             0.0, _env_float("QWEN3_ASR_TRUE_ROLL_OVERLAP_SEC", 1.0)
         )
+        # Where to retire a full window. Carrying an acoustic overlap into the
+        # next window means that second of audio is decoded twice and the two
+        # texts have to be reconciled afterwards, and a decoder that starts
+        # mid-phrase does not always start cleanly (through the service on
+        # RK3588 a window opened with a stray "Assistant:"; the 2026-06 segment
+        # audio-carry experiment raised English long WER 9.64% -> 15.89% and
+        # leaked a prompt the same way). So the window is cut at a pause inside
+        # its last CUT_SEARCH_SEC instead, the next one starts right after it,
+        # and nothing is decoded twice. Only when no pause is found does the
+        # overlap-and-reconcile path run. 0 turns the pause search off.
+        self._cut_search_sec = max(
+            0.0, _env_float("QWEN3_ASR_TRUE_ROLL_CUT_SEARCH_SEC", 2.0))
+        self._pause_ratio = max(
+            0.0, _env_float("QWEN3_ASR_TRUE_ROLL_PAUSE_RATIO", 0.15))
         self._partial_max_tokens = _env_int("QWEN3_ASR_TRUE_PARTIAL_TOKENS", 12)
         # Minimum wall-clock interval between partial decodes (ms). On RK each
         # partial costs ~600-900 ms of NPU time; running one per 400 ms chunk
@@ -288,6 +316,9 @@ class Qwen3TrueStreamingASRStream:
         # Rolling encoder-output buffer (frames for decoder prefill).
         # Each entry is (T_frames, 1024).
         self._encoder_frames: list[np.ndarray] = []
+        # Per-frame RMS of the audio behind each encoder frame, kept in step
+        # with ``_encoder_frames`` entry by entry; the pause search reads it.
+        self._frame_rms: list[np.ndarray] = []
         self._total_encoder_frames = 0
         self._max_encoder_frames = int(
             self._rolling_buffer_sec * ENCODER_FRAMES_PER_SEC)
@@ -306,6 +337,11 @@ class Qwen3TrueStreamingASRStream:
         # window commits must survive in that (default) configuration too.
         self._window_committed_text: str = ""
         self._window_commits: int = 0
+        self._cut_search_frames = int(self._cut_search_sec * ENCODER_FRAMES_PER_SEC)
+        # Whether the seam between the committed text and the current window
+        # carries an acoustic overlap (and so needs its text reconciled).
+        self._seam_overlap: bool = False
+        self._pause_cuts: int = 0
         self._window_commit_in_progress: bool = False
         self._window_commit_retries: int = 0
         # Nothing is decoded twice without an acoustic overlap, so an equal
@@ -496,8 +532,7 @@ class Qwen3TrueStreamingASRStream:
             enc_out = self._encode_with_context(ctx_audio, new_audio, n_ctx)
             self._total_enc_ms += (time.perf_counter() - t0) * 1000
             if enc_out is not None and enc_out.shape[0] > 0:
-                self._encoder_frames.append(enc_out)
-                self._total_encoder_frames += enc_out.shape[0]
+                self._append_frames(enc_out, new_audio)
             self._processed_samples = len(self._audio_buf)
 
     def cancel_and_finalize(self) -> None:
@@ -759,7 +794,9 @@ class Qwen3TrueStreamingASRStream:
         self._processed_samples = len(carry)
         self._utterance_audio_buffer = []
         self._encoder_frames = []
+        self._frame_rms = []
         self._total_encoder_frames = 0
+        self._seam_overlap = False
         self._vad_speech_samples = 0
         self._vad_silence_samples = 0
         self._vad_consec_speech_frames = 0
@@ -805,8 +842,7 @@ class Qwen3TrueStreamingASRStream:
             return
 
         # Append to rolling encoder buffer.
-        self._encoder_frames.append(enc_out)
-        self._total_encoder_frames += enc_out.shape[0]
+        self._append_frames(enc_out, new_audio)
         if self._total_encoder_frames > self._max_encoder_frames:
             committed = self._commit_window_overflow()
             if committed:
@@ -827,6 +863,7 @@ class Qwen3TrueStreamingASRStream:
                 while (self._total_encoder_frames > self._max_encoder_frames
                        and len(self._encoder_frames) > 1):
                     dropped = self._encoder_frames.pop(0)
+                    self._frame_rms.pop(0)
                     self._total_encoder_frames -= dropped.shape[0]
                     dropped_frames += dropped.shape[0]
                 if dropped_frames:
@@ -882,25 +919,72 @@ class Qwen3TrueStreamingASRStream:
             return False
         return True
 
+    def _append_frames(self, enc_out: np.ndarray, audio: np.ndarray) -> None:
+        """Add encoder frames and the level of the audio each one came from."""
+        n = enc_out.shape[0]
+        parts = np.array_split(np.asarray(audio, dtype=np.float32), n)
+        rms = np.array([float(np.sqrt(np.mean(np.square(part)))) if len(part) else 0.0
+                        for part in parts], dtype=np.float32)
+        self._encoder_frames.append(enc_out)
+        self._frame_rms.append(rms)
+        self._total_encoder_frames += n
+
     def _keep_tail_frames(self, keep_frames: int) -> None:
         """Retain only the last ``keep_frames`` encoder frames."""
         if keep_frames <= 0:
             self._encoder_frames = []
+            self._frame_rms = []
             self._total_encoder_frames = 0
             return
         kept: list[np.ndarray] = []
+        kept_rms: list[np.ndarray] = []
         total = 0
-        for arr in reversed(self._encoder_frames):
+        for arr, rms in zip(reversed(self._encoder_frames), reversed(self._frame_rms)):
             if total >= keep_frames:
                 break
             need = keep_frames - total
             if arr.shape[0] > need:
-                arr = arr[-need:, :]
+                arr, rms = arr[-need:, :], rms[-need:]
             kept.append(arr)
+            kept_rms.append(rms)
             total += arr.shape[0]
         kept.reverse()
+        kept_rms.reverse()
         self._encoder_frames = kept
+        self._frame_rms = kept_rms
         self._total_encoder_frames = total
+
+    def _find_pause_cut(self) -> Optional[int]:
+        """How many leading frames to retire so the cut lands in a pause, or None.
+
+        Looks only at the last ``_cut_search_frames`` of the window and never
+        gives back less than half of it, so a commit always makes room. The
+        level that counts as quiet is relative to this window's own loud frames
+        (90th percentile), so it follows the microphone gain and the room.
+        """
+        if self._cut_search_frames <= 0 or not self._frame_rms:
+            return None
+        rms = np.concatenate(self._frame_rms)
+        n = rms.shape[0]
+        if n != self._total_encoder_frames or n < 2 * WINDOW_PAUSE_MIN_FRAMES:
+            return None
+        loud = float(np.percentile(rms, 90))
+        if loud <= 0.0:
+            return None
+        lo = max(n - self._cut_search_frames, n // 2)
+        quiet = rms[lo:] < self._pause_ratio * loud
+        best_start, best_len, run_start = -1, 0, None
+        for i, q in enumerate(list(quiet) + [False]):
+            if q and run_start is None:
+                run_start = i
+            elif not q and run_start is not None:
+                if i - run_start > best_len:       # longest pause; earliest on ties
+                    best_start, best_len = run_start, i - run_start
+                run_start = None
+        if best_len < WINDOW_PAUSE_MIN_FRAMES:
+            return None
+        # Middle of the pause: both sides keep a little silence around the words.
+        return lo + best_start + (best_len + 1) // 2
 
     def _commit_window_overflow(self) -> bool:
         """Decode the full window before retiring it, instead of dropping it.
@@ -919,6 +1003,9 @@ class Qwen3TrueStreamingASRStream:
             return False
 
         all_frames = np.concatenate(self._encoder_frames, axis=0)
+        cut = self._find_pause_cut()
+        if cut is not None:
+            all_frames = all_frames[:cut, :]
         t0 = time.perf_counter()
         # ``abort_partial_decode`` must not reach this decode: it exists to
         # interrupt throwaway partial work, and this text is permanent.
@@ -947,13 +1034,23 @@ class Qwen3TrueStreamingASRStream:
                 self._last_final_abort_reason)
             return False
 
-        text = _strip_midstream_terminator(_strip_prompt_leaks(text or ""))
-        self._window_committed_text = self._join_text(
-            self._window_committed_text, text,
-            max_units=self._window_dedup_units)
+        text = _strip_prompt_leaks(text or "")
+        if cut is None:
+            # Arbitrary cut: a terminator here is the decoder closing a
+            # sentence the speaker has not finished. At a pause it is kept --
+            # that is where sentences do end.
+            text = _strip_midstream_terminator(text)
+        self._window_committed_text = self._join_window(
+            self._window_committed_text, text)
         self._window_commits += 1
 
-        self._keep_tail_frames(self._roll_overlap_frames)
+        if cut is not None:
+            self._keep_tail_frames(self._total_encoder_frames - cut)
+            self._seam_overlap = False
+            self._pause_cuts += 1
+        else:
+            self._keep_tail_frames(self._roll_overlap_frames)
+            self._seam_overlap = self._roll_overlap_frames > 0
         # The partial belonged to the window we just retired; its content is
         # now inside ``_window_committed_text``.  Reset the throttle as well so
         # the very next chunk doesn't immediately spend another decode on the
@@ -962,9 +1059,10 @@ class Qwen3TrueStreamingASRStream:
         self._last_partial_ts = time.monotonic() * 1000
 
         logger.info(
-            "Qwen3-true-stream window commit #%d: kept %d overlap frames, "
-            "text=%r",
-            self._window_commits, self._total_encoder_frames, text[:60],
+            "Qwen3-true-stream window commit #%d: %s, kept %d frames, text=%r",
+            self._window_commits,
+            "cut at a pause" if cut is not None else "no pause, overlap kept",
+            self._total_encoder_frames, text[:60],
         )
         return True
 
@@ -1162,23 +1260,36 @@ class Qwen3TrueStreamingASRStream:
         return [u.casefold().strip(_MATCH_STRIP_CHARS) for u in units]
 
     def _drop_overlapping_prefix(self, left: str, right: str,
-                                 max_units: Optional[int] = None) -> str:
+                                 max_units: Optional[int] = None,
+                                 max_skip: int = 0) -> str:
         if max_units is None:
             max_units = self._segment_text_overlap_tokens
         if max_units <= 0 or not left or not right:
             return right
-        left_units = self._match_units(self._text_units(left))
-        right_units = self._match_units(self._text_units(right))
-        max_k = min(max_units, len(left_units), len(right_units))
-        best = 0
-        for k in range(max_k, 0, -1):
-            # Require at least one real token in the match: normalization maps
-            # every punctuation unit to "", so a bare "." would otherwise
-            # "match" a "," and eat a word boundary.
-            if left_units[-k:] == right_units[:k] and any(right_units[:k]):
-                best = k
+        # Compare words only. Two decodes of the same audio punctuate it
+        # differently ("factory floor, and" / "factory floor and"), so a
+        # punctuation unit in the middle of the overlap must not break the
+        # match; ``right_at`` remembers where each word sits among ALL of
+        # right's units, which is what the cut below is counted in.
+        left_words = [u for u in self._match_units(self._text_units(left)) if u]
+        right_all = self._match_units(self._text_units(right))
+        right_at = [i for i, u in enumerate(right_all) if u]
+        right_words = [right_all[i] for i in right_at]
+
+        cut = 0  # number of right's units (words and punctuation) to drop
+        for k in range(min(max_units, len(left_words), len(right_words)), 0, -1):
+            # Longest match wins; among equals, the one that skips least.
+            for skip in range(0, max_skip + 1):
+                if skip and k < 2:
+                    break  # one word after junk is a coincidence, not a seam
+                if skip + k > len(right_words):
+                    break
+                if left_words[-k:] == right_words[skip:skip + k]:
+                    cut = right_at[skip + k - 1] + 1
+                    break
+            if cut:
                 break
-        if best <= 0:
+        if not cut:
             return right
 
         if any(_is_cjk(ch) for ch in right):
@@ -1187,30 +1298,45 @@ class Qwen3TrueStreamingASRStream:
             # ("你好 New York" must not come back as "NewYork").
             seen = 0
             for idx, ch in enumerate(right):
-                if seen >= best:
+                if seen >= cut:
                     return right[idx:].lstrip()
                 if not ch.isspace():
                     seen += 1
             return ""
 
         matches = list(re.finditer(r"[A-Za-z0-9']+|[^\w\s]", right))
-        if best >= len(matches):
+        if cut >= len(matches):
             return ""
-        return right[matches[best].start():].lstrip()
+        return right[matches[cut].start():].lstrip()
 
     def _join_text(self, left: str, right: str,
-                   max_units: Optional[int] = None) -> str:
+                   max_units: Optional[int] = None,
+                   max_skip: int = 0) -> str:
         left = (left or "").strip()
         right = (right or "").strip()
         if not left:
             return right
         if not right:
             return left
-        right = self._drop_overlapping_prefix(left, right, max_units)
+        right = self._drop_overlapping_prefix(left, right, max_units, max_skip)
         if not right:
             return left
-        sep = "" if _is_cjk(left[-1]) or _is_cjk(right[0]) else " "
+        # What is left of the new window can open on the punctuation that
+        # followed the overlap ("..., and we need"): it belongs to the word
+        # before it, no space.
+        sep = "" if (_is_cjk(left[-1]) or _is_cjk(right[0])
+                     or right[0] in _MATCH_STRIP_CHARS) else " "
         return (left + sep + right).strip()
+
+    def _join_window(self, left: str, right: str) -> str:
+        """Join text across a window seam: de-dup the overlap, tolerate junk."""
+        if not self._seam_overlap:
+            # Cut at a pause: nothing was decoded twice, so an equal word on
+            # both sides is the speaker repeating it.
+            return self._join_text(left, right, max_units=0)
+        return self._join_text(
+            left, right, max_units=self._window_dedup_units,
+            max_skip=WINDOW_SEAM_MAX_SKIP_UNITS if self._window_dedup_units else 0)
 
     def _commit_final_text(self, text: str) -> None:
         text = _strip_prompt_leaks(text or "")
@@ -1220,9 +1346,7 @@ class Qwen3TrueStreamingASRStream:
         # ``_composed_text`` both read it), and leaving the prefix behind would
         # duplicate it.
         if self._window_committed_text:
-            text = self._join_text(
-                self._window_committed_text, text,
-                max_units=self._window_dedup_units)
+            text = self._join_window(self._window_committed_text, text)
             self._window_committed_text = ""
         if self._accumulate_segments:
             self._archive_text = self._join_text(self._archive_text, text)
@@ -1243,7 +1367,6 @@ class Qwen3TrueStreamingASRStream:
             return self._partial_text
         # The partial re-decodes the overlap frames, so dedup against the
         # committed tail when there is one.
-        return self._join_text(
-            head, self._partial_text,
-            max_units=(self._window_dedup_units
-                       if self._window_committed_text else None))
+        if self._window_committed_text:
+            return self._join_window(head, self._partial_text)
+        return self._join_text(head, self._partial_text)
