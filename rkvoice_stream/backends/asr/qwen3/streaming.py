@@ -233,6 +233,16 @@ class Qwen3TrueStreamingASRStream:
         # overlap-and-reconcile path run. 0 turns the pause search off.
         self._cut_search_sec = max(
             0.0, _env_float("QWEN3_ASR_TRUE_ROLL_CUT_SEARCH_SEC", 2.0))
+        # Frames kept before a pause cut, as decode context for the next window.
+        # Cutting exactly at the pause restarts the decoder cold, and the first
+        # word after it pays for that: measured through the service on RK3588,
+        # "…for infection control, including separating…" came back as
+        # "…infection control. In cooling, separating…", twice out of twice.
+        # A little audio in front of the pause gives the decoder its footing;
+        # what it then re-decodes is de-duplicated like any other seam. 0 cuts
+        # exactly at the pause, which is the pre-2026-09-27 behaviour.
+        self._cut_context_sec = max(
+            0.0, _env_float("QWEN3_ASR_TRUE_ROLL_CUT_CONTEXT_SEC", 0.4))
         self._pause_ratio = max(
             0.0, _env_float("QWEN3_ASR_TRUE_ROLL_PAUSE_RATIO", 0.15))
         self._partial_max_tokens = _env_int("QWEN3_ASR_TRUE_PARTIAL_TOKENS", 12)
@@ -338,16 +348,19 @@ class Qwen3TrueStreamingASRStream:
         self._window_committed_text: str = ""
         self._window_commits: int = 0
         self._cut_search_frames = int(self._cut_search_sec * ENCODER_FRAMES_PER_SEC)
+        self._cut_context_frames = int(self._cut_context_sec * ENCODER_FRAMES_PER_SEC)
         # Whether the seam between the committed text and the current window
         # carries an acoustic overlap (and so needs its text reconciled).
         self._seam_overlap: bool = False
         self._pause_cuts: int = 0
         self._window_commit_in_progress: bool = False
         self._window_commit_retries: int = 0
-        # Nothing is decoded twice without an acoustic overlap, so an equal
-        # word on both sides of the seam is the speaker repeating it.
+        # Nothing is decoded twice without carrying frames across the seam, so
+        # an equal word on both sides of it is the speaker repeating it.
         self._window_dedup_units: int = (
-            WINDOW_COMMIT_OVERLAP_UNITS if self._roll_overlap_frames > 0 else 0)
+            WINDOW_COMMIT_OVERLAP_UNITS
+            if (self._roll_overlap_frames > 0 or self._cut_context_frames > 0)
+            else 0)
         self._last_final_abort_reason: str = ""
         self._current_language: str = language or ""
         self._episode_final: bool = False
@@ -1045,8 +1058,11 @@ class Qwen3TrueStreamingASRStream:
         self._window_commits += 1
 
         if cut is not None:
-            self._keep_tail_frames(self._total_encoder_frames - cut)
-            self._seam_overlap = False
+            # Context frames sit before the cut and are decoded twice; if the
+            # cut is too near the start to afford them, take none.
+            context = self._cut_context_frames if cut > self._cut_context_frames else 0
+            self._keep_tail_frames(self._total_encoder_frames - cut + context)
+            self._seam_overlap = context > 0
             self._pause_cuts += 1
         else:
             self._keep_tail_frames(self._roll_overlap_frames)
@@ -1061,7 +1077,9 @@ class Qwen3TrueStreamingASRStream:
         logger.info(
             "Qwen3-true-stream window commit #%d: %s, kept %d frames, text=%r",
             self._window_commits,
-            "cut at a pause" if cut is not None else "no pause, overlap kept",
+            ("cut at a pause +%d context frames" % self._cut_context_frames
+             if self._seam_overlap else "cut at a pause")
+            if cut is not None else "no pause, overlap kept",
             self._total_encoder_frames, text[:60],
         )
         return True

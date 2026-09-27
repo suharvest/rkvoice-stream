@@ -353,6 +353,7 @@ def test_abort_partial_decode_cannot_reach_a_window_commit(env):
 
 def test_no_overlap_means_no_dedup(env):
     env.setenv("QWEN3_ASR_TRUE_ROLL_OVERLAP_SEC", "0")
+    env.setenv("QWEN3_ASR_TRUE_ROLL_CUT_CONTEXT_SEC", "0")
     stream = Qwen3TrueStreamingASRStream(_FakeEngine())
     assert stream._window_dedup_units == 0
     # "no" on both sides of a seam with nothing decoded twice is the speaker.
@@ -505,6 +506,7 @@ def _pause_stream():
 
 
 def test_window_is_cut_in_the_pause_and_nothing_is_decoded_twice(pause_env):
+    pause_env.setenv("QWEN3_ASR_TRUE_ROLL_CUT_CONTEXT_SEC", "0")
     stream, engine = _pause_stream()
     # 0.4 s pause at 4.0 s: frames 50-54, inside the last 2 s of the first window.
     feed_all(stream, _speech_with_pauses(8.0, [(4.0, 0.4)]))
@@ -601,3 +603,50 @@ def test_a_new_utterance_starts_without_a_seam(pause_env):
     stream._episode_final = True
     stream._maybe_resume_new_utterance(np.full(1600, 0.5, dtype=np.float32))
     assert stream._seam_overlap is False and stream._frame_rms == []
+
+
+# ── context frames before the cut ─────────────────────────────────────
+
+
+def test_a_pause_cut_keeps_context_frames_for_the_decoder(pause_env):
+    stream, _ = _pause_stream()
+    assert stream._cut_context_frames == 5          # 0.4 s default
+    feed_all(stream, _speech_with_pauses(8.0, [(4.0, 0.4)]))
+
+    assert stream._pause_cuts == 1 and stream._seam_overlap is True
+    committed = stream._window_committed_text.split()
+    first_kept = int(round(float(stream._encoder_frames[0][0, 0])))
+    # The window restarts one context length before the cut, so the decoder
+    # starts on audio that precedes the pause.
+    assert first_kept == int(committed[-1][1:]) + 1 - stream._cut_context_frames
+    # Those frames are decoded twice; the seam de-dup takes them out again.
+    words = stream.finish(apply_itn_flag=False)["text"].split()
+    assert words == expected_words(8.0)
+
+
+def test_context_frames_turn_the_seam_de_dup_on(pause_env):
+    pause_env.setenv("QWEN3_ASR_TRUE_ROLL_OVERLAP_SEC", "0")
+    stream, _ = _pause_stream()
+    assert stream._roll_overlap_frames == 0
+    assert stream._window_dedup_units > 0             # context frames still carry across
+    feed_all(stream, _speech_with_pauses(8.0, [(4.0, 0.4)]))
+    assert stream.finish(apply_itn_flag=False)["text"].split() == expected_words(8.0)
+
+
+def test_no_context_frames_when_the_cut_is_too_near_the_start(pause_env):
+    stream, _ = _pause_stream()
+    stream._cut_context_frames = 20                   # longer than the cut itself
+    stream._find_pause_cut = lambda: 5
+    stream._encoder_frames = [np.zeros((10, 4), dtype=np.float32)]
+    stream._frame_rms = [np.zeros(10, dtype=np.float32)]
+    stream._total_encoder_frames = 10
+
+    assert stream._commit_window_overflow() is True
+    assert stream._seam_overlap is False              # nothing kept, nothing re-decoded
+    assert stream._total_encoder_frames == 5
+
+
+def test_context_frames_are_configurable(pause_env):
+    pause_env.setenv("QWEN3_ASR_TRUE_ROLL_CUT_CONTEXT_SEC", "0.8")
+    stream, _ = _pause_stream()
+    assert stream._cut_context_frames == 10
