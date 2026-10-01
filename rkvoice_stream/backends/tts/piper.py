@@ -210,30 +210,39 @@ def _split_clauses(text: str) -> list[tuple[str, str]]:
     return [(c, p) for c, p in clauses if c]
 
 
-def _phonemize_subprocess(text: str, voice: str) -> str:
+def _phonemize_subprocess(text: str, voice: str,
+                          espeak_cache: dict[tuple[str, str], str] | None = None) -> str:
     """Phonemize via the espeak-ng CLI, keeping the clause terminators."""
     clauses = _split_clauses(text)
     if not clauses:
         return ""
+    # A single token-budget probe can reach the same clause through multiple
+    # candidate prefixes. Keep this cache request-scoped: it removes duplicate
+    # successful CLI calls without changing fallback or cross-request behavior.
+    cache = espeak_cache if espeak_cache is not None else {}
     # One espeak call for the whole text, one clause per input line. espeak may
     # still break a clause further (it has its own clause rules), and then the
     # lines no longer pair up with ours -- fall back to one call per clause.
     lines = [
         ln.strip()
-        for ln in _run_espeak("\n".join(c for c, _ in clauses), voice).splitlines()
+        for ln in _run_espeak("\n".join(c for c, _ in clauses), voice, cache=cache).splitlines()
         if ln.strip()
     ]
     if len(lines) != len(clauses):
         lines = [
-            " ".join(_run_espeak(c, voice).split()) for c, _ in clauses
+            " ".join(_run_espeak(c, voice, cache=cache).split()) for c, _ in clauses
         ]
     return " ".join(
         f"{ipa}{mark}" for ipa, (_, mark) in zip(lines, clauses) if ipa
     )
 
 
-def _run_espeak(text: str, voice: str) -> str:
+def _run_espeak(text: str, voice: str,
+                cache: dict[tuple[str, str], str] | None = None) -> str:
     """Call espeak-ng via subprocess to get IPA phonemes."""
+    key = (voice, text)
+    if cache is not None and key in cache:
+        return cache[key]
     try:
         result = subprocess.run(
             ["espeak-ng", "--ipa", "-v", voice, "-q", "--", text],
@@ -246,7 +255,12 @@ def _run_espeak(text: str, voice: str) -> str:
                 "espeak-ng returned %d for voice=%s: %s",
                 result.returncode, voice, result.stderr.strip(),
             )
-        return result.stdout.strip()
+        output = result.stdout.strip()
+        # Do not cache failures or empty output: preserve the old retry
+        # semantics for malformed input and transient CLI failures.
+        if cache is not None and result.returncode == 0 and output:
+            cache[key] = output
+        return output
     except FileNotFoundError:
         raise RuntimeError(
             "espeak-ng not found. Install it: apt-get install espeak-ng"
@@ -255,7 +269,8 @@ def _run_espeak(text: str, voice: str) -> str:
         raise RuntimeError("espeak-ng timed out")
 
 
-def text_to_phonemes(text: str, voice: str) -> str:
+def text_to_phonemes(text: str, voice: str,
+                     espeak_cache: dict[tuple[str, str], str] | None = None) -> str:
     """Convert text to IPA phoneme string using piper_phonemize or espeak-ng."""
     if _HAS_PIPER_PHONEMIZE:
         # piper_phonemize returns list-of-list; flatten to string
@@ -274,7 +289,7 @@ def text_to_phonemes(text: str, voice: str) -> str:
         except Exception as exc:
             logger.warning("piper_phonemize failed (%s), falling back to subprocess", exc)
 
-    return _phonemize_subprocess(text, voice)
+    return _phonemize_subprocess(text, voice, espeak_cache=espeak_cache)
 
 
 def phonemes_to_ids(phoneme_str: str, phoneme_id_map: dict) -> list[int]:
@@ -333,20 +348,24 @@ def _trim_silence(audio: np.ndarray, threshold: float = SILENCE_RMS_THRESHOLD) -
         return audio
 
     frame_size = SILENCE_FRAME_SIZE
-    n_frames = len(audio) // frame_size
+    # Include a final short frame.  Its RMS must use only the samples that
+    # exist; padding it with zeros would dilute a voiced tail below threshold.
+    n_full = len(audio) // frame_size
+    rms_values: list[float] = []
+    if n_full:
+        frames = audio[: n_full * frame_size].reshape(n_full, frame_size)
+        rms_values.extend(np.sqrt(np.mean(frames ** 2, axis=1)).tolist())
+    remainder_start = n_full * frame_size
+    if remainder_start < len(audio):
+        partial = audio[remainder_start:]
+        rms_values.append(float(np.sqrt(np.mean(partial ** 2))))
 
-    if n_frames == 0:
-        return audio
-
-    frames = audio[: n_frames * frame_size].reshape(n_frames, frame_size)
-    rms = np.sqrt(np.mean(frames ** 2, axis=1))
-
-    nonsilent = np.where(rms > threshold)[0]
+    nonsilent = np.where(np.asarray(rms_values) > threshold)[0]
     if len(nonsilent) == 0:
         return audio
 
-    start = nonsilent[0] * frame_size
-    end = (nonsilent[-1] + 1) * frame_size
+    start = int(nonsilent[0]) * frame_size
+    end = min((int(nonsilent[-1]) + 1) * frame_size, len(audio))
     return audio[start:end]
 
 
@@ -404,7 +423,11 @@ class _LangModel:
         self.lang = lang
         self.model_dir = model_dir
         self._rknn = None
+        self._frontend_rknn = None
         self._encoder = None  # ORT session for hybrid mode
+        self._remainder = None  # optional CPU remainder after frontend NPU
+        self._frontend_npu = False
+        self._frontend_manifest: dict = {}
         self._hybrid = False
         self.config: dict = {}
         self.phoneme_id_map: dict = {}
@@ -460,6 +483,21 @@ class _LangModel:
     def load(self) -> None:
         self._load_config()
 
+        # The frontend split is opt-in because its remainder is an experimental
+        # CPU graph and must never silently replace the production hybrid path.
+        frontend_rknn = self.model_dir / "text_encoder.rknn"
+        frontend_remainder = self.model_dir / "remainder.onnx"
+        frontend_manifest = self.model_dir / "manifest.json"
+        if os.environ.get("PIPER_ENABLE_FRONTEND_NPU", "0") == "1":
+            if not (frontend_rknn.exists() and frontend_remainder.exists()
+                    and frontend_manifest.exists() and (self.model_dir / "flow_decoder.rknn").exists()):
+                raise FileNotFoundError(
+                    f"Piper {self.lang}: frontend NPU enabled but requires "
+                    "text_encoder.rknn, remainder.onnx, manifest.json, and flow_decoder.rknn"
+                )
+            self._load_frontend_npu(frontend_rknn, frontend_remainder, frontend_manifest)
+            return
+
         encoder_path = self.model_dir / "encoder.onnx"
         fd_rknn_path = self.model_dir / "flow_decoder.rknn"
         legacy_rknn_path = self.model_dir / "model.rknn"
@@ -475,6 +513,43 @@ class _LangModel:
                 "or model.rknn (legacy)."
             )
 
+    def _load_frontend_npu(self, rknn_path: Path, remainder_path: Path,
+                           manifest_path: Path) -> None:
+        """Load an explicitly enabled text-encoder-NPU + CPU remainder pair."""
+        import onnxruntime as ort
+        from rknnlite.api import RKNNLite
+
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        bucket = manifest.get("bucket", {}).get("input")
+        if not isinstance(bucket, list) or len(bucket) != 2 or not all(isinstance(x, int) for x in bucket):
+            raise RuntimeError(f"Piper {self.lang}: invalid frontend manifest bucket")
+        if bucket[0] != 1 or bucket[1] <= 0:
+            raise RuntimeError(f"Piper {self.lang}: unsupported frontend bucket {bucket}")
+        self.seq_len = bucket[1]
+        outputs = manifest.get("remainder", {}).get("outputs", [])
+        shapes = manifest.get("remainder", {}).get("output_shapes", [])
+        if (manifest.get("remainder", {}).get("output_semantic") != ["z", "y_mask"]
+                or len(outputs) != 2 or len(shapes) != 2
+                or len(shapes[0]) != 3 or len(shapes[1]) != 3):
+            raise RuntimeError(f"Piper {self.lang}: frontend remainder must declare [z, y_mask]")
+        self._frontend_manifest = manifest
+        try:
+            self._frontend_rknn = RKNNLite(verbose=False)
+            if self._frontend_rknn.load_rknn(str(rknn_path)) != 0 or self._frontend_rknn.init_runtime() != 0:
+                raise RuntimeError(f"Failed to initialize Piper frontend RKNN for {self.lang}")
+            self._rknn = RKNNLite(verbose=False)
+            decoder_path = self.model_dir / "flow_decoder.rknn"
+            if self._rknn.load_rknn(str(decoder_path)) != 0 or self._rknn.init_runtime() != 0:
+                raise RuntimeError(f"Failed to initialize Piper decoder RKNN for {self.lang}")
+            self._remainder = ort.InferenceSession(str(remainder_path), providers=["CPUExecutionProvider"])
+            self._frontend_npu = True
+            self.mel_len = self._probe_decoder_window()
+        except Exception:
+            self.release()
+            raise
+        self._hybrid = False
+        logger.info("Loaded Piper frontend NPU for %s (bucket=%d; remainder=ORT CPU)", self.lang, self.seq_len)
+
     def _probe_decoder_window(self) -> int:
         """Ask the decoder how many mel frames it was compiled for.
 
@@ -486,10 +561,8 @@ class _LangModel:
         rather than what we guessed.
         """
         env = os.environ.get("PIPER_MEL_LEN", "").strip()
-        if env.isdigit() and int(env) > 0:
-            return int(env)
-
-        candidates = [self.mel_len, 512, 256, 150, 128, 1024]
+        candidates = ([int(env)] if env.isdigit() and int(env) > 0 else []) + [
+            self.mel_len, 512, 256, 150, 128, 1024]
         seen = []
         for cand in dict.fromkeys(candidates):
             out = self._rknn.inference(inputs=[
@@ -619,7 +692,15 @@ class _LangModel:
             except Exception:
                 pass
             self._rknn = None
+        if self._frontend_rknn is not None:
+            try:
+                self._frontend_rknn.release()
+            except Exception:
+                pass
+            self._frontend_rknn = None
         self._encoder = None
+        self._remainder = None
+        self._frontend_npu = False
 
     def infer(
         self,
@@ -631,7 +712,68 @@ class _LangModel:
         """Run inference. Returns raw float32 audio samples."""
         if self._hybrid:
             return self._infer_hybrid(token_ids, length_scale, noise_scale, noise_w)
+        if self._frontend_npu:
+            return self._infer_frontend_npu(token_ids, length_scale, noise_scale, noise_w)
         return self._infer_legacy(token_ids, length_scale, noise_scale, noise_w)
+
+    def _infer_frontend_npu(self, token_ids: list[int], length_scale: float,
+                            noise_scale: float, noise_w: float) -> np.ndarray:
+        if len(token_ids) > self.seq_len:
+            raise ValueError(
+                f"Piper {self.lang}: frontend NPU supports at most {self.seq_len} "
+                f"tokens, got {len(token_ids)}; split the text or use a larger bucket"
+            )
+        n = min(len(token_ids), self.seq_len)
+        tokens = np.zeros((1, self.seq_len), dtype=np.int64); tokens[0, :n] = token_ids[:n]
+        lengths = np.array([n], dtype=np.int64)
+        scales = np.array([noise_scale, length_scale, noise_w], dtype=np.float32)
+        x_mask = np.zeros((1, 1, self.seq_len), dtype=np.float32); x_mask[0, 0, :n] = 1.0
+        input_values = {"input": tokens, "input_lengths": lengths,
+                        "scales": scales, "x_mask": x_mask,
+                        "sid": np.array([0], dtype=np.int64)}
+        rknn_inputs = self._frontend_manifest["prefix"].get("inputs", [])
+        if not rknn_inputs:
+            raise RuntimeError(f"Piper {self.lang}: frontend manifest has no inputs")
+        rknn_names = [x["name"] if isinstance(x, dict) else x for x in rknn_inputs]
+        try:
+            out = self._frontend_rknn.inference(inputs=[input_values[name] for name in rknn_names])
+        except KeyError as exc:
+            raise RuntimeError(f"Piper {self.lang}: unsupported frontend input {exc}") from exc
+        names = [x["name"] for x in self._frontend_manifest["prefix"]["outputs"]]
+        if out is None or len(out) != len(names):
+            raise RuntimeError(f"Piper {self.lang}: frontend RKNN output count mismatch")
+        feeds = {"input": tokens, "input_lengths": lengths, "scales": scales, "x_mask": x_mask}
+        feeds.update(dict(zip(names, out)))
+        dtype_map = {"tensor(int64)": np.int64, "tensor(int32)": np.int32,
+                     "tensor(float)": np.float32, "tensor(float16)": np.float16}
+        def declared_shape(inp, name):
+            dims = []
+            for dim in inp.shape:
+                if isinstance(dim, int) and dim > 0:
+                    dims.append(dim)
+                elif isinstance(dim, str) and any(k in dim.lower() for k in ("seq", "phoneme", "token")):
+                    dims.append(self.seq_len)
+                else:
+                    raise RuntimeError(f"Piper {self.lang}: unsupported symbolic shape for {name}: {inp.shape}")
+            return tuple(dims)
+        for inp in self._remainder.get_inputs():
+            if inp.name == "audio_length":
+                feeds[inp.name] = np.zeros(declared_shape(inp, inp.name), dtype=dtype_map.get(inp.type, np.float32))
+            elif inp.name == "cumulative_durations":
+                feeds[inp.name] = np.zeros(declared_shape(inp, inp.name), dtype=dtype_map.get(inp.type, np.float32))
+        declared = {x.name for x in self._remainder.get_inputs()}
+        feeds = {name: value for name, value in feeds.items() if name in declared}
+        for inp in self._remainder.get_inputs():
+            if inp.name == "sid": feeds[inp.name] = np.array([0], dtype=np.int64)
+        result = self._remainder.run(None, feeds)
+        if len(result) != 2:
+            raise RuntimeError(f"Piper {self.lang}: frontend remainder returned no audio")
+        z, y_mask = result
+        if (z.ndim != 3 or y_mask.ndim != 3 or z.shape[0] != y_mask.shape[0] or
+                z.shape[2] != y_mask.shape[2] or z.shape[1] != 192 or y_mask.shape[1] != 1 or
+                not np.isfinite(z).all() or not np.isfinite(y_mask).all()):
+            raise RuntimeError(f"Piper {self.lang}: remainder outputs are not z/y_mask shapes")
+        return self._decode_mel(np.asarray(z), np.asarray(y_mask), int(z.shape[2]))
 
     def _infer_hybrid(
         self,
@@ -766,8 +908,8 @@ class _LangModel:
         noise_w: float,
     ) -> np.ndarray:
         """Legacy full-RKNN inference with fixed seq_len."""
-        n = min(len(token_ids), SEQ_LEN)
-        tokens = np.zeros((1, SEQ_LEN), dtype=np.int64)
+        n = min(len(token_ids), self.seq_len)
+        tokens = np.zeros((1, self.seq_len), dtype=np.int64)
         tokens[0, :n] = token_ids[:n]
         lengths = np.array([n], dtype=np.int64)
         scales = np.array([noise_scale, length_scale, noise_w], dtype=np.float32)
@@ -900,6 +1042,130 @@ def _split_sentences(text: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def _frontend_tokens(text: str, lang_model, cache: dict | None = None) -> tuple[str, list[int]]:
+    key = (id(lang_model), text)
+    if cache is not None and key in cache:
+        return cache[key]
+    espeak_cache = None
+    if cache is not None:
+        espeak_cache = cache.setdefault(("__piper_espeak_cache__", id(lang_model)), {})
+    phonemes = text_to_phonemes(
+        text, lang_model.espeak_voice, espeak_cache=espeak_cache
+    )
+    value = (phonemes, phonemes_to_ids(phonemes, lang_model.phoneme_id_map))
+    if cache is not None:
+        cache[key] = value
+    return value
+
+
+def _frontend_token_count(text: str, lang_model, cache: dict | None = None) -> int:
+    return len(_frontend_tokens(text, lang_model, cache)[1])
+
+
+_FRONTEND_NATURAL_PROBE_LIMIT = 8
+_FRONTEND_HARD_PROBE_LIMIT = 8
+_FRONTEND_WINDOW_CHARS_PER_TOKEN = 8
+_FRONTEND_MIN_WINDOW_CHARS = 32
+
+
+def _split_frontend_bucket(text: str, lang_model, cache: dict | None = None):
+    """Split one sentence by measured token count for a fixed frontend bucket."""
+    cap = getattr(lang_model, "seq_len", SEQ_LEN)
+    current = text
+    while current.strip():
+        window_limit = max(
+            _FRONTEND_MIN_WINDOW_CHARS,
+            cap * _FRONTEND_WINDOW_CHARS_PER_TOKEN,
+        )
+        window_end = min(len(current), window_limit)
+        window_text = current[:window_end]
+        # Never phonemize the complete remaining tail when it exceeds the
+        # window. Every chosen prefix is still measured with the real tokenizer.
+        window_count = _frontend_token_count(window_text, lang_model, cache)
+        if window_end == len(current) and window_count <= cap:
+            yield current
+            return
+        if len(current) <= 1:
+            raise ValueError(
+                f"Piper: one minimal text unit has {window_count} tokens, exceeds frontend "
+                f"bucket {cap}"
+            )
+
+        candidates = [
+            index + 1 for index, char in enumerate(window_text[:-1])
+            if char in ",，;；" and index + 1 < len(current)
+        ]
+        candidates.extend(
+            index + 1 for index, char in enumerate(window_text[:-1])
+            if char.isspace() and index + 1 < len(current)
+        )
+        split_at = None
+        # Estimate only orders the measured candidates; it is not a monotonic
+        # token-count assumption.
+        estimate = max(
+            1,
+            min(
+                window_end - 1,
+                int(window_end * cap / max(window_count, 1)),
+            ),
+        )
+        natural = sorted(
+            set(candidates), key=lambda index: (abs(index - estimate), -index)
+        )[:_FRONTEND_NATURAL_PROBE_LIMIT]
+        for index in natural:
+            if current[:index].strip() and _frontend_token_count(current[:index], lang_model, cache) <= cap:
+                split_at = index
+                break
+        if split_at is None and window_count <= cap:
+            # The whole measured window fits, but no natural boundary did.
+            # Keep the exact measured window rather than cutting the tail.
+            split_at = window_end
+        if split_at is None:
+            # Last resort: Unicode character boundary.  Sample around a
+            # density-based estimate; token count is still measured for every
+            # candidate, without assuming it is monotonic.
+            stride = max(1, window_end // _FRONTEND_HARD_PROBE_LIMIT)
+            probes = []
+            index = estimate
+            while index > 0 and len(probes) < _FRONTEND_HARD_PROBE_LIMIT:
+                probes.append(index)
+                index -= stride
+            # Keep leading whitespace with the first non-whitespace unit so the
+            # fallback always makes progress without emitting a blank segment.
+            first_nonblank = len(current) - len(current.lstrip()) + 1
+            if first_nonblank <= window_end:
+                probes.append(first_nonblank)
+            for index in probes:
+                if not current[:index].strip() or index >= len(current):
+                    continue
+                if _frontend_token_count(current[:index], lang_model, cache) <= cap:
+                    split_at = index
+                    break
+        if split_at is None:
+            raise ValueError(
+                f"Piper: cannot fit a minimal text unit into frontend bucket {cap} "
+                f"(measured {window_count} tokens)"
+            )
+        prefix, current = current[:split_at], current[split_at:]
+        if prefix.strip():
+            yield prefix
+
+
+def _frontend_segments(text: str, lang_model, cache: dict | None = None):
+    # Every Piper _LangModel has a fixed phoneme input shape, whether its
+    # encoder is CPU hybrid, legacy RKNN, or the opt-in frontend split. Keep
+    # Kokoro's own dynamic CPU path on ordinary sentence splitting.
+    if not (
+        isinstance(lang_model, _LangModel)
+        or getattr(lang_model, "_frontend_npu", False)
+        or hasattr(lang_model, "seq_len")
+    ):
+        yield from _split_sentences(text)
+        return
+    for sentence in _split_sentences(text):
+        yield from _split_frontend_bucket(sentence, lang_model, cache)
+
+
 # ---------------------------------------------------------------------------
 # Backend class
 # ---------------------------------------------------------------------------
@@ -918,6 +1184,14 @@ class PiperRKNNBackend:
     def __init__(self) -> None:
         self._models: dict[str, "_LangModel | _JaKokoroModel"] = {}
         self._ready = False
+        self._chinese_fallback = None
+        fallback_setting = os.environ.get("PIPER_CHINESE_FALLBACK", "").strip().lower()
+        if fallback_setting not in {"", "off", "0", "false", "none", "disabled", "matcha_rknn"}:
+            raise ValueError(
+                "PIPER_CHINESE_FALLBACK must be empty/off or 'matcha_rknn', "
+                f"got {fallback_setting!r}"
+            )
+        self._chinese_fallback_enabled = fallback_setting == "matcha_rknn"
 
     # ------------------------------------------------------------------
     # TTSBackend protocol
@@ -928,7 +1202,30 @@ class PiperRKNNBackend:
         return "piper_rknn"
 
     def is_ready(self) -> bool:
-        return self._ready and bool(self._models)
+        if not (self._ready and bool(self._models)):
+            return False
+        if getattr(self, "_chinese_fallback_enabled", False):
+            fallback = self._chinese_fallback
+            return fallback is not None and bool(
+                getattr(fallback, "is_ready", lambda: True)()
+            )
+        return True
+
+    def runtime_info(self) -> dict:
+        """Return backend readiness and rates without exposing model paths."""
+        english_ready = bool(self._ready and self._models)
+        chinese_ready = False
+        if self._chinese_fallback_enabled and self._chinese_fallback is not None:
+            chinese_ready = bool(
+                getattr(self._chinese_fallback, "is_ready", lambda: True)()
+            )
+        return {
+            "backend": self.name,
+            "english_ready": english_ready,
+            "chinese_fallback_enabled": self._chinese_fallback_enabled,
+            "chinese_ready": chinese_ready,
+            "sample_rate": self.get_sample_rate(),
+        }
 
     def get_sample_rate(self) -> int:
         # Return sample rate of default lang if loaded, else 22050
@@ -938,44 +1235,225 @@ class PiperRKNNBackend:
             return next(iter(self._models.values())).sample_rate
         return SAMPLE_RATE
 
+    @staticmethod
+    def _require_soxr():
+        try:
+            import soxr
+        except ImportError as exc:
+            raise RuntimeError(
+                "PIPER_CHINESE_FALLBACK=matcha_rknn requires the "
+                "piper-bilingual optional dependency (soxr)"
+            ) from exc
+        return soxr
+
+    def _load_chinese_fallback(self) -> None:
+        self._require_soxr()
+        from rkvoice_stream.engine.tts import create_backend
+
+        fallback = create_backend("matcha_rknn")
+        # Keep the partially-created backend reachable until preload succeeds,
+        # so a failed Matcha load is rolled back by the same cleanup path as
+        # the Piper models.
+        self._chinese_fallback = fallback
+        try:
+            fallback.preload()
+        except Exception:
+            self._chinese_fallback = None
+            cleanup = getattr(fallback, "cleanup", None)
+            if cleanup is not None:
+                try:
+                    cleanup()
+                except Exception:
+                    logger.exception("Failed to roll back Chinese fallback")
+            raise
+
+    @staticmethod
+    def _language_route(text: str, language: Optional[str]) -> str:
+        value = (language or "").strip().lower()
+        if value in {"", "auto", "detect", "default"}:
+            # Mixed CJK/Latin text stays on the Chinese path when the caller
+            # leaves language selection to auto detection.  The generic
+            # detector is ratio based and would otherwise classify short
+            # mixed prompts as English.
+            if any(
+                0x3400 <= ord(ch) <= 0x4DBF
+                or 0x4E00 <= ord(ch) <= 0x9FFF
+                or 0x20000 <= ord(ch) <= 0x2A6DF
+                or 0xF900 <= ord(ch) <= 0xFAFF
+                for ch in text
+            ):
+                return "zh"
+            detected = detect_language(text)
+            if detected.startswith("zh"):
+                return "zh"
+            if detected.startswith("en"):
+                return "en"
+            raise ValueError(f"Piper Chinese fallback cannot route detected language {detected!r}")
+        if value in {"zh", "zh-cn", "zh_cn", "zh-hans", "zh_hans", "chinese", "mandarin", "cn"}:
+            return "zh"
+        if value in {"en", "en-us", "en_us", "en-gb", "english", "us"}:
+            return "en"
+        raise ValueError(f"Piper Chinese fallback does not support language {language!r}")
+
+    def _matcha_audio_to_piper_wav(self, wav_bytes: bytes) -> tuple[bytes, dict]:
+        import soundfile as sf
+
+        source_audio, source_rate = sf.read(io.BytesIO(wav_bytes), dtype="float32")
+        if source_audio.ndim > 1:
+            source_audio = source_audio[:, 0]
+        source_audio = np.asarray(source_audio, dtype=np.float32)
+        target_rate = self.get_sample_rate()
+        if int(source_rate) != target_rate:
+            soxr = self._require_soxr()
+            source_audio = soxr.resample(
+                source_audio, int(source_rate), target_rate, quality="HQ"
+            ).astype(np.float32, copy=False)
+        out = io.BytesIO()
+        sf.write(out, source_audio, target_rate, format="WAV", subtype="PCM_16")
+        return out.getvalue(), {
+            "backend": "matcha_rknn",
+            "language": "zh",
+            "sample_rate": target_rate,
+            "source_sample_rate": int(source_rate),
+            "duration": len(source_audio) / target_rate,
+        }
+
+    def _synthesize_chinese(
+        self, text: str, speed: Optional[float], pitch_shift: Optional[float], kwargs: dict
+    ) -> tuple[bytes, dict]:
+        if self._chinese_fallback is None:
+            raise RuntimeError("Chinese fallback is not loaded")
+        synth_kwargs = {
+            k: v for k, v in kwargs.items() if k == "noise_scale" and v is not None
+        }
+        started = time.perf_counter()
+        wav_bytes, meta = self._chinese_fallback.synthesize(
+            text=text,
+            speaker_id=0,
+            speed=speed,
+            pitch_shift=pitch_shift,
+            **synth_kwargs,
+        )
+        resample_started = time.perf_counter()
+        wav_bytes, route_meta = self._matcha_audio_to_piper_wav(wav_bytes)
+        elapsed = time.perf_counter() - started
+        route_meta["resample_ms"] = (time.perf_counter() - resample_started) * 1000
+        route_meta["inference_time"] = elapsed
+        route_meta["rtf"] = (
+            elapsed / route_meta["duration"] if route_meta["duration"] > 0 else 0.0
+        )
+        return wav_bytes, {**meta, **route_meta}
+
+    def _synthesize_chinese_stream(
+        self, text: str, speed: Optional[float], pitch_shift: Optional[float], kwargs: dict
+    ) -> Iterator[tuple[np.ndarray, dict]]:
+        if self._chinese_fallback is None:
+            raise RuntimeError("Chinese fallback is not loaded")
+        soxr = self._require_soxr()
+        source_rate = int(self._chinese_fallback.get_sample_rate())
+        target_rate = self.get_sample_rate()
+        resampler = soxr.ResampleStream(
+            source_rate, target_rate, 1, dtype="float32", quality="HQ"
+        )
+        synth_kwargs = {
+            k: v for k, v in kwargs.items() if k == "noise_scale" and v is not None
+        }
+        source = self._chinese_fallback.synthesize_stream(
+            text=text,
+            speaker_id=0,
+            speed=speed,
+            pitch_shift=pitch_shift,
+            **synth_kwargs,
+        )
+        completed = False
+        try:
+            for audio, meta in source:
+                converted = resampler.resample_chunk(
+                    np.asarray(audio, dtype=np.float32), last=False
+                )
+                if len(converted) == 0:
+                    continue
+                out_meta = {
+                    **meta,
+                    "backend": "matcha_rknn",
+                    "language": "zh",
+                    "sample_rate": target_rate,
+                    "source_sample_rate": source_rate,
+                    "duration": len(converted) / target_rate,
+                }
+                yield converted.astype(np.float32, copy=False), out_meta
+            tail = resampler.resample_chunk(
+                np.empty(0, dtype=np.float32), last=True
+            )
+            if len(tail) > 0:
+                yield tail.astype(np.float32, copy=False), {
+                    "backend": "matcha_rknn",
+                    "language": "zh",
+                    "sample_rate": target_rate,
+                    "source_sample_rate": source_rate,
+                    "duration": len(tail) / target_rate,
+                }
+            completed = True
+        finally:
+            if not completed and hasattr(source, "close"):
+                source.close()
+
     def preload(self) -> None:
         """Load RKNN models for all configured languages.
 
         Japanese (ja/ja_JP) is handled by sherpa-onnx Kokoro v1.0 on CPU
         instead of RKNN NPU (vocoder dimension exceeds NPU limit).
         """
-        model_root = Path(MODEL_DIR)
-        for lang in PRELOAD_LANGS:
-            lang_dir = model_root / lang
-            if not lang_dir.exists():
-                logger.warning("Piper model dir not found for %s: %s", lang, lang_dir)
-                continue
-            try:
-                if lang in _JA_LANGS or lang.split("_")[0] == "ja":
-                    # Japanese: use CPU Kokoro fallback
-                    m = _JaKokoroModel(lang, lang_dir)
-                    m.load()
-                else:
-                    m = _LangModel(lang, lang_dir)
-                    m.load()
-                self._models[lang] = m
-            except Exception as exc:
-                logger.error("Failed to load model for %s: %s", lang, exc)
+        try:
+            model_root = Path(MODEL_DIR)
+            for lang in PRELOAD_LANGS:
+                lang_dir = model_root / lang
+                if not lang_dir.exists():
+                    logger.warning("Piper model dir not found for %s: %s", lang, lang_dir)
+                    continue
+                try:
+                    if lang in _JA_LANGS or lang.split("_")[0] == "ja":
+                        m = _JaKokoroModel(lang, lang_dir)
+                        m.load()
+                    else:
+                        m = _LangModel(lang, lang_dir)
+                        m.load()
+                    self._models[lang] = m
+                except Exception as exc:
+                    logger.error("Failed to load model for %s: %s", lang, exc)
 
-        if self._models:
+            if not self._models:
+                logger.error("PiperRKNNBackend: no models loaded — backend not ready")
+                return
+            if self._chinese_fallback_enabled:
+                self._load_chinese_fallback()
+                if not bool(getattr(self._chinese_fallback, "is_ready", lambda: True)()):
+                    raise RuntimeError(
+                        "Chinese fallback preload completed but backend is not ready"
+                    )
             self._ready = True
             logger.info(
-                "PiperRKNNBackend ready. Loaded languages: %s",
+                "PiperRKNNBackend ready. Loaded languages: %s%s",
                 list(self._models.keys()),
+                "; Chinese fallback=matcha_rknn" if self._chinese_fallback else "",
             )
-        else:
-            logger.error("PiperRKNNBackend: no models loaded — backend not ready")
+        except Exception:
+            self.cleanup()
+            raise
 
     def cleanup(self) -> None:
         """Release all RKNN contexts."""
         for m in self._models.values():
             m.release()
         self._models.clear()
+        if self._chinese_fallback is not None:
+            cleanup = getattr(self._chinese_fallback, "cleanup", None)
+            if cleanup is not None:
+                try:
+                    cleanup()
+                except Exception:
+                    logger.exception("Failed to clean up Chinese fallback")
+            self._chinese_fallback = None
         self._ready = False
 
     # ------------------------------------------------------------------
@@ -1004,6 +1482,7 @@ class PiperRKNNBackend:
         lang_model,  # _LangModel | _JaKokoroModel
         speed: float = 1.0,
         noise_scale: Optional[float] = None,
+        token_cache: dict | None = None,
     ) -> tuple[np.ndarray, dict]:
         """Synthesize a single text segment. Returns (audio_float32, meta).
 
@@ -1016,33 +1495,28 @@ class PiperRKNNBackend:
 
         t0 = time.perf_counter()
         try:
-            phoneme_str = text_to_phonemes(text, lang_model.espeak_voice)
+            phoneme_str, cached_ids = _frontend_tokens(text, lang_model, token_cache)
         except RuntimeError as exc:
             logger.error("Phonemization failed: %s", exc)
             return np.zeros(0, dtype=np.float32), {"error": str(exc)}
         meta["phonemize_ms"] = (time.perf_counter() - t0) * 1000
 
-        token_ids = phonemes_to_ids(phoneme_str, lang_model.phoneme_id_map)
+        token_ids = cached_ids
         meta["num_tokens"] = len(token_ids)
 
         if not token_ids:
             logger.warning("No token IDs for text %r (phonemes: %r)", text, phoneme_str)
             return np.zeros(0, dtype=np.float32), meta
 
-        # Truncate to the phoneme length THIS model was built for. The module
-        # constant is only the default; a static encoder carries its own.
+        # The caller normally bounded the segment using the actual model
+        # shape. Direct calls fail closed rather than silently dropping text.
         seq_len = getattr(lang_model, "seq_len", SEQ_LEN)
         if len(token_ids) > seq_len:
-            # Cut, but keep the sequence ending the way the model expects: a
-            # bare prefix loses EOS, and the terminators now in the sequence
-            # make long sentences reach the limit sooner than they used to.
-            logger.warning(
-                "Piper: %d phoneme ids exceed seq_len=%d, truncating %r",
-                len(token_ids), seq_len, text[:60])
-            id_map = lang_model.phoneme_id_map
-            tail = list(id_map.get("$", [])) + [id_map.get("_", [0])[0]]
-            tail = tail if "$" in id_map and len(tail) < seq_len else []
-            token_ids = token_ids[:seq_len - len(tail)] + tail
+            raise ValueError(
+                f"Piper: text segment exceeds model seq_len={seq_len}; "
+                f"frontend NPU supports at most {seq_len} tokens, got {len(token_ids)}; "
+                "split the text or use a larger bucket"
+            )
 
         length_scale = lang_model.length_scale / max(speed, 0.1)
         ns = noise_scale if noise_scale is not None else lang_model.noise_scale
@@ -1120,6 +1594,11 @@ class PiperRKNNBackend:
         if not self.is_ready():
             raise RuntimeError("PiperRKNNBackend.preload() has not been called")
 
+        if getattr(self, "_chinese_fallback_enabled", False):
+            route = self._language_route(text, language)
+            if route == "zh":
+                return self._synthesize_chinese(text, speed, pitch_shift, kwargs)
+
         # Resolve language
         effective_lang = language or detect_language(text)
         lang_model = self._get_model(effective_lang)
@@ -1130,23 +1609,33 @@ class PiperRKNNBackend:
         t_start = time.perf_counter()
 
         # Split into sentences for long texts
-        sentences = _split_sentences(text)
+        token_cache = {}
+        sentences = _frontend_segments(text, lang_model, token_cache)
         all_audio: list[np.ndarray] = []
         agg_meta: dict = {
             "phonemize_ms": 0.0,
+            "segmentation_ms": 0.0,
             "infer_ms": 0.0,
             "total_ms": 0.0,
             "num_tokens": 0,
         }
 
-        for sentence in sentences:
+        while True:
+            segment_start = time.perf_counter()
+            try:
+                sentence = next(sentences)
+            except StopIteration:
+                break
+            agg_meta["segmentation_ms"] += (time.perf_counter() - segment_start) * 1000
             audio_seg, seg_meta = self._synthesize_segment(
-                sentence, lang_model, effective_speed, noise_scale
+                sentence, lang_model, effective_speed, noise_scale,
+                token_cache=token_cache,
             )
             if len(audio_seg) > 0:
                 all_audio.append(audio_seg)
             for k in ("phonemize_ms", "infer_ms", "total_ms", "num_tokens"):
                 agg_meta[k] = agg_meta.get(k, 0.0) + seg_meta.get(k, 0.0)
+        agg_meta["total_ms"] += agg_meta["segmentation_ms"]
 
         audio = np.concatenate(all_audio) if all_audio else np.zeros(0, dtype=np.float32)
 
@@ -1168,6 +1657,7 @@ class PiperRKNNBackend:
             "duration": duration,
             "inference_time": inference_time,
             "rtf": rtf,
+            "sample_rate": lang_model.sample_rate,
             "language": effective_lang,
             "espeak_voice": lang_model.espeak_voice,
             "backend": "kokoro_cpu" if isinstance(lang_model, _JaKokoroModel) else "piper_rknn",
@@ -1192,15 +1682,31 @@ class PiperRKNNBackend:
         if not self.is_ready():
             raise RuntimeError("PiperRKNNBackend.preload() has not been called")
 
+        if getattr(self, "_chinese_fallback_enabled", False):
+            route = self._language_route(text, language)
+            if route == "zh":
+                yield from self._synthesize_chinese_stream(
+                    text, speed, pitch_shift, kwargs
+                )
+                return
+
         effective_lang = language or detect_language(text)
         lang_model = self._get_model(effective_lang)
         effective_speed = speed if speed is not None else 1.0
         noise_scale = kwargs.get("noise_scale", None)
 
-        sentences = _split_sentences(text)
-        for sentence in sentences:
+        token_cache = {}
+        sentences = _frontend_segments(text, lang_model, token_cache)
+        while True:
+            segment_start = time.perf_counter()
+            try:
+                sentence = next(sentences)
+            except StopIteration:
+                break
+            segmentation_ms = (time.perf_counter() - segment_start) * 1000
             audio_seg, seg_meta = self._synthesize_segment(
-                sentence, lang_model, effective_speed, noise_scale
+                sentence, lang_model, effective_speed, noise_scale,
+                token_cache=token_cache,
             )
             if len(audio_seg) == 0:
                 continue
@@ -1212,9 +1718,12 @@ class PiperRKNNBackend:
             duration = len(audio_seg) / lang_model.sample_rate
             meta = {
                 "duration": duration,
+                "sample_rate": lang_model.sample_rate,
                 "language": effective_lang,
+                "segmentation_ms": segmentation_ms,
                 **seg_meta,
             }
+            meta["total_ms"] = seg_meta.get("total_ms", 0.0) + segmentation_ms
             yield audio_seg, meta
 
 

@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "requests", "websocket-client"]
+piper-bilingual = ["soxr==1.1.0"]
 moss = ["onnxruntime", "sentencepiece"]
 # Kokoro EN uses Misaki's English frontend and the separately frozen
 # POS-only model wheel.  The model wheel is a local release input rather than

@@ -6,8 +6,15 @@ espeak-ng is mocked with the line-per-clause shape its CLI really prints
 
 from __future__ import annotations
 
+import io
+import json
+import os
+import sys
+import types
+
 import numpy as np
 import pytest
+import soundfile as sf
 
 from rkvoice_stream.backends.tts import piper
 
@@ -21,7 +28,7 @@ ID_MAP = {
 
 def _fake_espeak(monkeypatch, table: dict[str, str], calls: list[str] | None = None):
     """Each input line comes back as one output line, like the CLI."""
-    def run(text: str, voice: str) -> str:
+    def run(text: str, voice: str, cache=None) -> str:
         if calls is not None:
             calls.append(text)
         return "\n".join(table[ln] for ln in text.split("\n"))
@@ -78,11 +85,85 @@ def test_terminators_reattached_in_one_call(monkeypatch):
 
 def test_falls_back_per_clause_when_lines_do_not_pair(monkeypatch):
     # espeak broke the first clause in two: 3 lines for 2 clauses.
-    def run(text: str, voice: str) -> str:
+    def run(text: str, voice: str, cache=None) -> str:
         return {"Hello there\nworld": "ab\nba\ncd", "Hello there": "ab\nba", "world": "cd"}[text]
     monkeypatch.setattr(piper, "_HAS_PIPER_PHONEMIZE", False)
     monkeypatch.setattr(piper, "_run_espeak", run)
     assert piper.text_to_phonemes("Hello there, world.", "en-us") == "ab ba, cd."
+
+
+def test_subprocess_cache_reuses_only_successful_nonempty_calls(monkeypatch):
+    calls = []
+    responses = {"same": "ipa", "empty": "", "bad": "bad"}
+    returns = {"same": 0, "empty": 0, "bad": 1}
+
+    def run(text: str, voice: str, cache=None) -> str:
+        calls.append((text, voice))
+        return responses[text]
+
+    # Exercise the cache contract through the low-level helper while keeping
+    # subprocess.run out of the unit test.
+    monkeypatch.setattr(piper.subprocess, "run", lambda *args, **kwargs: type(
+        "Result", (), {"stdout": responses[args[0][-1]], "returncode": returns[args[0][-1]], "stderr": ""}
+    )())
+    cache = {}
+    assert piper._run_espeak("same", "en-us", cache=cache) == "ipa"
+    assert piper._run_espeak("same", "en-us", cache=cache) == "ipa"
+    assert piper._run_espeak("empty", "en-us", cache=cache) == ""
+    assert piper._run_espeak("empty", "en-us", cache=cache) == ""
+    assert piper._run_espeak("bad", "en-us", cache=cache) == "bad"
+    assert piper._run_espeak("bad", "en-us", cache=cache) == "bad"
+    assert list(cache) == [("en-us", "same")]
+
+
+def test_request_cache_reuses_espeak_calls_across_token_probes(monkeypatch):
+    calls = []
+
+    def run(text: str, voice: str, cache=None) -> str:
+        calls.append(text)
+        return "ipa"
+
+    monkeypatch.setattr(piper, "_run_espeak", run)
+    monkeypatch.setattr(piper, "_HAS_PIPER_PHONEMIZE", False)
+    model = types.SimpleNamespace(espeak_voice="en-us", phoneme_id_map=ID_MAP)
+    cache = {}
+    piper._frontend_tokens("same, clause.", model, cache)
+    piper._frontend_tokens("different", model, cache)
+    piper._frontend_tokens("same, clause.", model, cache)
+    assert calls.count("same\nclause") == 1
+    assert calls.count("same") == 1
+    assert calls.count("clause") == 1
+
+
+def test_request_cache_deduplicates_subprocess_across_probes_and_requests(monkeypatch):
+    calls = []
+
+    class Result:
+        returncode = 0
+        stderr = ""
+
+        def __init__(self, text):
+            self.stdout = "x\ny\nz" if "\n" in text else "ipa"
+
+    def run(argv, **_kwargs):
+        text = argv[-1]
+        calls.append((argv[3], text))
+        return Result(text)
+
+    monkeypatch.setattr(piper.subprocess, "run", run)
+    cache = {}
+    piper.text_to_phonemes("one, clause.", "en-us", espeak_cache=cache)
+    piper.text_to_phonemes("two, clause.", "en-us", espeak_cache=cache)
+    # Each whole-text probe is unique; the shared clause is executed once.
+    assert [text for _voice, text in calls] == [
+        "one\nclause", "one", "clause", "two\nclause", "two"
+    ]
+    # A new request cache must execute the same successful CLI calls again.
+    piper.text_to_phonemes("one, clause.", "en-us", espeak_cache={})
+    assert [text for _voice, text in calls[-3:]] == ["one\nclause", "one", "clause"]
+    # Voice is part of the key and must not cross-hit.
+    piper.text_to_phonemes("one, clause.", "en-gb", espeak_cache=cache)
+    assert [text for _voice, text in calls[-3:]] == ["one\nclause", "one", "clause"]
 
 
 def test_native_phonemizer_keeps_spaces_and_terminators(monkeypatch):
@@ -163,7 +244,8 @@ def test_segment_gets_trailing_pause_and_punctuated_ids(monkeypatch):
     backend = piper.PiperRKNNBackend.__new__(piper.PiperRKNNBackend)
 
     audio, _ = backend._synthesize_segment("Hello, world.", model, speed=1.0)
-    speech = (22050 // piper.SILENCE_FRAME_SIZE) * piper.SILENCE_FRAME_SIZE
+    # The final 34-sample partial frame is voiced and is now retained.
+    speech = 22050
     assert len(audio) == speech + int(22050 * 0.3)
     assert not audio[speech:].any()
     assert _strip_pad(model.seen[0]) == [1, 14, 15, 8, 3, 16, 17, 10, 2]
@@ -176,6 +258,52 @@ def test_segment_gets_trailing_pause_and_punctuated_ids(monkeypatch):
     _fake_espeak(monkeypatch, {"Hello": "ab"})
     audio3, _ = backend._synthesize_segment("Hello", model, speed=1.0)
     assert len(audio3) == speech
+
+
+# -- silence trimming ------------------------------------------------------
+
+def test_trim_silence_keeps_audible_partial_tail_after_full_frame():
+    audio = np.concatenate([
+        np.full(piper.SILENCE_FRAME_SIZE, 0.5, dtype=np.float32),
+        np.full(17, 0.5, dtype=np.float32),
+    ])
+    trimmed = piper._trim_silence(audio)
+    assert len(trimmed) == piper.SILENCE_FRAME_SIZE + 17
+    np.testing.assert_array_equal(trimmed, audio)
+
+
+def test_trim_silence_keeps_audible_partial_tail_after_silent_full_frame():
+    audio = np.concatenate([
+        np.zeros(piper.SILENCE_FRAME_SIZE, dtype=np.float32),
+        np.full(23, 0.5, dtype=np.float32),
+    ])
+    trimmed = piper._trim_silence(audio)
+    assert len(trimmed) == 23
+    np.testing.assert_array_equal(trimmed, np.full(23, 0.5, dtype=np.float32))
+
+
+def test_trim_silence_removes_silent_partial_tail_and_caps_frame_end():
+    audio = np.concatenate([
+        np.full(piper.SILENCE_FRAME_SIZE, 0.5, dtype=np.float32),
+        np.zeros(31, dtype=np.float32),
+    ])
+    trimmed = piper._trim_silence(audio)
+    assert len(trimmed) == piper.SILENCE_FRAME_SIZE
+    np.testing.assert_array_equal(trimmed, np.full(piper.SILENCE_FRAME_SIZE, 0.5, dtype=np.float32))
+
+
+@pytest.mark.parametrize(
+    "size, voiced",
+    [(17, True), (17, False), (piper.SILENCE_FRAME_SIZE, True), (piper.SILENCE_FRAME_SIZE, False)],
+)
+def test_trim_silence_short_and_exact_frame_boundaries(size, voiced):
+    audio = np.full(size, 0.5 if voiced else 0.0, dtype=np.float32)
+    trimmed = piper._trim_silence(audio)
+    if voiced:
+        np.testing.assert_array_equal(trimmed, audio)
+    else:
+        # Preserve the historical all-silence behavior, including short input.
+        np.testing.assert_array_equal(trimmed, audio)
 
 
 # -- review follow-ups: one boundary rule for sentences and clauses ---------
@@ -212,15 +340,14 @@ def test_abbreviation_at_the_very_end_still_ends_the_clause_list():
     assert piper._split_clauses("Ask the Dr.") == [("Ask the Dr.", "")]
 
 
-def test_truncation_keeps_eos(monkeypatch):
+def test_direct_overlong_segment_fails_closed_without_truncation(monkeypatch):
     _fake_espeak(monkeypatch, {"Hello": "ab" * 40})
     model = _FakeModel()
     model.seq_len = 24
     backend = piper.PiperRKNNBackend.__new__(piper.PiperRKNNBackend)
-    backend._synthesize_segment("Hello.", model, speed=1.0)
-    ids = model.seen[0]
-    assert len(ids) == 24
-    assert ids[-2:] == [2, 0]          # EOS + pad survive the cut
+    with pytest.raises(ValueError, match="exceeds model seq_len=24"):
+        backend._synthesize_segment("Hello.", model, speed=1.0)
+    assert model.seen == []
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -240,6 +367,309 @@ def test_fullwidth_closer_does_not_hide_the_final_mark():
     assert piper._segment_pause_ms("他说「停。」") == 300.0
 
 
+class _BucketModel:
+    espeak_voice = "en-us"
+    phoneme_id_map = ID_MAP
+    seq_len = 5
+    _frontend_npu = True
+    sample_rate = 22050
+    length_scale = noise_scale = noise_w = 1.0
+
+
+def test_frontend_manifest_bucket_overrides_legacy_env_seq_len(monkeypatch, tmp_path):
+    """The staged manifest bucket controls runtime seq_len, not PIPER_SEQ_LEN."""
+    class _FakeRKNN:
+        def __init__(self, **_kwargs):
+            pass
+
+        def load_rknn(self, _path):
+            return 0
+
+        def init_runtime(self):
+            return 0
+
+        def release(self):
+            return None
+
+    class _FakeORTSession:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+    monkeypatch.setenv("PIPER_SEQ_LEN", "256")
+    rknnlite = types.ModuleType("rknnlite")
+    rknnlite_api = types.ModuleType("rknnlite.api")
+    rknnlite_api.RKNNLite = _FakeRKNN
+    ort = types.ModuleType("onnxruntime")
+    ort.InferenceSession = _FakeORTSession
+    monkeypatch.setitem(sys.modules, "rknnlite", rknnlite)
+    monkeypatch.setitem(sys.modules, "rknnlite.api", rknnlite_api)
+    monkeypatch.setitem(sys.modules, "onnxruntime", ort)
+
+    manifest = {
+        "bucket": {"input": [1, 128]},
+        "remainder": {
+            "output_semantic": ["z", "y_mask"],
+            "outputs": ["z", "y_mask"],
+            "output_shapes": [[1, 192, "T"], [1, 1, "T"]],
+        },
+    }
+    model_dir = tmp_path
+    rknn_path = model_dir / "text_encoder.rknn"
+    remainder_path = model_dir / "remainder.onnx"
+    manifest_path = model_dir / "manifest.json"
+    rknn_path.write_bytes(b"fake")
+    remainder_path.write_bytes(b"fake")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    model = piper._LangModel("en_US", model_dir)
+    model.seq_len = int(os.environ["PIPER_SEQ_LEN"])
+    monkeypatch.setattr(model, "_probe_decoder_window", lambda: 512)
+    model._load_frontend_npu(rknn_path, remainder_path, manifest_path)
+    assert model.seq_len == 128
+    assert model._frontend_manifest["bucket"]["input"] == [1, 128]
+
+
+def _fake_bucket_tokenizer(monkeypatch):
+    monkeypatch.setattr(piper, "text_to_phonemes", lambda text, voice, espeak_cache=None: text)
+    monkeypatch.setattr(
+        piper, "phonemes_to_ids",
+        lambda phonemes, _id_map: [1] * len(phonemes.replace(" ", "")),
+    )
+
+
+def test_frontend_bucket_split_exact_over_and_preserves_text(monkeypatch):
+    _fake_bucket_tokenizer(monkeypatch)
+    model = _BucketModel()
+    assert list(piper._frontend_segments("abcde", model)) == ["abcde"]
+    parts = list(piper._frontend_segments("ab, cd ef", model))
+    assert "".join(parts) == "ab, cd ef"
+    assert all(part.strip() for part in parts)
+    assert all(piper._frontend_token_count(part, model) <= model.seq_len for part in parts)
+
+
+def test_frontend_bucket_split_handles_unpunctuated_and_nonlinear_tokens(monkeypatch):
+    model = _BucketModel()
+    monkeypatch.setattr(piper, "text_to_phonemes", lambda text, voice, espeak_cache=None: text)
+    monkeypatch.setattr(
+        piper, "phonemes_to_ids",
+        lambda phonemes, _id_map: [1] * (len(phonemes.split()) * 3 + len(phonemes) % 2),
+    )
+    parts = list(piper._frontend_segments("one two three four", model))
+    assert "".join(parts) == "one two three four"
+    assert all(piper._frontend_token_count(part, model) <= model.seq_len for part in parts)
+
+
+def test_frontend_bucket_split_handles_unspaced_cjk_and_long_word(monkeypatch):
+    _fake_bucket_tokenizer(monkeypatch)
+    model = _BucketModel()
+    for text in ("你好世界欢迎你今天天气好", "supercalifragilisticexpialidocious"):
+        parts = list(piper._frontend_segments(text, model))
+        assert "".join(parts) == text
+        assert all(piper._frontend_token_count(part, model) <= model.seq_len for part in parts)
+
+
+def test_nonfrontend_keeps_sentence_split_behavior():
+    model = types.SimpleNamespace(_frontend_npu=False)
+    assert list(piper._frontend_segments("First sentence. Second sentence.", model)) == [
+        "First sentence.", "Second sentence."
+    ]
+
+
+def test_nonfrontend_fixed_model_bounded_split_preserves_digits_and_abbreviations(monkeypatch):
+    _fake_bucket_tokenizer(monkeypatch)
+    model = _BucketModel()
+    model._frontend_npu = False
+    text = "It costs 1,000 dollars, Dr. Smith says 3.14 is safe, " + "word " * 7 + "word"
+    parts = list(piper._frontend_segments(text, model))
+    assert "".join(parts) == text
+    assert all(part.strip() for part in parts)
+    assert all(piper._frontend_token_count(part, model) <= model.seq_len for part in parts)
+    assert any("1,000" in part for part in parts)
+    assert any("3.14" in part for part in parts)
+
+
+def test_nonfrontend_stream_and_ordinary_use_same_bounded_segments(monkeypatch):
+    _fake_bucket_tokenizer(monkeypatch)
+    model = _BucketModel()
+    model._frontend_npu = False
+    backend = piper.PiperRKNNBackend.__new__(piper.PiperRKNNBackend)
+    backend._ready = True
+    backend._models = {"en_US": model}
+    monkeypatch.setattr(piper, "detect_language", lambda _text: "en_US")
+    seen = []
+
+    def synth_segment(text, *_args, **_kwargs):
+        seen.append(text)
+        return np.ones(4, dtype=np.float32), {"num_tokens": len(text)}
+
+    monkeypatch.setattr(backend, "_synthesize_segment", synth_segment)
+    text = "one two three four five six seven"
+    backend.synthesize(text, language="en_US")
+    ordinary = seen[:]
+    seen.clear()
+    list(backend.synthesize_stream(text, language="en_US"))
+    assert ordinary == seen
+    assert "".join(ordinary) == text
+
+
+def test_legacy_infer_uses_model_seq_len_not_module_default():
+    class _RKNN:
+        def __init__(self):
+            self.inputs = None
+
+        def inference(self, inputs):
+            self.inputs = inputs
+            return [np.zeros(8, dtype=np.float32)]
+
+    model = piper._LangModel.__new__(piper._LangModel)
+    model.seq_len = 7
+    model._rknn = _RKNN()
+    out = model._infer_legacy(list(range(20)), 1.0, 0.5, 0.8)
+    assert len(out) == 8
+    assert model._rknn.inputs[0].shape == (1, 7)
+    assert model._rknn.inputs[1].tolist() == [7]
+
+
+def test_frontend_stream_split_yields_before_processing_all_tail(monkeypatch):
+    model = _BucketModel()
+    calls = []
+    monkeypatch.setattr(piper, "text_to_phonemes", lambda text, voice, espeak_cache=None: calls.append(text) or text)
+    monkeypatch.setattr(piper, "phonemes_to_ids", lambda phonemes, _id_map: [1] * len(phonemes.replace(" ", "")))
+    segments = piper._frontend_segments("one two three four five six seven eight", model)
+    first = next(segments)
+    assert first
+    assert "eight" not in calls
+
+
+def test_frontend_short_sentence_reuses_cached_phonemization(monkeypatch):
+    model = _BucketModel()
+    calls = []
+    monkeypatch.setattr(piper, "text_to_phonemes", lambda text, voice, espeak_cache=None: calls.append(text) or text)
+    monkeypatch.setattr(piper, "phonemes_to_ids", lambda phonemes, _id_map: [1] * len(phonemes))
+    cache = {}
+    assert list(piper._frontend_segments("hello", model, cache)) == ["hello"]
+    backend = piper.PiperRKNNBackend.__new__(piper.PiperRKNNBackend)
+    model.infer = lambda *args: np.ones(16, dtype=np.float32)
+    backend._synthesize_segment("hello", model, token_cache=cache)
+    assert calls == ["hello"]
+
+
+def test_frontend_bucket_split_rejects_minimal_unit_over_cap(monkeypatch):
+    monkeypatch.setattr(piper, "text_to_phonemes", lambda text, voice, espeak_cache=None: text)
+    monkeypatch.setattr(piper, "phonemes_to_ids", lambda phonemes, _id_map: [1] * 6)
+    model = _BucketModel()
+    with pytest.raises(ValueError, match="minimal text unit"):
+        list(piper._frontend_segments("abcdef", model))
+
+
+def test_frontend_bucket_minimum_probe_is_measured(monkeypatch):
+    model = _BucketModel()
+    monkeypatch.setattr(piper, "text_to_phonemes", lambda text, voice, espeak_cache=None: text)
+
+    def ids(phonemes, _id_map):
+        return [1] if len(phonemes) == 1 else [1] * 6
+
+    monkeypatch.setattr(piper, "phonemes_to_ids", ids)
+    text = "a" * 200
+    parts = list(piper._frontend_segments(text, model))
+    assert "".join(parts) == text
+    assert all(piper._frontend_token_count(part, model) <= model.seq_len for part in parts)
+
+
+def test_frontend_bucket_minimum_probe_keeps_leading_whitespace(monkeypatch):
+    model = _BucketModel()
+    monkeypatch.setattr(piper, "text_to_phonemes", lambda text, voice, espeak_cache=None: text)
+    monkeypatch.setattr(
+        piper, "phonemes_to_ids",
+        lambda phonemes, _id_map: [1] * (1 if len(phonemes.strip()) <= 1 else 6),
+    )
+    text = "     a" + "b" * 14
+    parts = list(piper._split_frontend_bucket(text, model))
+    assert "".join(parts) == text
+    assert all(part.strip() for part in parts)
+    assert all(piper._frontend_token_count(part, model) <= model.seq_len for part in parts)
+
+
+def test_frontend_bucket_probe_work_is_bounded_and_rejoins(monkeypatch):
+    model = _BucketModel()
+    calls = []
+    monkeypatch.setattr(
+        piper, "text_to_phonemes", lambda text, voice, espeak_cache=None: calls.append(text) or text
+    )
+    monkeypatch.setattr(
+        piper, "phonemes_to_ids",
+        lambda phonemes, _id_map: [1] * (6 if len(phonemes) > 20 else len(phonemes)),
+    )
+    text = " ".join("word" for _ in range(200))
+    parts = list(piper._frontend_segments(text, model))
+    assert "".join(parts) == text
+    assert all(piper._frontend_token_count(part, model) <= model.seq_len for part in parts)
+    assert len(calls) <= len(parts) * (piper._FRONTEND_NATURAL_PROBE_LIMIT + 3)
+    assert max(map(len, calls)) <= max(
+        piper._FRONTEND_MIN_WINDOW_CHARS,
+        model.seq_len * piper._FRONTEND_WINDOW_CHARS_PER_TOKEN,
+    )
+
+
+def test_frontend_window_fit_prefers_natural_boundary(monkeypatch):
+    model = _BucketModel()
+    monkeypatch.setattr(piper, "_FRONTEND_WINDOW_CHARS_PER_TOKEN", 4)
+    monkeypatch.setattr(piper, "_FRONTEND_MIN_WINDOW_CHARS", 8)
+    monkeypatch.setattr(piper, "text_to_phonemes", lambda text, voice, espeak_cache=None: text)
+    monkeypatch.setattr(
+        piper, "phonemes_to_ids",
+        lambda phonemes, _id_map: [1] * len(phonemes.split()),
+    )
+    text = "alpha beta gamma delta epsilon zeta"
+    parts = list(piper._frontend_segments(text, model))
+    assert "".join(parts) == text
+    assert parts[0].endswith(" ")
+    assert not parts[0].endswith("de")
+    assert all(piper._frontend_token_count(part, model) <= model.seq_len for part in parts)
+
+
+def test_frontend_bucket_split_used_by_stream_and_nonstream(monkeypatch):
+    _fake_bucket_tokenizer(monkeypatch)
+    model = _BucketModel()
+    backend = piper.PiperRKNNBackend.__new__(piper.PiperRKNNBackend)
+    backend._ready = True
+    backend._models = {"en_US": model}
+    calls = []
+
+    def synth_segment(text, *_args, **_kwargs):
+        calls.append(text)
+        return np.ones(4, dtype=np.float32), {"num_tokens": len(text)}
+
+    monkeypatch.setattr(backend, "_synthesize_segment", synth_segment)
+    monkeypatch.setattr(piper, "detect_language", lambda text: "en_US")
+    _, ordinary_meta = backend.synthesize("one two three four", language="en_US")
+    assert ordinary_meta["sample_rate"] == 22050
+    streamed = list(backend.synthesize_stream("one two three four", language="en_US"))
+    assert streamed
+    assert "".join(calls[:len(calls) // 2]) == "one two three four"
+    assert "".join(calls[len(calls) // 2:]) == "one two three four"
+
+
+def test_frontend_stream_segmentation_time_excludes_inference(monkeypatch):
+    model = _BucketModel()
+    backend = piper.PiperRKNNBackend.__new__(piper.PiperRKNNBackend)
+    backend._ready = True
+    backend._models = {"en_US": model}
+    monkeypatch.setattr(piper, "detect_language", lambda text: "en_US")
+    monkeypatch.setattr(piper, "_frontend_segments", lambda *args: iter(["hello"]))
+    clock = iter([0.0, 0.002, 0.102])
+    monkeypatch.setattr(piper.time, "perf_counter", lambda: next(clock))
+
+    def synth_segment(*_args, **_kwargs):
+        return np.ones(4, dtype=np.float32), {"num_tokens": 1, "total_ms": 3.0}
+
+    monkeypatch.setattr(backend, "_synthesize_segment", synth_segment)
+    _, meta = next(backend.synthesize_stream("hello", language="en_US"))
+    assert meta["segmentation_ms"] == pytest.approx(2.0)
+    assert meta["total_ms"] == pytest.approx(5.0)
+    assert meta["sample_rate"] == 22050
+
+
 def test_a_domain_is_not_a_dotted_abbreviation():
     text = "See example.com. Contact support. Mail a.b@x.io. Done."
     assert piper._split_sentences(text) == [
@@ -248,3 +678,191 @@ def test_a_domain_is_not_a_dotted_abbreviation():
     assert piper._split_sentences("Dr. Smith paid 3.14 at example.com. Plan B. Then go.") == [
         "Dr. Smith paid 3.14 at example.com.", "Plan B.", "Then go.",
     ]
+
+
+# -- optional Chinese Matcha fallback --------------------------------------
+
+class _FallbackModel:
+    sample_rate = 22050
+
+
+class _FakeMatcha:
+    def __init__(self, source_rate=16000):
+        self.source_rate = source_rate
+        self.cleaned = False
+        self.stream_closed = False
+
+    def preload(self):
+        return None
+
+    def get_sample_rate(self):
+        return self.source_rate
+
+    def _wav(self):
+        source = np.sin(np.arange(1600, dtype=np.float32) / 13.0) * 0.2
+        buf = io.BytesIO()
+        sf.write(buf, source, self.source_rate, format="WAV", subtype="PCM_16")
+        return buf.getvalue()
+
+    def synthesize(self, **_kwargs):
+        return self._wav(), {"backend": "matcha_rknn"}
+
+    def synthesize_stream(self, **_kwargs):
+        source = np.sin(np.arange(1600, dtype=np.float32) / 13.0) * 0.2
+
+        def chunks():
+            try:
+                yield source[:1], {"chunk": 1}
+                yield np.empty(0, dtype=np.float32), {"chunk": 2}
+                yield source[1:257], {"chunk": 3}
+                yield source[257:], {"chunk": 4}
+            finally:
+                self.stream_closed = True
+
+        return chunks()
+
+    def cleanup(self):
+        self.cleaned = True
+
+
+def _fallback_backend(fake=None):
+    backend = piper.PiperRKNNBackend.__new__(piper.PiperRKNNBackend)
+    backend._ready = True
+    backend._models = {"en_US": _FallbackModel()}
+    backend._chinese_fallback_enabled = True
+    backend._chinese_fallback = fake or _FakeMatcha()
+    return backend
+
+
+def test_chinese_fallback_routes_aliases_and_auto_without_env_mutation(monkeypatch):
+    backend = _fallback_backend()
+    before = os.environ.get("TTS_BACKEND")
+    assert backend._language_route("你好", "zh_CN") == "zh"
+    assert backend._language_route("豈", "zh_hans") == "zh"
+    assert backend._language_route("hello", "en-US") == "en"
+    assert backend._language_route("hello你好", "auto") == "zh"
+    with pytest.raises(ValueError, match="does not support"):
+        backend._language_route("hola", "es")
+    assert os.environ.get("TTS_BACKEND") == before
+    monkeypatch.setattr(piper, "detect_language", lambda _text: "en_US")
+
+
+def test_chinese_fallback_runtime_info_and_ready_gate():
+    backend = _fallback_backend()
+    backend._chinese_fallback.is_ready = lambda: False
+    assert not backend.is_ready()
+    info = backend.runtime_info()
+    assert info["chinese_fallback_enabled"] is True
+    assert info["chinese_ready"] is False
+    assert info["sample_rate"] == 22050
+
+
+def test_invalid_chinese_fallback_setting_fails_fast(monkeypatch):
+    monkeypatch.setenv("PIPER_CHINESE_FALLBACK", "typo")
+    with pytest.raises(ValueError, match="matcha_rknn"):
+        piper.PiperRKNNBackend()
+
+
+def test_chinese_fallback_offline_resamples_to_piper_rate():
+    pytest.importorskip("soxr")
+    backend = _fallback_backend()
+    wav, meta = backend.synthesize("你好", language="zh")
+    audio, rate = sf.read(io.BytesIO(wav), dtype="float32")
+    assert rate == 22050
+    assert len(audio) == 2205
+    assert meta["source_sample_rate"] == 16000
+    assert meta["sample_rate"] == 22050
+    assert meta["resample_ms"] >= 0
+    assert meta["inference_time"] >= meta["resample_ms"] / 1000
+    assert meta["rtf"] >= 0
+    assert np.isfinite(audio).all()
+
+
+def test_chinese_fallback_omits_none_noise_scale():
+    class NoNoneNoise(_FakeMatcha):
+        def __init__(self):
+            super().__init__()
+            self.kwargs_seen = []
+
+        def synthesize(self, **kwargs):
+            self.kwargs_seen.append(kwargs)
+            return super().synthesize(**kwargs)
+
+        def synthesize_stream(self, **kwargs):
+            self.kwargs_seen.append(kwargs)
+            return super().synthesize_stream(**kwargs)
+
+    fake = NoNoneNoise()
+    backend = _fallback_backend(fake)
+    pytest.importorskip("soxr")
+    backend.synthesize("你好", language="zh")
+    list(backend.synthesize_stream("你好", language="zh"))
+    backend.synthesize("你好", language="zh", noise_scale=0.7)
+    list(backend.synthesize_stream("你好", language="zh", noise_scale=0.7))
+    assert "noise_scale" not in fake.kwargs_seen[0]
+    assert "noise_scale" not in fake.kwargs_seen[1]
+    assert fake.kwargs_seen[2]["noise_scale"] == 0.7
+    assert fake.kwargs_seen[3]["noise_scale"] == 0.7
+
+
+def test_chinese_fallback_stream_flushes_and_matches_offline():
+    pytest.importorskip("soxr")
+    backend = _fallback_backend()
+    wav, _ = backend.synthesize("你好", language="zh")
+    offline, _ = sf.read(io.BytesIO(wav), dtype="float32")
+    chunks = list(backend.synthesize_stream("你好", language="zh"))
+    streamed = np.concatenate([audio for audio, _meta in chunks])
+    assert streamed.dtype == np.float32
+    assert np.isfinite(streamed).all()
+    # Offline WAV is PCM16; allow only quantisation error after the same HQ
+    # resampler, including the one-sample and empty source chunks above.
+    assert len(streamed) == len(offline)
+    assert np.max(np.abs(streamed - offline)) < 2e-4
+    assert all(meta["sample_rate"] == 22050 for _audio, meta in chunks)
+
+
+def test_chinese_fallback_cancel_closes_source_without_flush(monkeypatch):
+    pytest.importorskip("soxr")
+    backend = _fallback_backend()
+    generator = backend.synthesize_stream("你好", language="zh")
+    next(generator)
+    generator.close()
+    assert backend._chinese_fallback.stream_closed
+
+
+def test_chinese_fallback_load_failure_cleans_context(monkeypatch):
+    fake = _FakeMatcha()
+    import rkvoice_stream.engine.tts as tts_engine
+
+    monkeypatch.setattr(tts_engine, "create_backend", lambda _name: fake)
+    monkeypatch.setattr(
+        piper.PiperRKNNBackend,
+        "_require_soxr",
+        staticmethod(lambda: object()),
+    )
+    monkeypatch.setattr(fake, "preload", lambda: (_ for _ in ()).throw(RuntimeError("load")))
+    backend = piper.PiperRKNNBackend.__new__(piper.PiperRKNNBackend)
+    backend._chinese_fallback = None
+    with pytest.raises(RuntimeError, match="load"):
+        backend._load_chinese_fallback()
+    assert backend._chinese_fallback is None
+    assert fake.cleaned
+
+
+def test_chinese_fallback_requires_soxr_only_when_enabled(monkeypatch):
+    backend = piper.PiperRKNNBackend.__new__(piper.PiperRKNNBackend)
+    backend._chinese_fallback = None
+    called = []
+    monkeypatch.setattr(
+        backend,
+        "_require_soxr",
+        lambda: (_ for _ in ()).throw(RuntimeError("soxr missing")),
+    )
+    monkeypatch.setattr(
+        piper.PiperRKNNBackend,
+        "_synthesize_segment",
+        lambda *_args, **_kwargs: (np.zeros(1, dtype=np.float32), {}),
+    )
+    with pytest.raises(RuntimeError, match="soxr missing"):
+        backend._load_chinese_fallback()
+    assert called == []
