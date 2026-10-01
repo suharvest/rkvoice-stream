@@ -34,6 +34,7 @@ import os
 import re
 import threading
 import time
+import unicodedata
 from typing import Optional
 
 import numpy as np
@@ -232,7 +233,7 @@ class Qwen3TrueStreamingASRStream:
         # and nothing is decoded twice. Only when no pause is found does the
         # overlap-and-reconcile path run. 0 turns the pause search off.
         self._cut_search_sec = max(
-            0.0, _env_float("QWEN3_ASR_TRUE_ROLL_CUT_SEARCH_SEC", 2.0))
+            0.0, _env_float("QWEN3_ASR_TRUE_ROLL_CUT_SEARCH_SEC", 0.0))
         self._pause_ratio = max(
             0.0, _env_float("QWEN3_ASR_TRUE_ROLL_PAUSE_RATIO", 0.15))
         self._partial_max_tokens = _env_int("QWEN3_ASR_TRUE_PARTIAL_TOKENS", 12)
@@ -344,6 +345,9 @@ class Qwen3TrueStreamingASRStream:
         self._pause_cuts: int = 0
         self._window_commit_in_progress: bool = False
         self._window_commit_retries: int = 0
+        # Sticky per-stream failure: never let a later finalize turn the
+        # surviving tail into a successful-looking transcript.
+        self._window_commit_error: Optional[str] = None
         # Nothing is decoded twice without an acoustic overlap, so an equal
         # word on both sides of the seam is the speaker repeating it.
         self._window_dedup_units: int = (
@@ -414,6 +418,8 @@ class Qwen3TrueStreamingASRStream:
 
     def feed_audio(self, pcm16k: np.ndarray) -> dict:
         """Accept a chunk of 16 kHz float32 PCM and process complete chunks."""
+        if self._window_commit_error is not None:
+            raise RuntimeError(self._window_commit_error)
         x = np.asarray(pcm16k, dtype=np.float32)
         if x.ndim != 1:
             x = x.reshape(-1)
@@ -580,6 +586,8 @@ class Qwen3TrueStreamingASRStream:
 
     def finish(self, apply_itn_flag: bool = True) -> dict:
         """Finalize and return dict matching StreamSession.finish() schema."""
+        if self._window_commit_error is not None:
+            raise RuntimeError(self._window_commit_error)
         self._finalizing = True
         self._join_final_decode_thread()
         if not self._final_decode_in_progress:
@@ -855,25 +863,23 @@ class Qwen3TrueStreamingASRStream:
                 # the next chunk before giving anything up.
                 self._window_commit_retries += 1
             else:
-                # A final decode owns the decoder / the episode is closing (it
-                # will decode these frames itself), or the retries ran out.
-                # Drop the oldest frames so the buffer keeps a bound -- loudly,
-                # because their text is gone.
-                dropped_frames = 0
-                while (self._total_encoder_frames > self._max_encoder_frames
-                       and len(self._encoder_frames) > 1):
-                    dropped = self._encoder_frames.pop(0)
-                    self._frame_rms.pop(0)
-                    self._total_encoder_frames -= dropped.shape[0]
-                    dropped_frames += dropped.shape[0]
-                if dropped_frames:
-                    logger.warning(
-                        "Qwen3-true-stream dropped %d encoder frames without "
-                        "committing their text (retries=%d finalizing=%s "
-                        "episode_final=%s)",
-                        dropped_frames, self._window_commit_retries,
-                        self._finalizing, self._episode_final)
+                # The decoder did not produce a trustworthy permanent commit.
+                # Do not pop the oldest frames: doing so lets ``finish()``
+                # return a plausible-looking tail transcript while silently
+                # losing the beginning of the utterance.  The caller must see
+                # an explicit ASR failure and may retry with a fresh stream.
+                logger.error(
+                    "Qwen3-true-stream window commit failed after %d retries; "
+                    "refusing to drop %d uncommitted encoder frames",
+                    self._window_commit_retries,
+                    self._total_encoder_frames,
+                )
                 self._window_commit_retries = 0
+                self._window_commit_error = (
+                    "Qwen3 true-stream window commit failed; "
+                    "refusing to return a truncated transcript"
+                )
+                raise RuntimeError(self._window_commit_error)
 
         if self._episode_final or not self._encoder_frames or self._finalizing:
             return
@@ -1245,9 +1251,41 @@ class Qwen3TrueStreamingASRStream:
     # ── Internal: helpers ────────────────────────────────────────────
 
     def _text_units(self, text: str) -> list[str]:
-        if any(_is_cjk(ch) for ch in text):
-            return [ch for ch in re.sub(r"\s+", "", text) if ch]
-        return re.findall(r"[A-Za-z0-9']+|[^\w\s]", text.lower())
+        return [unit for unit, _, _ in self._text_unit_spans(text)]
+
+    @staticmethod
+    def _text_unit_spans(text: str) -> list[tuple[str, int, int]]:
+        """Tokenize both sides of a seam with the same mixed-script rules.
+
+        CJK characters are individual units; Latin, numeric, and other
+        Unicode alphanumeric runs are one unit; punctuation is independent.
+        The offsets let the caller remove a matched prefix from the original
+        string without reconstructing or changing its spacing/case.
+        """
+        units: list[tuple[str, int, int]] = []
+        i = 0
+        while i < len(text):
+            ch = text[i]
+            if ch.isspace():
+                i += 1
+                continue
+            if _is_cjk(ch):
+                units.append((ch, i, i + 1))
+                i += 1
+                continue
+            if ch.isalnum() or ch == "_":
+                j = i + 1
+                while (j < len(text) and not _is_cjk(text[j]) and
+                       (text[j].isalnum() or
+                        unicodedata.category(text[j]) in ("Mn", "Mc") or
+                        text[j] in "_'\u2019")):
+                    j += 1
+                units.append((text[i:j], i, j))
+                i = j
+                continue
+            units.append((ch, i, i + 1))
+            i += 1
+        return units
 
     @staticmethod
     def _match_units(units: list[str]) -> list[str]:
@@ -1271,8 +1309,10 @@ class Qwen3TrueStreamingASRStream:
         # punctuation unit in the middle of the overlap must not break the
         # match; ``right_at`` remembers where each word sits among ALL of
         # right's units, which is what the cut below is counted in.
-        left_words = [u for u in self._match_units(self._text_units(left)) if u]
-        right_all = self._match_units(self._text_units(right))
+        left_units = self._text_unit_spans(left)
+        right_units = self._text_unit_spans(right)
+        left_words = [u for u in self._match_units([x[0] for x in left_units]) if u]
+        right_all = self._match_units([x[0] for x in right_units])
         right_at = [i for i, u in enumerate(right_all) if u]
         right_words = [right_all[i] for i in right_at]
 
@@ -1285,29 +1325,14 @@ class Qwen3TrueStreamingASRStream:
                 if skip + k > len(right_words):
                     break
                 if left_words[-k:] == right_words[skip:skip + k]:
-                    cut = right_at[skip + k - 1] + 1
+                    cut = right_units[right_at[skip + k - 1]][2]
                     break
             if cut:
                 break
         if not cut:
             return right
 
-        if any(_is_cjk(ch) for ch in right):
-            # ``_text_units`` counts whitespace-free characters; walk the raw
-            # string to the same count so the remainder keeps its own spacing
-            # ("你好 New York" must not come back as "NewYork").
-            seen = 0
-            for idx, ch in enumerate(right):
-                if seen >= cut:
-                    return right[idx:].lstrip()
-                if not ch.isspace():
-                    seen += 1
-            return ""
-
-        matches = list(re.finditer(r"[A-Za-z0-9']+|[^\w\s]", right))
-        if cut >= len(matches):
-            return ""
-        return right[matches[cut].start():].lstrip()
+        return right[cut:].lstrip()
 
     def _join_text(self, left: str, right: str,
                    max_units: Optional[int] = None,

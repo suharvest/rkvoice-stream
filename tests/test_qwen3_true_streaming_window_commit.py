@@ -320,21 +320,44 @@ def test_aborted_commit_is_not_committed_and_is_retried(env, flag_aborted):
     assert result["text"].split() == expected_words(12.0)
 
 
-def test_commit_that_keeps_aborting_drops_with_a_warning(env, caplog):
+def test_commit_that_keeps_aborting_fails_closed_with_a_warning(env, caplog):
     engine = _FakeEngine()
     engine.decoder = _AbortingDecoder(abort_full_calls=10**6)
     stream = Qwen3TrueStreamingASRStream(engine)
 
-    with caplog.at_level("WARNING"):
+    with caplog.at_level("ERROR"), pytest.raises(
+        RuntimeError, match="refusing to return a truncated transcript"
+    ):
         feed_all(stream, make_audio(12.0))
 
     assert stream._window_commits == 0
     assert stream._window_committed_text == ""
-    # Bounded: the cap plus the chunks a retry is allowed to wait for.
-    assert stream._total_encoder_frames <= (
-        stream._max_encoder_frames
-        + WINDOW_COMMIT_RETRY_CHUNKS * FRAMES_PER_CHUNK)
-    assert any("without committing their text" in r.message for r in caplog.records)
+    # The failed commit must not silently discard the opening frames.
+    assert stream._total_encoder_frames > stream._max_encoder_frames
+    assert any("refusing to drop" in r.message for r in caplog.records)
+
+
+def test_permanent_commit_failure_stays_failed_if_finish_is_called(env):
+    engine = _FakeEngine()
+    engine.decoder = _AbortingDecoder(abort_full_calls=10**6)
+    stream = Qwen3TrueStreamingASRStream(engine)
+
+    with pytest.raises(RuntimeError, match="refusing to return a truncated transcript"):
+        feed_all(stream, make_audio(12.0))
+    with pytest.raises(RuntimeError, match="refusing to return a truncated transcript"):
+        stream.finish(apply_itn_flag=False)
+
+
+def test_commit_failure_is_recoverable_before_retry_budget_expires(env):
+    """A transient decoder abort is retried and still yields the full text."""
+    engine = _FakeEngine()
+    engine.decoder = _AbortingDecoder(abort_full_calls=1)
+    stream = Qwen3TrueStreamingASRStream(engine)
+
+    feed_all(stream, make_audio(12.0))
+    result = stream.finish(apply_itn_flag=False)
+
+    assert result["text"].split() == expected_words(12.0)
 
 
 def test_abort_partial_decode_cannot_reach_a_window_commit(env):
@@ -374,6 +397,36 @@ def test_cjk_dedup_keeps_the_remainders_own_spacing(env):
     assert stream._join_text("我们去你好", "你好 New York 见",
                              max_units=stream._window_dedup_units) == \
         "我们去你好New York 见"
+
+
+def test_mixed_latin_seam_uses_consistent_units_and_preserves_id(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    stream._seam_overlap = True
+    assert stream._join_window(
+        "然后保留最后的 request id",
+        "Request ID 3576.",
+    ) == "然后保留最后的 request id 3576."
+
+
+def test_mixed_script_units_and_cross_direction_seams_preserve_punctuation(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._text_units("你好，Request ID 3576.") == [
+        "你", "好", "，", "Request", "ID", "3576", "."
+    ]
+    stream._seam_overlap = True
+    assert stream._join_window("Request ID", "ID 3576.") == "Request ID 3576."
+    assert stream._join_window("请保留", "保留 request ID 3576") == \
+        "请保留request ID 3576"
+
+
+def test_no_space_script_boundaries_are_tokenized_symmetrically(env):
+    stream = Qwen3TrueStreamingASRStream(_FakeEngine())
+    assert stream._text_units("中文Request ID") == ["中", "文", "Request", "ID"]
+    stream._seam_overlap = True
+    assert stream._join_window("然后保留request ID", "request ID 3576") == \
+        "然后保留request ID 3576"
+    assert stream._join_window("request ID然后", "ID然后3576") == \
+        "request ID然后3576"
 
 
 def test_real_decoder_reports_external_abort_by_reason_only():
@@ -495,6 +548,8 @@ def _speech_with_pauses(seconds: float, pauses: list[tuple[float, float]]) -> np
 @pytest.fixture
 def pause_env(env):
     env.setenv("QWEN3_ASR_TRUE_LCTX_SEC", "0")
+    # Pause search is opt-in; these tests exercise that explicit path.
+    env.setenv("QWEN3_ASR_TRUE_ROLL_CUT_SEARCH_SEC", "2")
     return env
 
 
@@ -514,7 +569,7 @@ def test_window_is_cut_in_the_pause_and_nothing_is_decoded_twice(pause_env):
     committed = stream._window_committed_text.split()
     assert committed[0] == "w0"
     assert 50 <= int(committed[-1][1:]) <= 54          # the cut sits inside the pause
-    # The buffer restarts on the very next frame: no frame on both sides.
+    # A pause cut starts the next window at the first uncommitted frame.
     first_kept = int(round(float(stream._encoder_frames[0][0, 0])))
     assert first_kept == int(committed[-1][1:]) + 1
 
@@ -583,6 +638,14 @@ def test_pause_search_can_be_switched_off(pause_env):
     pause_env.setenv("QWEN3_ASR_TRUE_ROLL_CUT_SEARCH_SEC", "0")
     stream, _ = _pause_stream()
     feed_all(stream, _speech_with_pauses(8.0, [(4.0, 0.4)]))
+    assert stream._pause_cuts == 0 and stream._window_commits >= 1
+
+
+def test_pause_search_defaults_off_without_an_environment_setting(env):
+    env.delenv("QWEN3_ASR_TRUE_ROLL_CUT_SEARCH_SEC", raising=False)
+    stream, _ = _pause_stream()
+    feed_all(stream, _speech_with_pauses(8.0, [(4.0, 0.4)]))
+    assert stream._cut_search_sec == 0.0
     assert stream._pause_cuts == 0 and stream._window_commits >= 1
 
 
