@@ -74,7 +74,7 @@ def _render_issue(manifest: dict[str, Any]) -> str:
         "## Environment\n\n"
         f"- RK device model evidence: {hidden.get('rkllm_model') or runtime.get('model_path')}\n"
         "- Target SoC: RK3576\n"
-        "- RKLLM runtime ABI used by wrapper: v1.2.3 ctypes layout\n"
+        "- RKLLM runtime ABI used by wrapper: v1.3.0 ctypes layout (rkvoice_stream.runtime.rkllm_abi)\n"
         "- Reference checker: ONNX Runtime CPU and HuggingFace scaffold\n\n"
         "## Observed Behavior\n\n"
         f"{_metric_line('embedding input prefill hidden vs ONNX', hidden.get('prefill_metrics'))}\n"

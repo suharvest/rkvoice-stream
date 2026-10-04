@@ -111,7 +111,7 @@ class Qwen3ASREngine:
             final_stop_punctuation: Characters treated as final punctuation.
             final_stop_min_chars: Minimum decoded characters before stopping.
             final_stop_min_chunks: Minimum callback chunks before stopping.
-            decoder_embed_cache_reuse: Enable RKLLM v1.2.3 automatic EMBED
+            decoder_embed_cache_reuse: Enable RKLLM's automatic EMBED
                 prefix cache reuse by not clearing KV before keep_history=0
                 decoder runs.
             decoder_async_mode: Initialize RKLLM async mode and call
@@ -267,7 +267,8 @@ class Qwen3ASREngine:
                 callback_fn=decoder_callback,
             )
 
-        # Prefix KV cache disabled — RKLLM v1.2.3 limitations block this:
+        # Prefix KV cache disabled — these RKLLM limitations were observed on
+        # v1.2.3 (not re-verified on v1.3.0):
         # 1. clear_kv_cache(keep=n) + EMBED: RoPE positions reset to 0 (mismatch)
         # 2. save_prompt_cache with EMBED input: cache file never created
         # 3. save_prompt_cache with TEXT input: cache IS created (2.3 MB, 14-token state),

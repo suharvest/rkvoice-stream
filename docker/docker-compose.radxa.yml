@@ -19,6 +19,7 @@ services:
       - /home/radxa/models/tts/vocos-16khz-600.rknn:/opt/tts/models/vocos-16khz-600.rknn:ro
       - /home/radxa/matcha-data:/home/radxa/matcha-data:ro
       - /home/radxa/models:/opt/asr/models:ro
+      # must be librkllmrt v1.3.0 -- the 1.2.x ABI is not supported (see README)
       - /home/radxa/lib/librkllmrt.so:/opt/asr/lib/librkllmrt.so:ro
       - /home/radxa/rkvoice-stream/rkvoice_stream:/opt/rkvoice-stream/rkvoice_stream:ro
     restart: unless-stopped
