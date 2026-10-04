@@ -26,6 +26,7 @@ Python package: `rkvoice_stream`. Three-layer architecture: app -> engine -> bac
 - Conflict detection is in app/capability.py, not in backends
 - Model paths are user-configured, no auto-detection
 - Tests support dual-mode: HTTP (SERVICE_URL env) or direct backend loading
+- RKLLM ctypes structs/callbacks are defined once, in `runtime/rkllm_abi.py` (librkllmrt v1.3.0 ABI; 1.2.x is unsupported). Import them; never re-declare. Layout changes must be re-derived from `rkllm.h` and pinned in `tests/test_rkllm_abi.py`
 
 ## Testing
 

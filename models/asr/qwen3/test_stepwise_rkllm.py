@@ -2,7 +2,8 @@
 """
 Test step-by-step RKLLM inference for Qwen3-TTS talker on RK3576.
 
-Validated findings (RKLLM SDK v1.2.3):
+Findings recorded with RKLLM SDK v1.2.3 (not re-verified on v1.3.0,
+which this script now targets):
   - keep_history=1 is REQUIRED for KV-cache persistence across rkllm_run() calls
   - mode=2 (GET_LOGITS) returns logits via callback (vocab_size=151936)
   - mode=1 (GET_LAST_HIDDEN_LAYER) returns hidden states (embd_size=1024)
@@ -19,116 +20,15 @@ import time
 import json
 import numpy as np
 
-RKLLM_Handle_t = ctypes.c_void_p
-
-# ── RKLLM SDK v1.2.3 struct definitions ─────────────────────────
-
-class RKLLMExtendParam(ctypes.Structure):
-    _fields_ = [
-        ("base_domain_id", ctypes.c_int32),
-        ("embed_flash", ctypes.c_int8),
-        ("enabled_cpus_num", ctypes.c_int8),
-        ("enabled_cpus_mask", ctypes.c_uint32),
-        ("n_batch", ctypes.c_uint8),
-        ("use_cross_attn", ctypes.c_int8),
-        ("reserved", ctypes.c_uint8 * 104),
-    ]
-
-
-class RKLLMParam(ctypes.Structure):
-    _fields_ = [
-        ("model_path", ctypes.c_char_p),
-        ("max_context_len", ctypes.c_int32),
-        ("max_new_tokens", ctypes.c_int32),
-        ("top_k", ctypes.c_int32),
-        ("n_keep", ctypes.c_int32),
-        ("top_p", ctypes.c_float),
-        ("temperature", ctypes.c_float),
-        ("repeat_penalty", ctypes.c_float),
-        ("frequency_penalty", ctypes.c_float),
-        ("presence_penalty", ctypes.c_float),
-        ("mirostat", ctypes.c_int32),
-        ("mirostat_tau", ctypes.c_float),
-        ("mirostat_eta", ctypes.c_float),
-        ("skip_special_token", ctypes.c_bool),
-        ("is_async", ctypes.c_bool),
-        ("img_start", ctypes.c_char_p),
-        ("img_end", ctypes.c_char_p),
-        ("img_content", ctypes.c_char_p),
-        ("extend_param", RKLLMExtendParam),
-    ]
-
-
-class RKLLMEmbedInput(ctypes.Structure):
-    _fields_ = [
-        ("embed", ctypes.POINTER(ctypes.c_float)),
-        ("n_tokens", ctypes.c_size_t),
-    ]
-
-
-class RKLLMInputUnion(ctypes.Union):
-    _fields_ = [
-        ("prompt_input", ctypes.c_char_p),
-        ("embed_input", RKLLMEmbedInput),
-    ]
-
-
-class RKLLMInput(ctypes.Structure):
-    _fields_ = [
-        ("role", ctypes.c_char_p),
-        ("enable_thinking", ctypes.c_bool),
-        ("input_type", ctypes.c_int),
-        ("input_data", RKLLMInputUnion),
-    ]
-
-
-class RKLLMInferParam(ctypes.Structure):
-    _fields_ = [
-        ("mode", ctypes.c_int),
-        ("lora_params", ctypes.c_void_p),
-        ("prompt_cache_params", ctypes.c_void_p),
-        ("keep_history", ctypes.c_int),
-    ]
-
-
-class RKLLMResultLastHiddenLayer(ctypes.Structure):
-    _fields_ = [
-        ("hidden_states", ctypes.POINTER(ctypes.c_float)),
-        ("embd_size", ctypes.c_int),
-        ("num_tokens", ctypes.c_int),
-    ]
-
-
-class RKLLMResultLogits(ctypes.Structure):
-    _fields_ = [
-        ("logits", ctypes.POINTER(ctypes.c_float)),
-        ("vocab_size", ctypes.c_int),
-        ("num_tokens", ctypes.c_int),
-    ]
-
-
-class RKLLMPerfStat(ctypes.Structure):
-    _fields_ = [
-        ("prefill_time_ms", ctypes.c_float),
-        ("prefill_tokens", ctypes.c_int),
-        ("generate_time_ms", ctypes.c_float),
-        ("generate_tokens", ctypes.c_int),
-        ("memory_usage_mb", ctypes.c_float),
-    ]
-
-
-class RKLLMResult(ctypes.Structure):
-    _fields_ = [
-        ("text", ctypes.c_char_p),
-        ("token_id", ctypes.c_int32),
-        ("last_hidden_layer", RKLLMResultLastHiddenLayer),
-        ("logits", RKLLMResultLogits),
-        ("perf", RKLLMPerfStat),
-    ]
-
-
-RKLLM_CALLBACK = ctypes.CFUNCTYPE(
-    None, ctypes.POINTER(RKLLMResult), ctypes.c_void_p, ctypes.c_int
+# Shared RKLLM ctypes bindings (librkllmrt v1.3.0 ABI); needs `pip install -e .`
+from rkvoice_stream.runtime.rkllm_abi import (
+    RKLLM_CALLBACK,
+    RKLLM_Handle_t,
+    RKLLMCallback,
+    RKLLMInferParam,
+    RKLLMInput,
+    RKLLMParam,
+    make_callback_struct,
 )
 
 # ── Callback state ───────────────────────────────────────────────
@@ -159,8 +59,11 @@ def callback(result, userdata, state):
     except Exception as e:
         print("CB error: {}".format(e), flush=True)
 
+    return 0
+
 
 cb = RKLLM_CALLBACK(callback)
+cb_struct = make_callback_struct(cb)  # rkllm_init() takes an RKLLMCallback*
 
 
 def reset_cb():
@@ -221,7 +124,7 @@ def main():
     rkllm.rkllm_init.argtypes = [
         ctypes.POINTER(RKLLM_Handle_t),
         ctypes.POINTER(RKLLMParam),
-        RKLLM_CALLBACK,
+        ctypes.POINTER(RKLLMCallback),
     ]
     rkllm.rkllm_init.restype = ctypes.c_int
     rkllm.rkllm_run.argtypes = [
@@ -232,7 +135,10 @@ def main():
     ]
     rkllm.rkllm_run.restype = ctypes.c_int
     rkllm.rkllm_destroy.argtypes = [RKLLM_Handle_t]
-    rkllm.rkllm_clear_kv_cache.argtypes = [RKLLM_Handle_t]
+    rkllm.rkllm_clear_kv_cache.argtypes = [
+        RKLLM_Handle_t, ctypes.c_int,
+        ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+    ]
     rkllm.rkllm_clear_kv_cache.restype = ctypes.c_int
 
     param = rkllm.rkllm_createDefaultParam()
@@ -248,7 +154,7 @@ def main():
 
     handle = RKLLM_Handle_t()
     print("Init...", flush=True)
-    ret = rkllm.rkllm_init(ctypes.byref(handle), ctypes.byref(param), cb)
+    ret = rkllm.rkllm_init(ctypes.byref(handle), ctypes.byref(param), ctypes.byref(cb_struct))
     if ret != 0:
         print("FAILED: {}".format(ret), flush=True)
         sys.exit(1)
@@ -258,7 +164,7 @@ def main():
 
     # ── TEST 1: KV-cache persistence ────────────────────────────
     print("\n--- TEST 1: KV-cache persistence ---", flush=True)
-    rkllm.rkllm_clear_kv_cache(handle)
+    rkllm.rkllm_clear_kv_cache(handle, 0, None, None)
 
     # Prefill
     logits_pf, _, _, pf_ms = run_step(rkllm, handle, embeds, mode=2, keep_history=1)
@@ -271,7 +177,7 @@ def main():
     logits_ctx, _, _, _ = run_step(rkllm, handle, single, mode=2, keep_history=1)
 
     # Clear KV, decode without context
-    rkllm.rkllm_clear_kv_cache(handle)
+    rkllm.rkllm_clear_kv_cache(handle, 0, None, None)
     logits_noctx, _, _, _ = run_step(rkllm, handle, single, mode=2, keep_history=1)
 
     if logits_ctx is not None and logits_noctx is not None:
@@ -284,7 +190,7 @@ def main():
 
     # ── TEST 2: 20-step AR decode loop ──────────────────────────
     print("\n--- TEST 2: 20-step AR decode loop ---", flush=True)
-    rkllm.rkllm_clear_kv_cache(handle)
+    rkllm.rkllm_clear_kv_cache(handle, 0, None, None)
 
     logits, _, _, pf_ms = run_step(rkllm, handle, embeds, mode=2, keep_history=1)
     first_tok = int(np.argmax(logits)) if logits is not None else 0
@@ -312,7 +218,7 @@ def main():
 
     # ── TEST 3: GET_LAST_HIDDEN_LAYER ───────────────────────────
     print("\n--- TEST 3: Hidden states ---", flush=True)
-    rkllm.rkllm_clear_kv_cache(handle)
+    rkllm.rkllm_clear_kv_cache(handle, 0, None, None)
 
     # Prefill with logits mode
     run_step(rkllm, handle, embeds, mode=2, keep_history=1)
@@ -332,7 +238,7 @@ def main():
 
     # ── TEST 4: Mode exclusivity ────────────────────────────────
     print("\n--- TEST 4: Mode output exclusivity ---", flush=True)
-    rkllm.rkllm_clear_kv_cache(handle)
+    rkllm.rkllm_clear_kv_cache(handle, 0, None, None)
 
     logits, hidden, _, _ = run_step(rkllm, handle, embeds, mode=2, keep_history=1)
     print("  mode=2: logits={}, hidden={}".format(
@@ -340,7 +246,7 @@ def main():
     results["mode2_gives_logits"] = logits is not None
     results["mode2_gives_hidden"] = hidden is not None
 
-    rkllm.rkllm_clear_kv_cache(handle)
+    rkllm.rkllm_clear_kv_cache(handle, 0, None, None)
     logits, hidden, _, _ = run_step(rkllm, handle, embeds, mode=1, keep_history=1)
     print("  mode=1: logits={}, hidden={}".format(
         logits is not None, hidden is not None), flush=True)

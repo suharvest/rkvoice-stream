@@ -30,7 +30,7 @@ fi
 # Upload app files
 echo "Uploading app files..."
 $FLEET exec --timeout 30 "$DEVICE" -- "mkdir -p $REMOTE_DIR/app" 2>/dev/null
-for f in main.py tts_service.py rkllm_wrapper.py; do
+for f in main.py tts_service.py rkllm_wrapper.py rkllm_abi.py; do
     $FLEET push "$DEVICE" "$LOCAL_APP_DIR/$f" "$REMOTE_DIR/app/$f" 2>/dev/null
 done
 
