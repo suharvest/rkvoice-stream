@@ -458,8 +458,9 @@ class TTSService:
 
         # Step 3: Talker prefill
         # clear_kv_cache wipes everything; keep_history=1 then says "keep the result
-        # of this call in cache" — without it, RKLLM v1.2.3 clears KV after the run
-        # and decode steps see empty context, generating training-data priors.
+        # of this call in cache" — without it, RKLLM clears KV after the run
+        # (observed on v1.2.3) and decode steps see empty context, generating
+        # training-data priors.
         self._talker.clear_kv_cache()
         result = self._talker.run_embed(
             prefill_embeds,

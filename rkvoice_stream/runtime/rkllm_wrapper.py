@@ -6,6 +6,9 @@ inference with embedding inputs (RKLLM_INPUT_EMBED) and two output modes:
   - GET_LOGITS (mode=2): returns logits for primary token sampling
 
 Thread safety: NOT thread-safe. All calls should be from a single thread.
+
+Requires librkllmrt.so **v1.3.0**; the 1.2.x C ABI is not supported.  The
+ctypes structs live in ``rkvoice_stream.runtime.rkllm_abi``.
 """
 
 from __future__ import annotations
@@ -18,142 +21,23 @@ from typing import Optional
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
-
-# ── RKLLM Constants ──────────────────────────────────────────────
-
-RKLLM_INPUT_PROMPT = 0
-RKLLM_INPUT_TOKEN = 1
-RKLLM_INPUT_EMBED = 2
-
-RKLLM_INFER_GENERATE = 0
-RKLLM_INFER_GET_LAST_HIDDEN_LAYER = 1
-RKLLM_INFER_GET_LOGITS = 2
-
-RKLLM_RUN_NORMAL = 0
-RKLLM_RUN_WAITING = 1
-RKLLM_RUN_FINISH = 2
-RKLLM_RUN_ERROR = 3
-
-
-# ── ctypes Struct Definitions (RKLLM SDK v1.2.3) ────────────────
-
-class RKLLMExtendParam(ctypes.Structure):
-    _fields_ = [
-        ("base_domain_id", ctypes.c_int32),
-        ("embed_flash", ctypes.c_int8),
-        ("enabled_cpus_num", ctypes.c_int8),
-        ("enabled_cpus_mask", ctypes.c_uint32),
-        ("n_batch", ctypes.c_uint8),
-        ("use_cross_attn", ctypes.c_int8),
-        ("reserved", ctypes.c_uint8 * 104),
-    ]
-
-
-class RKLLMParam(ctypes.Structure):
-    _fields_ = [
-        ("model_path", ctypes.c_char_p),
-        ("max_context_len", ctypes.c_int32),
-        ("max_new_tokens", ctypes.c_int32),
-        ("top_k", ctypes.c_int32),
-        ("n_keep", ctypes.c_int32),
-        ("top_p", ctypes.c_float),
-        ("temperature", ctypes.c_float),
-        ("repeat_penalty", ctypes.c_float),
-        ("frequency_penalty", ctypes.c_float),
-        ("presence_penalty", ctypes.c_float),
-        ("mirostat", ctypes.c_int32),
-        ("mirostat_tau", ctypes.c_float),
-        ("mirostat_eta", ctypes.c_float),
-        ("skip_special_token", ctypes.c_bool),
-        ("is_async", ctypes.c_bool),
-        ("img_start", ctypes.c_char_p),
-        ("img_end", ctypes.c_char_p),
-        ("img_content", ctypes.c_char_p),
-        ("extend_param", RKLLMExtendParam),
-    ]
-
-
-class RKLLMEmbedInput(ctypes.Structure):
-    _fields_ = [
-        ("embed", ctypes.POINTER(ctypes.c_float)),
-        ("n_tokens", ctypes.c_size_t),
-    ]
-
-
-class RKLLMTokenInput(ctypes.Structure):
-    _fields_ = [
-        ("input_ids", ctypes.POINTER(ctypes.c_int32)),
-        ("n_tokens", ctypes.c_size_t),
-    ]
-
-
-class RKLLMInputUnion(ctypes.Union):
-    _fields_ = [
-        ("prompt_input", ctypes.c_char_p),
-        ("embed_input", RKLLMEmbedInput),
-        ("token_input", RKLLMTokenInput),
-    ]
-
-
-class RKLLMInput(ctypes.Structure):
-    _fields_ = [
-        ("role", ctypes.c_char_p),
-        ("enable_thinking", ctypes.c_bool),
-        ("input_type", ctypes.c_int),
-        ("input_data", RKLLMInputUnion),
-    ]
-
-
-class RKLLMInferParam(ctypes.Structure):
-    _fields_ = [
-        ("mode", ctypes.c_int),
-        ("lora_params", ctypes.c_void_p),
-        ("prompt_cache_params", ctypes.c_void_p),
-        ("keep_history", ctypes.c_int),
-    ]
-
-
-class RKLLMResultLastHiddenLayer(ctypes.Structure):
-    _fields_ = [
-        ("hidden_states", ctypes.POINTER(ctypes.c_float)),
-        ("embd_size", ctypes.c_int),
-        ("num_tokens", ctypes.c_int),
-    ]
-
-
-class RKLLMResultLogits(ctypes.Structure):
-    _fields_ = [
-        ("logits", ctypes.POINTER(ctypes.c_float)),
-        ("vocab_size", ctypes.c_int),
-        ("num_tokens", ctypes.c_int),
-    ]
-
-
-class RKLLMPerfStat(ctypes.Structure):
-    _fields_ = [
-        ("prefill_time_ms", ctypes.c_float),
-        ("prefill_tokens", ctypes.c_int),
-        ("generate_time_ms", ctypes.c_float),
-        ("generate_tokens", ctypes.c_int),
-        ("memory_usage_mb", ctypes.c_float),
-    ]
-
-
-class RKLLMResult(ctypes.Structure):
-    _fields_ = [
-        ("text", ctypes.c_char_p),
-        ("token_id", ctypes.c_int32),
-        ("last_hidden_layer", RKLLMResultLastHiddenLayer),
-        ("logits", RKLLMResultLogits),
-        ("perf", RKLLMPerfStat),
-    ]
-
-
-RKLLM_CALLBACK = ctypes.CFUNCTYPE(
-    None, ctypes.POINTER(RKLLMResult), ctypes.c_void_p, ctypes.c_int
+from rkvoice_stream.runtime.rkllm_abi import (
+    RKLLM_CALLBACK,
+    RKLLM_INFER_GET_LAST_HIDDEN_LAYER,
+    RKLLM_INPUT_EMBED,
+    RKLLM_INPUT_TOKEN,
+    RKLLM_RUN_ERROR,
+    RKLLM_RUN_NORMAL,
+    RKLLM_Handle_t,
+    RKLLMCallback,
+    RKLLMInferParam,
+    RKLLMInput,
+    RKLLMParam,
+    make_callback_struct,
+    make_infer_param,
 )
-RKLLM_Handle_t = ctypes.c_void_p
+
+logger = logging.getLogger(__name__)
 
 
 class RKLLMTalker:
@@ -184,7 +68,7 @@ class RKLLMTalker:
         self._lib.rkllm_init.argtypes = [
             ctypes.POINTER(RKLLM_Handle_t),
             ctypes.POINTER(RKLLMParam),
-            RKLLM_CALLBACK,
+            ctypes.POINTER(RKLLMCallback),
         ]
         self._lib.rkllm_init.restype = ctypes.c_int
         self._lib.rkllm_run.argtypes = [
@@ -196,7 +80,7 @@ class RKLLMTalker:
         self._lib.rkllm_run.restype = ctypes.c_int
         self._lib.rkllm_destroy.argtypes = [RKLLM_Handle_t]
         self._lib.rkllm_destroy.restype = ctypes.c_int
-        # 4-arg ABI matches RKLLM v1.2.3 (handle, keep, start_pos*, end_pos*).
+        # 4 args per rkllm.h (handle, keep_system_prompt, start_pos*, end_pos*).
         # ASR decoder uses this signature; TTS used to use 1-arg which triggered
         # "start_pos and end_pos are only valid..." stderr warnings and left
         # garbage values in those slots.
@@ -210,8 +94,10 @@ class RKLLMTalker:
         ]
         self._lib.rkllm_set_chat_template.restype = ctypes.c_int
 
-        # Create callback (prevent GC)
+        # Create callback (prevent GC).  rkllm_init() takes an RKLLMCallback*;
+        # keep the struct (and self._cb) alive for the lifetime of the handle.
         self._cb = RKLLM_CALLBACK(self._callback_fn)
+        self._cb_struct = make_callback_struct(self._cb)
 
         # Init model
         param = self._lib.rkllm_createDefaultParam()
@@ -233,7 +119,8 @@ class RKLLMTalker:
 
         t0 = time.perf_counter()
         ret = self._lib.rkllm_init(
-            ctypes.byref(self._handle), ctypes.byref(param), self._cb
+            ctypes.byref(self._handle), ctypes.byref(param),
+            ctypes.byref(self._cb_struct)
         )
         elapsed = time.perf_counter() - t0
         if ret != 0:
@@ -246,11 +133,13 @@ class RKLLMTalker:
         logger.info("RKLLM talker loaded in %.1fs", elapsed)
 
     def _callback_fn(self, result_ptr, userdata, state):
+        # Always returns 0 ("continue"): the runtime acts on this value
+        # (1 = pause, 2 = release the output buffer); the data is copied below.
         if state == RKLLM_RUN_ERROR:
             self._callback_error = "RKLLM_RUN_ERROR"
-            return
+            return 0
         if state != RKLLM_RUN_NORMAL:
-            return
+            return 0
 
         r = result_ptr.contents
 
@@ -273,6 +162,7 @@ class RKLLMTalker:
                 r.logits.num_tokens, r.logits.vocab_size
             )
             self._vocab_size = r.logits.vocab_size
+        return 0
 
     def _reset(self):
         self._collected_hidden = None
@@ -313,11 +203,7 @@ class RKLLMTalker:
         inp.input_data.embed_input.embed = c_arr
         inp.input_data.embed_input.n_tokens = n_tokens
 
-        infer_p = RKLLMInferParam()
-        infer_p.mode = mode
-        infer_p.lora_params = None
-        infer_p.prompt_cache_params = None
-        infer_p.keep_history = keep_history
+        infer_p = make_infer_param(mode, keep_history)
 
         self._reset()
         ret = self._lib.rkllm_run(
@@ -352,11 +238,7 @@ class RKLLMTalker:
         inp.input_data.token_input.input_ids = c_arr
         inp.input_data.token_input.n_tokens = len(token_ids)
 
-        infer_p = RKLLMInferParam()
-        infer_p.mode = mode
-        infer_p.lora_params = None
-        infer_p.prompt_cache_params = None
-        infer_p.keep_history = keep_history
+        infer_p = make_infer_param(mode, keep_history)
 
         self._reset()
         ret = self._lib.rkllm_run(

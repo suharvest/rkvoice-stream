@@ -157,6 +157,13 @@ Used by the `/audio_dialogue` WebSocket endpoint for V2V: audio in → AudioLLM 
 
 ## Quick Start
 
+> **Requires RKLLM runtime v1.3.0.** The RKLLM-based backends (Qwen3-ASR decoder,
+> Qwen3-TTS talker) bind the C ABI of `librkllmrt.so` **v1.3.0**
+> ([`release-v1.3.0`](https://github.com/airockchip/rknn-llm/tree/release-v1.3.0) of
+> `airockchip/rknn-llm`). Earlier runtimes (1.2.x) are **not supported**: their ABI differs,
+> so they crash (SIGSEGV) instead of failing cleanly. Provide a 1.3.0 `librkllmrt.so`
+> (`RKLLM_LIB_PATH` for the ASR decoder; the TTS talker loads `/usr/lib/librkllmrt.so`).
+
 ### Recommended: via OpenVoiceStream
 
 The fastest path to a running service is [OpenVoiceStream](https://github.com/Seeed-Solution/openvoicestream), which wraps this engine with prebuilt Docker images and a one-command installer:

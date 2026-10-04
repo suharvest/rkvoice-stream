@@ -4,92 +4,19 @@ import ctypes, time, sys, os, json
 import numpy as np
 
 # ==================== RKLLM Structures ====================
-RKLLM_Handle_t = ctypes.c_void_p
-
-class LLMCallState:
-    RKLLM_RUN_NORMAL = 0
-    RKLLM_RUN_WAITING = 1
-    RKLLM_RUN_FINISH = 2
-    RKLLM_RUN_ERROR = 3
-
-class RKLLMInputType:
-    RKLLM_INPUT_PROMPT = 0
-    RKLLM_INPUT_TOKEN = 1
-    RKLLM_INPUT_EMBED = 2
-
-class RKLLMInferMode:
-    RKLLM_INFER_GENERATE = 0
-    RKLLM_INFER_GET_LAST_HIDDEN_LAYER = 1
-
-class RKLLMExtendParam(ctypes.Structure):
-    _fields_ = [
-        ("base_domain_id", ctypes.c_int32),
-        ("embed_flash", ctypes.c_int8),
-        ("enabled_cpus_num", ctypes.c_int8),
-        ("enabled_cpus_mask", ctypes.c_uint32),
-        ("n_batch", ctypes.c_uint8),
-        ("use_cross_attn", ctypes.c_int8),
-        ("reserved", ctypes.c_uint8 * 104)
-    ]
-
-class RKLLMParam(ctypes.Structure):
-    _fields_ = [
-        ("model_path", ctypes.c_char_p),
-        ("max_context_len", ctypes.c_int32),
-        ("max_new_tokens", ctypes.c_int32),
-        ("top_k", ctypes.c_int32),
-        ("n_keep", ctypes.c_int32),
-        ("top_p", ctypes.c_float),
-        ("temperature", ctypes.c_float),
-        ("repeat_penalty", ctypes.c_float),
-        ("frequency_penalty", ctypes.c_float),
-        ("presence_penalty", ctypes.c_float),
-        ("mirostat", ctypes.c_int32),
-        ("mirostat_tau", ctypes.c_float),
-        ("mirostat_eta", ctypes.c_float),
-        ("skip_special_token", ctypes.c_bool),
-        ("is_async", ctypes.c_bool),
-        ("img_start", ctypes.c_char_p),
-        ("img_end", ctypes.c_char_p),
-        ("img_content", ctypes.c_char_p),
-        ("extend_param", RKLLMExtendParam),
-    ]
-
-class RKLLMEmbedInput(ctypes.Structure):
-    _fields_ = [
-        ("embed", ctypes.POINTER(ctypes.c_float)),
-        ("n_tokens", ctypes.c_size_t),
-    ]
-
-class RKLLMInputUnion(ctypes.Union):
-    _fields_ = [
-        ("prompt_input", ctypes.c_char_p),
-        ("embed_input", RKLLMEmbedInput),
-    ]
-
-class RKLLMInput(ctypes.Structure):
-    _fields_ = [
-        ("role", ctypes.c_char_p),
-        ("enable_thinking", ctypes.c_bool),
-        ("input_type", ctypes.c_int),
-        ("input_data", RKLLMInputUnion)
-    ]
-
-class RKLLMInferParam(ctypes.Structure):
-    _fields_ = [
-        ("mode", ctypes.c_int),
-        ("lora_params", ctypes.c_void_p),
-        ("prompt_cache_params", ctypes.c_void_p),
-        ("keep_history", ctypes.c_int)
-    ]
-
-class RKLLMResult(ctypes.Structure):
-    _fields_ = [
-        ("text", ctypes.c_char_p),
-        ("token_id", ctypes.c_int),
-    ]
-
-RKLLM_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.POINTER(RKLLMResult), ctypes.c_void_p, ctypes.c_int)
+# Shared RKLLM ctypes bindings (librkllmrt v1.3.0 ABI); needs `pip install -e .`
+from rkvoice_stream.runtime.rkllm_abi import (
+    RKLLM_CALLBACK,
+    RKLLM_Handle_t,
+    RKLLM_INFER_GENERATE,
+    RKLLM_INPUT_EMBED,
+    RKLLM_RUN_NORMAL,
+    RKLLMCallback,
+    RKLLMInferParam,
+    RKLLMInput,
+    RKLLMParam,
+    make_callback_struct,
+)
 
 token_count = 0
 first_token_time = 0
@@ -97,14 +24,17 @@ token_ids = []
 
 def callback(result, userdata, state):
     global token_count, first_token_time, token_ids
-    if state == LLMCallState.RKLLM_RUN_NORMAL:
+    if state == RKLLM_RUN_NORMAL:
         token_count += 1
         if token_count == 1:
             first_token_time = time.perf_counter()
         if result and result.contents.token_id >= 0:
             token_ids.append(result.contents.token_id)
+    return 0
+
 
 cb = RKLLM_CALLBACK(callback)
+cb_struct = make_callback_struct(cb)  # rkllm_init() takes an RKLLMCallback*
 
 def bench_model(model_path, rkllm_lib):
     global token_count, first_token_time, token_ids
@@ -127,7 +57,7 @@ def bench_model(model_path, rkllm_lib):
 
     handle = RKLLM_Handle_t()
     init_start = time.perf_counter()
-    ret = rkllm_lib.rkllm_init(ctypes.byref(handle), ctypes.byref(param), cb)
+    ret = rkllm_lib.rkllm_init(ctypes.byref(handle), ctypes.byref(param), ctypes.byref(cb_struct))
     init_time = time.perf_counter() - init_start
 
     if ret != 0:
@@ -143,12 +73,12 @@ def bench_model(model_path, rkllm_lib):
     embed_array = (ctypes.c_float * len(embed_flat))(*embed_flat)
 
     rkllm_input = RKLLMInput()
-    rkllm_input.input_type = RKLLMInputType.RKLLM_INPUT_EMBED
+    rkllm_input.input_type = RKLLM_INPUT_EMBED
     rkllm_input.input_data.embed_input.embed = embed_array
     rkllm_input.input_data.embed_input.n_tokens = N_PREFILL
 
     infer_param = RKLLMInferParam()
-    infer_param.mode = RKLLMInferMode.RKLLM_INFER_GENERATE
+    infer_param.mode = RKLLM_INFER_GENERATE
     infer_param.keep_history = 0
 
     results = []
@@ -211,7 +141,7 @@ def main():
     ctypes.CDLL("librknnrt.so", mode=ctypes.RTLD_GLOBAL)
     rkllm = ctypes.CDLL("/usr/lib/librkllmrt.so")
     rkllm.rkllm_createDefaultParam.restype = RKLLMParam
-    rkllm.rkllm_init.argtypes = [ctypes.POINTER(RKLLM_Handle_t), ctypes.POINTER(RKLLMParam), RKLLM_CALLBACK]
+    rkllm.rkllm_init.argtypes = [ctypes.POINTER(RKLLM_Handle_t), ctypes.POINTER(RKLLMParam), ctypes.POINTER(RKLLMCallback)]
     rkllm.rkllm_init.restype = ctypes.c_int
     rkllm.rkllm_run.argtypes = [RKLLM_Handle_t, ctypes.POINTER(RKLLMInput), ctypes.POINTER(RKLLMInferParam), ctypes.c_void_p]
     rkllm.rkllm_run.restype = ctypes.c_int

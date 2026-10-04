@@ -20,6 +20,7 @@ services:
       - /home/cat/models/matcha-split:/opt/tts/models/matcha-split:ro
       - /home/cat/matcha-data:/home/cat/matcha-data:ro
       - /home/cat/qwen3-asr-models:/opt/asr/models:ro
+      # must be librkllmrt v1.3.0 -- the 1.2.x ABI is not supported (see README)
       - /home/cat/rk3576-build/librkllmrt.so:/opt/asr/lib/librkllmrt.so:ro
       - /home/cat/project/rknn-matmul-parallel:/opt/rknn-matmul-parallel:ro
       - /home/cat/piper-models:/opt/piper-models:ro

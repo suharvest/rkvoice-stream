@@ -73,7 +73,7 @@ echo ""
 echo "[3/6] Uploading application code..."
 $FLEET exec --timeout 30 "$DEVICE" -- "mkdir -p $REMOTE_DIR/app" 2>/dev/null
 
-for f in main.py tts_service.py rkllm_wrapper.py; do
+for f in main.py tts_service.py rkllm_wrapper.py rkllm_abi.py; do
     $FLEET push "$DEVICE" "$LOCAL_DIR/app/$f" "$REMOTE_DIR/app/$f" 2>/dev/null
 done
 echo "  App code uploaded."

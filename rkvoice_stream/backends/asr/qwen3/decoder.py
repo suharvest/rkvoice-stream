@@ -7,6 +7,10 @@ Critical settings for correct operation:
   - role = ""  -- empty role for EMBED input
   - embed_flash = 1
   - model must be exported as model_type="qwen3" (not qwen3_vl)
+
+Requires librkllmrt.so **v1.3.0** (tag release-v1.3.0 of airockchip/rknn-llm);
+the 1.2.x C ABI is not supported.  The ctypes structs live in
+``rkvoice_stream.runtime.rkllm_abi``.
 """
 
 import threading
@@ -14,6 +18,23 @@ import ctypes
 import logging
 import time
 import numpy as np
+from rkvoice_stream.runtime.rkllm_abi import (
+    RKLLM_CALLBACK,
+    RKLLM_INFER_GENERATE,
+    RKLLM_INPUT_EMBED,
+    RKLLM_RUN_FINISH,
+    RKLLM_RUN_NORMAL,
+    RKLLM_RUN_WAITING,
+    RKLLM_Handle_t,
+    RKLLMCallback,
+    RKLLMEmbedInput,
+    RKLLMInferParam,
+    RKLLMInput,
+    RKLLMParam,
+    RKLLMPromptCacheParam,
+    make_callback_struct,
+    make_infer_param,
+)
 from .config import CPU_MASKS
 
 logger = logging.getLogger(__name__)
@@ -42,168 +63,6 @@ def should_stop_after_punctuation(
     if len(s) < min_chars:
         return False
     return bool(s) and s[-1] in punctuation
-
-
-# ==================== ctypes struct definitions ====================
-
-RKLLM_Handle_t = ctypes.c_void_p
-
-# Input types
-RKLLM_INPUT_PROMPT = 0
-RKLLM_INPUT_TOKEN = 1
-RKLLM_INPUT_EMBED = 2
-RKLLM_INPUT_MULTIMODAL = 3
-
-# Infer modes
-RKLLM_INFER_GENERATE = 0
-RKLLM_INFER_GET_LAST_HIDDEN_LAYER = 1
-RKLLM_INFER_GET_LOGITS = 2
-
-# Callback states
-LLM_RUN_NORMAL = 0
-LLM_RUN_WAITING = 1
-LLM_RUN_FINISH = 2
-LLM_RUN_ERROR = 3
-
-
-class RKLLMExtendParam(ctypes.Structure):
-    _fields_ = [
-        ("base_domain_id", ctypes.c_int32),
-        ("embed_flash", ctypes.c_int8),
-        ("enabled_cpus_num", ctypes.c_int8),
-        ("enabled_cpus_mask", ctypes.c_uint32),
-        ("n_batch", ctypes.c_uint8),
-        ("use_cross_attn", ctypes.c_int8),
-        ("reserved", ctypes.c_uint8 * 104),
-    ]
-
-
-class RKLLMParam(ctypes.Structure):
-    _fields_ = [
-        ("model_path", ctypes.c_char_p),
-        ("max_context_len", ctypes.c_int32),
-        ("max_new_tokens", ctypes.c_int32),
-        ("top_k", ctypes.c_int32),
-        ("n_keep", ctypes.c_int32),
-        ("top_p", ctypes.c_float),
-        ("temperature", ctypes.c_float),
-        ("repeat_penalty", ctypes.c_float),
-        ("frequency_penalty", ctypes.c_float),
-        ("presence_penalty", ctypes.c_float),
-        ("mirostat", ctypes.c_int32),
-        ("mirostat_tau", ctypes.c_float),
-        ("mirostat_eta", ctypes.c_float),
-        ("skip_special_token", ctypes.c_bool),
-        ("is_async", ctypes.c_bool),
-        ("img_start", ctypes.c_char_p),
-        ("img_end", ctypes.c_char_p),
-        ("img_content", ctypes.c_char_p),
-        ("extend_param", RKLLMExtendParam),
-    ]
-
-
-class RKLLMEmbedInput(ctypes.Structure):
-    _fields_ = [
-        ("embed", ctypes.POINTER(ctypes.c_float)),
-        ("n_tokens", ctypes.c_size_t),
-    ]
-
-
-class RKLLMTokenInput(ctypes.Structure):
-    _fields_ = [
-        ("input_ids", ctypes.POINTER(ctypes.c_int32)),
-        ("n_tokens", ctypes.c_size_t),
-    ]
-
-
-class RKLLMMultiModalInput(ctypes.Structure):
-    _fields_ = [
-        ("prompt", ctypes.c_char_p),
-        ("image_embed", ctypes.POINTER(ctypes.c_float)),
-        ("n_image_tokens", ctypes.c_size_t),
-        ("n_image", ctypes.c_size_t),
-        ("image_width", ctypes.c_size_t),
-        ("image_height", ctypes.c_size_t),
-    ]
-
-
-class RKLLMInputUnion(ctypes.Union):
-    _fields_ = [
-        ("prompt_input", ctypes.c_char_p),
-        ("embed_input", RKLLMEmbedInput),
-        ("token_input", RKLLMTokenInput),
-        ("multimodal_input", RKLLMMultiModalInput),
-    ]
-
-
-class RKLLMInput(ctypes.Structure):
-    _fields_ = [
-        ("role", ctypes.c_char_p),
-        ("enable_thinking", ctypes.c_bool),
-        ("input_type", ctypes.c_int),
-        ("input_data", RKLLMInputUnion),
-    ]
-
-
-class RKLLMLoraParam(ctypes.Structure):
-    _fields_ = [("lora_adapter_name", ctypes.c_char_p)]
-
-
-class RKLLMPromptCacheParam(ctypes.Structure):
-    _fields_ = [
-        ("save_prompt_cache", ctypes.c_int),
-        ("prompt_cache_path", ctypes.c_char_p),
-    ]
-
-
-class RKLLMInferParam(ctypes.Structure):
-    _fields_ = [
-        ("mode", ctypes.c_int),
-        ("lora_params", ctypes.POINTER(RKLLMLoraParam)),
-        ("prompt_cache_params", ctypes.POINTER(RKLLMPromptCacheParam)),
-        ("keep_history", ctypes.c_int),
-    ]
-
-
-class RKLLMResultLastHiddenLayer(ctypes.Structure):
-    _fields_ = [
-        ("hidden_states", ctypes.POINTER(ctypes.c_float)),
-        ("embd_size", ctypes.c_int),
-        ("num_tokens", ctypes.c_int),
-    ]
-
-
-class RKLLMResultLogits(ctypes.Structure):
-    _fields_ = [
-        ("logits", ctypes.POINTER(ctypes.c_float)),
-        ("vocab_size", ctypes.c_int),
-        ("num_tokens", ctypes.c_int),
-    ]
-
-
-class RKLLMPerfStat(ctypes.Structure):
-    _fields_ = [
-        ("prefill_time_ms", ctypes.c_float),
-        ("prefill_tokens", ctypes.c_int),
-        ("generate_time_ms", ctypes.c_float),
-        ("generate_tokens", ctypes.c_int),
-        ("memory_usage_mb", ctypes.c_float),
-    ]
-
-
-class RKLLMResult(ctypes.Structure):
-    _fields_ = [
-        ("text", ctypes.c_char_p),
-        ("token_id", ctypes.c_int),
-        ("last_hidden_layer", RKLLMResultLastHiddenLayer),
-        ("logits", RKLLMResultLogits),
-        ("perf", RKLLMPerfStat),
-    ]
-
-
-RKLLM_CALLBACK = ctypes.CFUNCTYPE(
-    ctypes.c_int, ctypes.POINTER(RKLLMResult), ctypes.c_void_p, ctypes.c_int
-)
 
 
 # ==================== Decoder Class ====================
@@ -264,7 +123,7 @@ class RKLLMDecoder:
             final_stop_min_chunks: Minimum callback chunks before punctuation
                 can stop generation.
             embed_cache_reuse: Keep EMBED KV cache between keep_history=0
-                calls so RKLLM v1.2.3 can reuse matching embedding prefixes.
+                calls so RKLLM's automatic EMBED prefix reuse can apply.
             async_mode: Initialize RKLLM async mode and use rkllm_run_async
                 internally while preserving run_embed()'s blocking contract.
             async_timeout_s: Timeout for waiting on async completion.
@@ -291,7 +150,7 @@ class RKLLMDecoder:
         # Setup callback
         @RKLLM_CALLBACK
         def _cb(result, userdata, state):
-            if state == LLM_RUN_NORMAL or state == LLM_RUN_WAITING:
+            if state == RKLLM_RUN_NORMAL or state == RKLLM_RUN_WAITING:
                 if result and result.contents.text:
                     text = result.contents.text.decode("utf-8", errors="replace")
                     if text not in ("<|im_end|>", "<|endoftext|>"):
@@ -336,7 +195,7 @@ class RKLLMDecoder:
                             self._aborted = True
                             self._abort_reason = abort_reason
                             self.lib.rkllm_abort(self.handle)
-            elif state == LLM_RUN_FINISH:
+            elif state == RKLLM_RUN_FINISH:
                 if result:
                     self._perf = {
                         "prefill_time_ms": result.contents.perf.prefill_time_ms,
@@ -350,6 +209,9 @@ class RKLLMDecoder:
             return 0
 
         self._cb = _cb
+        # rkllm_init() takes an RKLLMCallback*; keep it (and self._cb) alive
+        # for the lifetime of the handle.
+        self._cb_struct = make_callback_struct(self._cb)
 
         # Build parameters
         param = RKLLMParam()
@@ -367,10 +229,8 @@ class RKLLMDecoder:
         param.mirostat_tau = 5.0
         param.mirostat_eta = 0.1
         param.skip_special_token = True
+        param.ignore_eos_token = False
         param.is_async = self._async_mode
-        param.img_start = b""
-        param.img_end = b""
-        param.img_content = b""
 
         # CPU affinity
         if enabled_cpus not in CPU_MASKS:
@@ -399,7 +259,7 @@ class RKLLMDecoder:
         # Setup function signatures
         self.lib.rkllm_init.argtypes = [
             ctypes.POINTER(RKLLM_Handle_t),
-            ctypes.POINTER(RKLLMParam), RKLLM_CALLBACK
+            ctypes.POINTER(RKLLMParam), ctypes.POINTER(RKLLMCallback)
         ]
         self.lib.rkllm_init.restype = ctypes.c_int
 
@@ -448,7 +308,8 @@ class RKLLMDecoder:
         # Initialize
         self.handle = RKLLM_Handle_t()
         ret = self.lib.rkllm_init(
-            ctypes.byref(self.handle), ctypes.byref(param), self._cb
+            ctypes.byref(self.handle), ctypes.byref(param),
+            ctypes.byref(self._cb_struct)
         )
         assert ret == 0, f"rkllm_init failed: {ret}"
 
@@ -560,11 +421,9 @@ class RKLLMDecoder:
         cache_param.save_prompt_cache = 1
         cache_param.prompt_cache_path = self._cache_path_bytes
 
-        infer_param = RKLLMInferParam()
-        infer_param.mode = RKLLM_INFER_GENERATE
-        infer_param.lora_params = None
-        infer_param.prompt_cache_params = ctypes.pointer(cache_param)
-        infer_param.keep_history = 0
+        infer_param = make_infer_param(
+            RKLLM_INFER_GENERATE, keep_history=0,
+            prompt_cache_params=cache_param)
 
         ret = self.lib.rkllm_run(
             self.handle, ctypes.byref(rkllm_input),
@@ -630,11 +489,8 @@ class RKLLMDecoder:
                 embed_ptr, n_tokens
             )
 
-            infer_param = RKLLMInferParam()
-            infer_param.mode = RKLLM_INFER_GENERATE
-            infer_param.lora_params = None
-            infer_param.prompt_cache_params = None
-            infer_param.keep_history = keep_history
+            infer_param = make_infer_param(
+                RKLLM_INFER_GENERATE, keep_history=keep_history)
 
             if self._async_mode and self._has_run_async:
                 ret = self._run_async_and_wait(rkllm_input, infer_param)
