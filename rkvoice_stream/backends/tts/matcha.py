@@ -690,49 +690,66 @@ class RKNNMatchaVocoder:
         return tokens
 
     def _chinese_token_strings(self, text: str) -> list[str]:
-        """Chinese run -> token strings via longest-match lexicon lookup."""
-        out: list[str] = []
+        """Chinese run -> token strings via longest-match lexicon lookup with tone sandhi.
+
+        Preserves 4->1 longest match for ground-truth lexicon pronunciations,
+        treats unknown characters as tone-sandhi barriers, and applies standard
+        Mandarin tone sandhi (consecutive tone-3 -> tone-2) across adjacent tokens.
+        """
+        if not self._lexicon:
+            return []
+
+        # Step 1: Lexicon matching (preserves original lexicon ground truth)
         i = 0
-        while i < len(text):
-            for length in range(min(4, len(text) - i), 0, -1):
+        n = len(text)
+        units: list[list[str]] = []
+        while i < n:
+            for length in range(min(4, n - i), 0, -1):
                 word = text[i:i + length]
                 if word in self._lexicon:
-                    out.extend(self._lexicon[word])
+                    units.append(list(self._lexicon[word]))
                     i += length
                     break
             else:
+                # Unknown char: acts as a tone sandhi barrier
+                units.append([])
                 i += 1
+
+        # Step 2: Flatten into token list while preserving barriers (None)
+        raw_tokens: list[str | None] = []
+        for u in units:
+            if not u:
+                raw_tokens.append(None)
+            else:
+                raw_tokens.extend(u)
+
+        # Step 3: Tone sandhi scan across valid tokens
+        # For any token ending in '3':
+        # If immediately followed by another token ending in '3' (without None barrier):
+        # Change current token from '3' to '2' if the '2' token exists in dictionary.
+        out: list[str] = []
+        m = len(raw_tokens)
+        token_to_id = getattr(self, "_token_to_id", {}) or {}
+        for idx in range(m):
+            tok = raw_tokens[idx]
+            if tok is None:
+                continue
+            if tok.endswith('3') and idx + 1 < m:
+                nxt = raw_tokens[idx + 1]
+                if nxt is not None and nxt.endswith('3'):
+                    cand = tok[:-1] + '2'
+                    if cand in token_to_id:
+                        tok = cand
+            out.append(tok)
         return out
 
     def _chinese_to_tokens(self, text: str) -> list[int]:
         """Convert Chinese text to token IDs via lexicon lookup."""
-        tokens = []
-        i = 0
-        while i < len(text):
-            # 尝试匹配最长词
-            found = False
-            for length in range(min(4, len(text) - i), 0, -1):
-                word = text[i:i+length]
-                if word in self._lexicon:
-                    phonemes = self._lexicon[word]
-                    for p in phonemes:
-                        if p in self._token_to_id:
-                            tokens.append(self._token_to_id[p])
-                    i += length
-                    found = True
-                    break
-
-            if not found:
-                # 单字处理
-                char = text[i]
-                if char in self._lexicon:
-                    phonemes = self._lexicon[char]
-                    for p in phonemes:
-                        if p in self._token_to_id:
-                            tokens.append(self._token_to_id[p])
-                i += 1
-
-        return tokens
+        return [
+            self._token_to_id[s]
+            for s in self._chinese_token_strings(text)
+            if s in self._token_to_id
+        ]
 
     def run_matcha(
         self,
