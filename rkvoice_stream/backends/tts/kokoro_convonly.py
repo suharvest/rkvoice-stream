@@ -442,7 +442,7 @@ class KokoroConvOnlyBackend(TTSBackend):
     @staticmethod
     def _request(text, speaker_id, speed, pitch_shift, kwargs):
         if not isinstance(text, str) or not text.strip():
-            raise ValueError("text must be nonempty")
+            raise ValueError("text must contain valid phonetic tokens")
         if len(text) > MAX_INPUT_CHARS:
             raise ValueError(f"input exceeds maximum length of {MAX_INPUT_CHARS} characters")
         if type(speaker_id) is not int or speaker_id != 0 or pitch_shift not in (None, 0, 0.0):

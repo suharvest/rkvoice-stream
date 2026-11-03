@@ -109,6 +109,9 @@ def create_backend(backend_name: Optional[str] = None) -> TTSBackend:
     elif backend_name == "kokoro_convonly":
         from rkvoice_stream.backends.tts.kokoro_convonly import KokoroConvOnlyBackend
         return KokoroConvOnlyBackend()
+    elif backend_name == "kokoro_dualbucket":
+        from rkvoice_stream.backends.tts.kokoro_dualbucket import KokoroConvOnlyBackend
+        return KokoroConvOnlyBackend()
     elif backend_name in ("kokoro_rknn", "kokora_rknn"):
         from rkvoice_stream.backends.tts.kokoro_rknn import KokoroRKNNBackend
         return KokoroRKNNBackend()

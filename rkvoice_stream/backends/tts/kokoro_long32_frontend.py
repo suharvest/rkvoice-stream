@@ -29,6 +29,10 @@ GENERATOR_SOURCE_SHA256 = "301fc9d3fa7db258028ce895230b6f1782662bd0bdc8bd7dcdf5a
 
 class PhonemeLengthError(ValueError):
     """Input phonemes exceed the fixed frontend ABI limit."""
+
+
+class NoPhoneticTokensError(ValueError):
+    """Input produces no valid pronounceable phonetic tokens."""
 OFFICIAL_SOURCE_SHA256 = FULL_MODEL_SHA256
 STEM_TEXT = "/encoder/predictor/text_encoder/Concat_4_output_0"
 STEM_STYLE = "/encoder/Slice_output_0"
@@ -476,20 +480,26 @@ class KokoroLong32Frontend:
 
     def _ids(self, phonemes: str) -> list[int]:
         ids = []; unknown = []
+        has_pronouncing = False
+        non_phonetic = set(" \t\n\r;:,.!?—…\"'()[]{}/-`\u200b\u200c\u200d\ufeff")
         for ch in phonemes:
             key = " " if ch.isspace() else ch
             if key not in self.vocab: unknown.append(ch)
-            else: ids.append(self.vocab[key])
+            else:
+                ids.append(self.vocab[key])
+                if key not in non_phonetic:
+                    has_pronouncing = True
+        if not has_pronouncing: raise NoPhoneticTokensError("text must contain valid phonetic tokens")
         if unknown: raise ValueError(f"unknown/dropped phoneme(s): {unknown!r}")
-        if not ids: raise ValueError("phoneme length outside 1..200: 0")
-        if len(ids) > 200: raise PhonemeLengthError(f"phoneme length outside 1..200: {len(ids)}")
+        if not ids: raise NoPhoneticTokensError("text must contain valid phonetic tokens")
+        if len(ids) > 238: raise PhonemeLengthError(f"phoneme length outside 1..238: {len(ids)}")
         return ids
 
     def prepare(self, text: str, language: str, speed: float = 1.0, *, cancel_check=None) -> Prepared:
         check = cancel_check if cancel_check is not None else lambda: None
         check()
         route = self._route(language)
-        if not isinstance(text, str) or not text.strip(): raise ValueError("text must be non-empty")
+        if not isinstance(text, str) or not text.strip(): raise NoPhoneticTokensError("text must contain valid phonetic tokens")
         speed_a = np.array([speed], dtype=np.float32, copy=True); speed_a.setflags(write=False)
         if not np.isfinite(speed_a).all() or speed <= 0: raise ValueError("speed must be finite and > 0")
         detail: dict[str, float] = {}
@@ -528,9 +538,17 @@ class KokoroLong32Frontend:
         d = np.array(d.reshape(-1), dtype=np.int64, copy=True); d.setflags(write=False)
         return Prepared(route, ROUTES[route], text, tok, style, speed_a, d, int(d.sum()), stem_text, stem_style, detail)
 
-    def render(self, prepared: Prepared, target_D: int) -> dict[str, Any]:
+    def render(self, prepared: Prepared, target_D: int, durations: np.ndarray | None = None) -> dict[str, Any]:
         if not isinstance(prepared, Prepared): raise TypeError("render expects Prepared")
-        t0 = time.perf_counter(); durations = snap_durations(prepared.natural_durations, int(target_D)); snap_ms = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        if durations is None:
+            durations = snap_durations(prepared.natural_durations, int(target_D))
+            snap_ms = (time.perf_counter() - t0) * 1000
+        else:
+            durations = np.asarray(durations, dtype=np.int64).reshape(-1)
+            if np.any(durations < 1) or int(durations.sum()) != int(target_D):
+                raise ValueError("explicit durations invalid or sum mismatch")
+            snap_ms = (time.perf_counter() - t0) * 1000
         if int(durations.sum()) != int(target_D): raise RuntimeError("target duration sum mismatch")
         init = self.preload_sessions()
         if self._manifest_schema == "kokoro-v10-long32-frontend-3" and not self._split_ready:

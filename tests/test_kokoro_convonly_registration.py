@@ -31,6 +31,13 @@ def test_convonly_factory_is_distinct(monkeypatch, explicit):
     assert isinstance(create_backend("kokoro_convonly" if explicit else None), cls)
 
 
+@pytest.mark.parametrize("explicit", [True, False])
+def test_dualbucket_factory_is_supported(monkeypatch, explicit):
+    cls = _stub(monkeypatch, "rkvoice_stream.backends.tts.kokoro_dualbucket", "KokoroConvOnlyBackend")
+    monkeypatch.setenv("TTS_BACKEND", "kokoro_dualbucket")
+    assert isinstance(create_backend("kokoro_dualbucket" if explicit else None), cls)
+
+
 @pytest.mark.parametrize("name", ["kokoro_rknn", "kokora_rknn"])
 def test_legacy_kokoro_aliases_are_unchanged(monkeypatch, name):
     cls = _stub(monkeypatch, "rkvoice_stream.backends.tts.kokoro_rknn", "KokoroRKNNBackend")

@@ -101,7 +101,7 @@ def _apply_tts_env(cfg: dict) -> None:
         os.environ["TTS_BACKEND"] = str(backend)
     if "require_backend" in cfg:
         os.environ["REQUIRE_TTS_BACKEND"] = str(cfg["require_backend"])
-    if backend == "kokoro_convonly":
+    if backend in ("kokoro_convonly", "kokoro_dualbucket"):
         # This explicit bundle contract does not inherit legacy hybrid paths.
         mapping = {
             "bundle_root": "KOKORO_CONVONLY_ROOT",
