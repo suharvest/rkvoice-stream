@@ -50,6 +50,9 @@ BUCKET_CONFIGS = {
     "T480": {"T": 480, "D_target": 240, "F": 28801},
 }
 
+SPLIT_SENTENCE_PATTERN = r".+?(?:[。！？；;]+\s*|[.!?]+(?:\s+|$)|$)"
+SPLIT_CLAUSE_PATTERN = r".+?(?:[。！？；;，、：—]+\s*|\.{2,}|[.!?]+(?:\s+|$)|[,:;]+(?:\s+|$)|$)"
+
 
 def _digest(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
@@ -1075,9 +1078,16 @@ class KokoroConvOnlyBackend(TTSBackend):
             }
             return wav_bytes, metadata
 
-    def _iter_audio(self, text: str, request: tuple, *, sentence_mode: bool) -> Iterator[tuple[bytes, dict]]:
+    def _iter_audio(self, text: str, request: tuple, *, sentence_mode: bool,
+                    clause_split: bool | None = None) -> Iterator[tuple[bytes, dict]]:
         language, route, voice, speed, cancel = request
-        raw_sentences = re.findall(r".+?(?:[。！？；;]+\s*|[.!?]+(?:\s+|$)|$)", text, flags=re.S) if sentence_mode else [text]
+        if sentence_mode:
+            if clause_split is None:
+                clause_split = os.environ.get("KOKORO_STREAM_CLAUSE_SPLIT", "1").lower() in ("1", "true", "yes")
+            split_pattern = SPLIT_CLAUSE_PATTERN if clause_split else SPLIT_SENTENCE_PATTERN
+            raw_sentences = re.findall(split_pattern, text, flags=re.S)
+        else:
+            raw_sentences = [text]
         if "".join(raw_sentences) != text:
             raise RuntimeError("source sentence coverage invariant failed")
         source_base = count = 0
@@ -1172,7 +1182,8 @@ class KokoroConvOnlyBackend(TTSBackend):
             return result, metadata
 
     def synthesize_stream(self, text: str, speaker_id: int = 0, speed: float | None = None,
-                          pitch_shift: float | None = None, **kwargs) -> Iterator[tuple[np.ndarray, dict]]:
+                          pitch_shift: float | None = None, clause_split: bool | None = None,
+                          **kwargs) -> Iterator[tuple[np.ndarray, dict]]:
         set_big_core_affinity()
         request = self._request(text, speaker_id, speed, pitch_shift, kwargs)
         language, route, voice, speed, cancel = request
@@ -1184,7 +1195,10 @@ class KokoroConvOnlyBackend(TTSBackend):
             self.preload()
             self._cancel(cancel, "preload")
 
-        raw_sentences = re.findall(r".+?(?:[。！？；;]+\s*|[.!?]+(?:\s+|$)|$)", text, flags=re.S)
+        if clause_split is None:
+            clause_split = os.environ.get("KOKORO_STREAM_CLAUSE_SPLIT", "1").lower() in ("1", "true", "yes")
+        split_pattern = SPLIT_CLAUSE_PATTERN if clause_split else SPLIT_SENTENCE_PATTERN
+        raw_sentences = re.findall(split_pattern, text, flags=re.S)
         if "".join(raw_sentences) != text:
             raise RuntimeError("source sentence coverage invariant failed")
 
@@ -1405,11 +1419,6 @@ class KokoroConvOnlyBackend(TTSBackend):
         finally:
             stream_cancel_event.set()
             executor.shutdown(wait=True, cancel_futures=True)
-            if curr_future is not None:
-                try:
-                    curr_future.result(timeout=0.01)
-                except Exception:
-                    pass
 
         if not yielded:
             raise NoPhoneticTokensError("text must contain valid phonetic tokens")

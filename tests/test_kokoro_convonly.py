@@ -918,3 +918,41 @@ def test_profile_never_snaps_below_one_frame_per_token(tmp_path, models):
     assert prepared.natural_D == 202 and profile["fallback"]
     assert profile["target_D"] >= 202  # CPU will keep the natural 202 frames.
     backend.close()
+
+
+def test_clause_streaming_split(monkeypatch):
+    """Verify clause-level splitting in KokoroConvOnlyBackend."""
+    backend, calls, _ = _pcm_stream_fake()
+
+    text_en = "First clause, second clause. Third sentence."
+    # clause_split=True
+    calls.clear()
+    chunks_c = list(backend.synthesize_stream(text_en, language="en", clause_split=True))
+    assert calls == ["First clause, ", "second clause. ", "Third sentence."]
+    assert [m["sentence_index"] for _, m in chunks_c] == [0, 1, 2]
+    assert [m["sentence_text"] for _, m in chunks_c] == ["First clause, ", "second clause. ", "Third sentence."]
+
+    # clause_split=False
+    calls.clear()
+    chunks_s = list(backend.synthesize_stream(text_en, language="en", clause_split=False))
+    assert calls == ["First clause, second clause. ", "Third sentence."]
+    assert [m["sentence_index"] for _, m in chunks_s] == [0, 1]
+
+    # Chinese text
+    calls.clear()
+    text_zh = "今天天气真好，阳光明媚。"
+    chunks_zh = list(backend.synthesize_stream(text_zh, language="zh", clause_split=True))
+    assert calls == ["今天天气真好，", "阳光明媚。"]
+    assert [m["sentence_index"] for _, m in chunks_zh] == [0, 1]
+
+    # Environment variable defaults
+    calls.clear()
+    monkeypatch.setenv("KOKORO_STREAM_CLAUSE_SPLIT", "0")
+    list(backend.synthesize_stream(text_en, language="en"))
+    assert calls == ["First clause, second clause. ", "Third sentence."]
+
+    calls.clear()
+    monkeypatch.setenv("KOKORO_STREAM_CLAUSE_SPLIT", "1")
+    list(backend.synthesize_stream(text_en, language="en"))
+    assert calls == ["First clause, ", "second clause. ", "Third sentence."]
+

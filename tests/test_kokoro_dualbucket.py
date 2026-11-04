@@ -16,6 +16,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import sys
 import threading
 from pathlib import Path
@@ -1730,6 +1731,132 @@ def test_target_tail_session_and_graph_optimizations(monkeypatch):
     monkeypatch.setenv("KOKORO_FRONTEND_INTRA_OP_THREADS", "8")
     opts_env = KokoroLong32Frontend._session_options_factory(None, None)
     assert opts_env.intra_op_num_threads == 8
+
+
+# =========================================================================
+# Clause-Level Streaming Split & Pipeline Tests
+# =========================================================================
+
+def test_clause_streaming_split_and_pipeline(tmp_path, monkeypatch):
+    """Verify clause-level splitting and async pipelining in KokoroDualBucketBackend."""
+    # 1. Pattern level verification
+    text_en = "First clause, second clause. Third sentence."
+    text_zh = "今天天气真好，阳光明媚。"
+    text_num = "Count is 1,000, and value is 3.14."
+
+    # Clause pattern splits clauses and sentences
+    raw_en_c = re.findall(DB.SPLIT_CLAUSE_PATTERN, text_en, flags=re.S)
+    assert raw_en_c == ["First clause, ", "second clause. ", "Third sentence."]
+    assert "".join(raw_en_c) == text_en
+
+    raw_zh_c = re.findall(DB.SPLIT_CLAUSE_PATTERN, text_zh, flags=re.S)
+    assert raw_zh_c == ["今天天气真好，", "阳光明媚。"]
+    assert "".join(raw_zh_c) == text_zh
+
+    # Sentence pattern only splits full sentences
+    raw_en_s = re.findall(DB.SPLIT_SENTENCE_PATTERN, text_en, flags=re.S)
+    assert raw_en_s == ["First clause, second clause. ", "Third sentence."]
+    assert "".join(raw_en_s) == text_en
+
+    raw_zh_s = re.findall(DB.SPLIT_SENTENCE_PATTERN, text_zh, flags=re.S)
+    assert raw_zh_s == ["今天天气真好，阳光明媚。"]
+    assert "".join(raw_zh_s) == text_zh
+
+    # Number / decimal handling: numbers must NOT be split inside 1,000 or 3.14
+    raw_num_c = re.findall(DB.SPLIT_CLAUSE_PATTERN, text_num, flags=re.S)
+    assert raw_num_c == ["Count is 1,000, ", "and value is 3.14."]
+    assert "".join(raw_num_c) == text_num
+
+    raw_num_s = re.findall(DB.SPLIT_SENTENCE_PATTERN, text_num, flags=re.S)
+    assert raw_num_s == ["Count is 1,000, and value is 3.14."]
+    assert "".join(raw_num_s) == text_num
+
+    # 2. Pipeline execution & metadata tracking with mock backend
+    monkeypatch.setattr(KokoroLong32Frontend, "preload_sessions", lambda self: {})
+    cfg = _create_mock_t50_bundle(tmp_path)
+    backend = DB.KokoroDualBucketBackend(cfg, runtime_cls=MockGeneratorSession)
+    backend.preload()
+
+    def fake_prepare(text, language="en-US", speed=1.0, cancel_check=None):
+        route = ROUTES.get(language, "a")
+        return SimpleNamespace(
+            route=route,
+            language=language,
+            text=text,
+            input_ids=np.zeros((1, 5), dtype=np.int64),
+            natural_durations=np.full(5, 4, dtype=np.int64),
+            natural_D=20,
+            style=np.zeros((1, 128), dtype=np.float32),
+            speed=np.array([1.0], dtype=np.float32),
+            stem_text=None,
+            stem_style=None,
+            timings={},
+        )
+
+    def fake_render(prepared, target_D, durations):
+        t = 2 * target_D
+        return {
+            "x": np.zeros((1, 512, t), dtype=np.float32),
+            "s": np.zeros((1, 128), dtype=np.float32),
+            "har": np.zeros((1, 22, 60 * t + 1), dtype=np.float32),
+            "T": t,
+            "F": 60 * t + 1,
+            "route": prepared.route,
+            "language": prepared.language,
+            "frontend_detail": {},
+        }
+
+    backend.frontend.prepare = fake_prepare
+    backend.frontend.render = fake_render
+
+    # Test synthesize_stream with clause_split=True
+    chunks_c = list(backend.synthesize_stream(text_en, language="en-US", voice="af_heart", clause_split=True))
+    assert len(chunks_c) > 0
+    indices_c = sorted(set(m["sentence_index"] for _, m in chunks_c))
+    assert indices_c == [0, 1, 2]
+    expected_texts_c = {0: "First clause, ", 1: "second clause. ", 2: "Third sentence."}
+    for _, meta in chunks_c:
+        assert meta["sentence_text"] == expected_texts_c[meta["sentence_index"]]
+        assert meta["streaming_mode"] == "sentence"
+        assert meta["supports_streaming"] is True
+
+    # Test synthesize_stream with clause_split=False
+    chunks_s = list(backend.synthesize_stream(text_en, language="en-US", voice="af_heart", clause_split=False))
+    assert len(chunks_s) > 0
+    indices_s = sorted(set(m["sentence_index"] for _, m in chunks_s))
+    assert indices_s == [0, 1]
+    expected_texts_s = {0: "First clause, second clause. ", 1: "Third sentence."}
+    for _, meta in chunks_s:
+        assert meta["sentence_text"] == expected_texts_s[meta["sentence_index"]]
+
+    # Test synthesize_stream with Chinese text and clause_split=True
+    chunks_zh = list(backend.synthesize_stream(text_zh, language="zh", voice="zf_xiaobei", clause_split=True))
+    assert len(chunks_zh) > 0
+    indices_zh = sorted(set(m["sentence_index"] for _, m in chunks_zh))
+    assert indices_zh == [0, 1]
+    expected_texts_zh = {0: "今天天气真好，", 1: "阳光明媚。"}
+    for _, meta in chunks_zh:
+        assert meta["sentence_text"] == expected_texts_zh[meta["sentence_index"]]
+
+    # Test KOKORO_STREAM_CLAUSE_SPLIT environment variable defaults
+    monkeypatch.setenv("KOKORO_STREAM_CLAUSE_SPLIT", "0")
+    chunks_env0 = list(backend.synthesize_stream(text_en, language="en-US", voice="af_heart"))
+    assert sorted(set(m["sentence_index"] for _, m in chunks_env0)) == [0, 1]
+
+    monkeypatch.setenv("KOKORO_STREAM_CLAUSE_SPLIT", "1")
+    chunks_env1 = list(backend.synthesize_stream(text_en, language="en-US", voice="af_heart"))
+    assert sorted(set(m["sentence_index"] for _, m in chunks_env1)) == [0, 1, 2]
+
+    # Test _iter_audio with clause_split=True vs False
+    req = backend._request(text_en, 0, None, None, {"language": "en-US", "voice": "af_heart"})
+    iter_c_metas = [m for _, m in backend._iter_audio(text_en, req, sentence_mode=True, clause_split=True)]
+    assert sorted(set(m["sentence_index"] for m in iter_c_metas)) == [0, 1, 2]
+
+    iter_s_metas = [m for _, m in backend._iter_audio(text_en, req, sentence_mode=True, clause_split=False)]
+    assert sorted(set(m["sentence_index"] for m in iter_s_metas)) == [0, 1]
+
+    backend.close()
+
 
 
 

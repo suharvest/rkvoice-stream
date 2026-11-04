@@ -37,6 +37,9 @@ SAMPLE_RATE = 24000
 MAX_INPUT_CHARS = 10000
 MAX_SEGMENTS = 256
 
+SPLIT_SENTENCE_PATTERN = r".+?(?:[。！？；;]+\s*|[.!?]+(?:\s+|$)|$)"
+SPLIT_CLAUSE_PATTERN = r".+?(?:[。！？；;，、：—]+\s*|\.{2,}|[.!?]+(?:\s+|$)|[,:;]+(?:\s+|$)|$)"
+
 
 def _digest(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
@@ -553,9 +556,15 @@ class KokoroConvOnlyBackend(TTSBackend):
                 "full_rtf": total_ms / 1000 / audio_s, "tail_rtf": tail_ms / 1000 / audio_s}
             return wav_bytes, metadata
 
-    def _iter_audio(self, text, request, *, sentence_mode):
+    def _iter_audio(self, text, request, *, sentence_mode, clause_split=None):
         language, route, voice, speed, cancel = request
-        sentences = re.findall(r".+?(?:[。！？；;]+\s*|[.!?]+(?:\s+|$)|$)", text, flags=re.S) if sentence_mode else [text]
+        if sentence_mode:
+            if clause_split is None:
+                clause_split = os.environ.get("KOKORO_STREAM_CLAUSE_SPLIT", "1").lower() in ("1", "true", "yes")
+            split_pattern = SPLIT_CLAUSE_PATTERN if clause_split else SPLIT_SENTENCE_PATTERN
+            sentences = re.findall(split_pattern, text, flags=re.S)
+        else:
+            sentences = [text]
         if "".join(sentences) != text:
             raise RuntimeError("source sentence coverage invariant failed")
         source_base = count = 0
@@ -628,7 +637,7 @@ class KokoroConvOnlyBackend(TTSBackend):
             metadata["tail_rtf"] = metadata["tail_ms"] / 1000 / metadata["audio_s"]
             return result, metadata
 
-    def synthesize_stream(self, text, speaker_id=0, speed=None, pitch_shift=None, **kwargs):
+    def synthesize_stream(self, text, speaker_id=0, speed=None, pitch_shift=None, clause_split=None, **kwargs):
         """Synthesize complete sentences and yield 40 ms float32 chunks.
 
         The backend lock is held only by each synchronous ``synthesize`` call;
@@ -636,7 +645,7 @@ class KokoroConvOnlyBackend(TTSBackend):
         sentence streaming, not incremental model output.
         """
         request = self._request(text, speaker_id, speed, pitch_shift, kwargs)
-        for wav_bytes, meta in self._iter_audio(text, request, sentence_mode=True):
+        for wav_bytes, meta in self._iter_audio(text, request, sentence_mode=True, clause_split=clause_split):
             yield from self._stream_wav(wav_bytes, meta, meta["sentence_text"], meta["sentence_index"], request[-1])
 
     def _stream_wav(self, wav_bytes, meta, sentence, sentence_index, cancel):
