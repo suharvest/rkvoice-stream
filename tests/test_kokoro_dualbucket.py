@@ -1401,3 +1401,335 @@ def test_t50_depop_spectral_continuity():
     assert max_err < 1e-4
 
 
+# =========================================================================
+# 10. Streaming & Latency Optimizations (Windowed Streaming, Pipelining, Affinity)
+# =========================================================================
+
+@pytest.mark.parametrize("T_len", [20, 50, 70, 150, 240, 480])
+@pytest.mark.parametrize("trunc_mode", ["none", "exact", "partial"])
+def test_windowed_stream_numerical_equivalence_to_run_windowed(tmp_path, T_len, trunc_mode):
+    """Verify run_windowed_stream output concatenated is bit-exact identical to run_windowed."""
+    models = {"T50": tmp_path / "generator_T50.rknn"}
+    models_info = {
+        "T50": {
+            "path": "generator_T50.rknn",
+            "T": 50,
+            "inputs": [[1, 512, 50], [1, 128], [1, 22, 3001]],
+            "outputs": [[1, 22, 3001]],
+        }
+    }
+    models["T50"].write_bytes(b"dummy")
+
+    class UniqueWaveSession:
+        def __init__(self, path):
+            self.count = 0
+
+        def run(self, x, s, har):
+            self.count += 1
+            out = np.zeros((1, 22, 3001), dtype=np.float32)
+            out[:, 0, :] = 0.05 * self.count
+            out[:, 1, :] = 0.02 * np.sin(np.linspace(0, np.pi, 3001))
+            return out
+
+    runner = DB.DualBucketGeneratorRunner(
+        models=models,
+        models_info=models_info,
+        platform="rk3588",
+        runtime_cls=UniqueWaveSession,
+    )
+
+    x = np.zeros((1, 512, T_len), dtype=np.float32)
+    s = np.zeros((1, 128), dtype=np.float32)
+    har = np.zeros((1, 22, 60 * T_len + 1), dtype=np.float32)
+
+    ref_wav, _, _ = runner.run_windowed(x, s, har)
+
+    if trunc_mode == "none":
+        vs = None
+        expected = ref_wav
+    elif trunc_mode == "exact":
+        vs = 600 * (T_len // 2)
+        expected = ref_wav[:vs]
+    else:
+        vs = min(ref_wav.size, 14200)
+        expected = ref_wav[:vs]
+
+    runner_stream = DB.DualBucketGeneratorRunner(
+        models=models,
+        models_info=models_info,
+        platform="rk3588",
+        runtime_cls=UniqueWaveSession,
+    )
+    chunks = list(runner_stream.run_windowed_stream(x, s, har, valid_samples=vs))
+    streamed_wav = np.concatenate(chunks) if chunks else np.empty((0,), dtype=np.float32)
+
+    assert streamed_wav.shape == expected.shape
+    assert np.array_equal(streamed_wav, expected)
+    assert streamed_wav.dtype == np.float32
+
+
+def test_synthesize_stream_window_level_chunks_and_metadata(tmp_path, monkeypatch):
+    """Verify synthesize_stream yields 40ms PCM chunks with full stream metadata as each window finishes."""
+    monkeypatch.setattr(KokoroLong32Frontend, "preload_sessions", lambda self: {})
+    cfg = _create_mock_t50_bundle(tmp_path)
+    backend = DB.KokoroConvOnlyBackend(cfg, runtime_cls=MockGeneratorSession)
+    backend.preload()
+
+    test_d = 30
+    def fake_prepare(text, language="en-US", speed=1.0, cancel_check=None):
+        return SimpleNamespace(
+            route="a",
+            language="en-US",
+            text=text,
+            input_ids=np.zeros((1, 5), dtype=np.int64),
+            natural_durations=np.full(5, test_d // 5, dtype=np.int64),
+            natural_D=test_d,
+            style=np.zeros((1, 128), dtype=np.float32),
+            speed=np.array([1.0], dtype=np.float32),
+            stem_text=None,
+            stem_style=None,
+            timings={},
+        )
+
+    def fake_render(prepared, target_D, durations):
+        t = 2 * target_D
+        return {
+            "x": np.zeros((1, 512, t), dtype=np.float32),
+            "s": np.zeros((1, 128), dtype=np.float32),
+            "har": np.zeros((1, 22, 60 * t + 1), dtype=np.float32),
+            "T": t,
+            "F": 60 * t + 1,
+            "route": "a",
+            "language": "en-US",
+            "frontend_detail": {},
+        }
+
+    backend.frontend.prepare = fake_prepare
+    backend.frontend.render = fake_render
+
+    chunks = list(backend.synthesize_stream("This is a streaming test sentence.", language="en-US", voice="af_heart"))
+    assert len(chunks) > 0
+
+    total_samples = 0
+    expected_total_samples = 600 * test_d
+    chunk_size_40ms = int(24000 * 0.04)
+
+    for i, (pcm, meta) in enumerate(chunks):
+        assert isinstance(pcm, np.ndarray)
+        assert pcm.dtype == np.float32
+        total_samples += pcm.size
+
+        assert meta["chunk_index"] == i
+        assert meta["streaming_mode"] == "sentence"
+        assert meta["supports_streaming"] is True
+        assert meta["sample_rate"] == 24000
+        assert meta["selected_bucket"] == "T50"
+        assert meta["sentence_text"] == "This is a streaming test sentence."
+        assert meta["sentence_index"] == 0
+        assert "audio_s" in meta
+        assert "peak" in meta
+        assert meta["finite"] is True
+
+        if i < len(chunks) - 1:
+            assert meta["segment_complete"] is False
+            assert pcm.size == chunk_size_40ms
+        else:
+            assert meta["segment_complete"] is True
+
+    assert total_samples == expected_total_samples
+    backend.close()
+
+
+def test_pipelined_multisentence_streaming(tmp_path, monkeypatch):
+    """Verify multi-sentence asynchronous pipelining renders sentence i+1 while sentence i streams."""
+    monkeypatch.setattr(KokoroLong32Frontend, "preload_sessions", lambda self: {})
+    cfg = _create_mock_t50_bundle(tmp_path)
+    backend = DB.KokoroConvOnlyBackend(cfg, runtime_cls=MockGeneratorSession)
+    backend.preload()
+
+    render_calls = []
+
+    def fake_prepare(text, language="en-US", speed=1.0, cancel_check=None):
+        return SimpleNamespace(
+            route="a",
+            language="en-US",
+            text=text,
+            input_ids=np.zeros((1, 5), dtype=np.int64),
+            natural_durations=np.full(5, 4, dtype=np.int64),
+            natural_D=20,
+            style=np.zeros((1, 128), dtype=np.float32),
+            speed=np.array([1.0], dtype=np.float32),
+            stem_text=None,
+            stem_style=None,
+            timings={},
+        )
+
+    def fake_render(prepared, target_D, durations):
+        render_calls.append(prepared.text)
+        t = 2 * target_D
+        return {
+            "x": np.zeros((1, 512, t), dtype=np.float32),
+            "s": np.zeros((1, 128), dtype=np.float32),
+            "har": np.zeros((1, 22, 60 * t + 1), dtype=np.float32),
+            "T": t,
+            "F": 60 * t + 1,
+            "route": "a",
+            "language": "en-US",
+            "frontend_detail": {},
+        }
+
+    backend.frontend.prepare = fake_prepare
+    backend.frontend.render = fake_render
+
+    text = "First sentence. Second sentence! Third sentence."
+    stream = backend.synthesize_stream(text, language="en-US", voice="af_heart")
+
+    first_chunk = next(stream)
+    assert first_chunk[1]["sentence_index"] == 0
+    assert first_chunk[1]["sentence_text"] == "First sentence. "
+
+    all_chunks = [first_chunk, *list(stream)]
+    assert len(all_chunks) > 0
+
+    sentences_seen = sorted(set(meta["sentence_index"] for _, meta in all_chunks))
+    assert sentences_seen == [0, 1, 2]
+
+    for pcm, meta in all_chunks:
+        if meta["sentence_index"] == 0:
+            assert meta["sentence_text"] == "First sentence. "
+        elif meta["sentence_index"] == 1:
+            assert meta["sentence_text"] == "Second sentence! "
+        elif meta["sentence_index"] == 2:
+            assert meta["sentence_text"] == "Third sentence."
+
+    backend.close()
+
+
+def test_pipelined_streaming_cancellation_and_empty_sentences(tmp_path, monkeypatch):
+    """Verify cancellation aborts background pipeline and empty sentences are cleanly skipped."""
+    monkeypatch.setattr(KokoroLong32Frontend, "preload_sessions", lambda self: {})
+    cfg = _create_mock_t50_bundle(tmp_path)
+    backend = DB.KokoroConvOnlyBackend(cfg, runtime_cls=MockGeneratorSession)
+    backend.preload()
+
+    def fake_prepare(text, language="en-US", speed=1.0, cancel_check=None):
+        return SimpleNamespace(
+            route="a",
+            language="en-US",
+            text=text,
+            input_ids=np.zeros((1, 5), dtype=np.int64),
+            natural_durations=np.full(5, 4, dtype=np.int64),
+            natural_D=20,
+            style=np.zeros((1, 128), dtype=np.float32),
+            speed=np.array([1.0], dtype=np.float32),
+            stem_text=None,
+            stem_style=None,
+            timings={},
+        )
+
+    def fake_render(prepared, target_D, durations):
+        t = 2 * target_D
+        return {
+            "x": np.zeros((1, 512, t), dtype=np.float32),
+            "s": np.zeros((1, 128), dtype=np.float32),
+            "har": np.zeros((1, 22, 60 * t + 1), dtype=np.float32),
+            "T": t,
+            "F": 60 * t + 1,
+            "route": "a",
+            "language": "en-US",
+            "frontend_detail": {},
+        }
+
+    backend.frontend.prepare = fake_prepare
+    backend.frontend.render = fake_render
+
+    # 1. Empty sentence interspersed
+    text_with_empty = "First sentence. ... ??? Second sentence!"
+    chunks = list(backend.synthesize_stream(text_with_empty, language="en-US", voice="af_heart"))
+    assert len(chunks) > 0
+    sentences = set(meta["sentence_text"].strip() for _, meta in chunks)
+    assert "First sentence." in sentences
+    assert "Second sentence!" in sentences
+    assert "..." not in sentences
+    assert "???" not in sentences
+
+    # 2. Cancellation during streaming
+    cancel_evt = threading.Event()
+    stream = backend.synthesize_stream("Sentence one. Sentence two. Sentence three.", language="en-US", voice="af_heart", cancel_event=cancel_evt)
+    _ = next(stream)
+    cancel_evt.set()
+
+    with pytest.raises(ConvOnlyCancelled):
+        list(stream)
+
+    backend.close()
+
+
+def test_set_big_core_affinity_helper(monkeypatch):
+    """Verify set_big_core_affinity handles Linux affinity checks and falls back gracefully."""
+    recorded_affinity = []
+
+    # Case 1: 8+ cores available including {4, 5, 6, 7}
+    def mock_getaffinity(pid):
+        return {0, 1, 2, 3, 4, 5, 6, 7}
+
+    def mock_setaffinity(pid, mask):
+        recorded_affinity.append(set(mask))
+
+    monkeypatch.setattr(os, "sched_getaffinity", mock_getaffinity, raising=False)
+    monkeypatch.setattr(os, "sched_setaffinity", mock_setaffinity, raising=False)
+
+    res = DB.set_big_core_affinity()
+    assert res is True
+    assert recorded_affinity == [{4, 5, 6, 7}]
+
+    # Case 2: Fewer than 8 cores / cores 4-7 not in set
+    recorded_affinity.clear()
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: {0, 1, 2, 3}, raising=False)
+    res = DB.set_big_core_affinity()
+    assert res is False
+    assert len(recorded_affinity) == 0
+
+    # Case 3: OSError / permission error in container
+    def mock_failing_set(pid, mask):
+        raise OSError("Permission denied")
+
+    monkeypatch.setattr(os, "sched_getaffinity", mock_getaffinity, raising=False)
+    monkeypatch.setattr(os, "sched_setaffinity", mock_failing_set, raising=False)
+    res = DB.set_big_core_affinity()
+    assert res is False
+
+    # Case 4: Non-Linux / sched_getaffinity missing
+    monkeypatch.delattr(os, "sched_getaffinity", raising=False)
+    res = DB.set_big_core_affinity()
+    assert res is False
+
+
+def test_target_tail_session_and_graph_optimizations(monkeypatch):
+    """Verify _session_options_factory enables ORT_ENABLE_ALL, ORT_SEQUENTIAL and 4 big cores default."""
+    import onnxruntime as ort
+
+    # Case 1: Default intra when not set in env -> 4
+    monkeypatch.delenv("KOKORO_FRONTEND_INTRA_OP_THREADS", raising=False)
+    monkeypatch.delenv("KOKORO_FRONTEND_INTER_OP_THREADS", raising=False)
+
+    opts = KokoroLong32Frontend._session_options_factory(None, None)
+    assert opts is not None
+    assert opts.intra_op_num_threads == 4
+    assert opts.graph_optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    assert opts.execution_mode == ort.ExecutionMode.ORT_SEQUENTIAL
+
+    # Case 2: Explicit intra
+    opts_custom = KokoroLong32Frontend._session_options_factory(6, 2)
+    assert opts_custom.intra_op_num_threads == 6
+    assert opts_custom.inter_op_num_threads == 2
+    assert opts_custom.graph_optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    assert opts_custom.execution_mode == ort.ExecutionMode.ORT_SEQUENTIAL
+
+    # Case 3: Env var override
+    monkeypatch.setenv("KOKORO_FRONTEND_INTRA_OP_THREADS", "8")
+    opts_env = KokoroLong32Frontend._session_options_factory(None, None)
+    assert opts_env.intra_op_num_threads == 8
+
+
+

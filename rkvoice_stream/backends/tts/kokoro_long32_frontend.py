@@ -10,6 +10,7 @@ import importlib
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -188,12 +189,17 @@ class KokoroLong32Frontend:
     @classmethod
     def _session_options_factory(cls, intra: int | None, inter: int | None):
         intra = cls._thread_count(intra, "KOKORO_FRONTEND_INTRA_OP_THREADS")
+        if intra is None:
+            intra = 4
         inter = cls._thread_count(inter, "KOKORO_FRONTEND_INTER_OP_THREADS")
-        if intra is None and inter is None: return None
         import onnxruntime as ort
         options = ort.SessionOptions()
-        if intra is not None: options.intra_op_num_threads = intra
-        if inter is not None: options.inter_op_num_threads = inter
+        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        if intra is not None:
+            options.intra_op_num_threads = intra
+        if inter is not None:
+            options.inter_op_num_threads = inter
         return options
 
     @staticmethod
@@ -311,6 +317,17 @@ class KokoroLong32Frontend:
         except Exception as exc:
             raise RuntimeError(f"G2P unavailable for route {route}: {exc}") from exc
         def call(text: str) -> str:
+            if route == "z" and re.search(r"[A-Za-z]", text):
+                segments = []
+                for en_seg, zh_seg in re.findall(r"([A-Za-z]+)|([^A-Za-z]+)", text):
+                    if en_seg:
+                        en_ph = enobj(en_seg)[0]
+                        segments.append(en_ph)
+                    elif zh_seg:
+                        zh_ph = obj(zh_seg)
+                        zh_ph = zh_ph[0] if isinstance(zh_ph, tuple) else zh_ph
+                        segments.append(zh_ph)
+                return " ".join(s for s in segments if s)
             out = obj(text); out = out[0] if isinstance(out, tuple) else out
             if not isinstance(out, str): raise TypeError("G2P did not return phoneme string")
             return out

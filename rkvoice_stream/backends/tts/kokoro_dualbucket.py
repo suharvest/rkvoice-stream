@@ -5,9 +5,11 @@ conforming to Spec V13.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import io
 import json
+import logging
 import math
 import os
 import re
@@ -146,6 +148,31 @@ def depop_append(accumulated: np.ndarray, chunk: np.ndarray, crossfade_samples: 
     fade_out = 1.0 - fade_in
     blended = accumulated[-overlap:] * fade_out + chunk[:overlap] * fade_in
     return np.concatenate([accumulated[:-overlap], blended, chunk[overlap:]]).astype(np.float32)
+
+
+def set_big_core_affinity() -> bool:
+    """Bind calling thread/process to big CPU cores (cores 4-7 on RK3588/RK3576).
+
+    Checks os.sched_getaffinity(0) if available on Linux.
+    If system has >= 8 CPUs (specifically cores 4, 5, 6, 7 are in affinity set),
+    bind current thread/process to {4, 5, 6, 7}.
+    Gracefully catches and ignores OSError/AttributeError when running in containers
+    or non-Linux hosts.
+
+    Returns:
+        True if affinity was set, False otherwise.
+    """
+    try:
+        if not hasattr(os, "sched_getaffinity") or not hasattr(os, "sched_setaffinity"):
+            return False
+        current_affinity = os.sched_getaffinity(0)
+        target_cores = {4, 5, 6, 7}
+        if target_cores.issubset(current_affinity):
+            os.sched_setaffinity(0, target_cores)
+            return True
+    except (OSError, AttributeError, TypeError, ValueError):
+        pass
+    return False
 
 
 def apply_silence_padding(natural_durations: np.ndarray | Sequence[int], target_D: int) -> np.ndarray:
@@ -500,6 +527,10 @@ class DualBucketGeneratorRunner:
                     else:
                         try:
                             from rknnlite.api import RKNNLite
+                            # Restore standard logging level names clobbered by RKNNLite
+                            _STD_LEVELS = {"CRITICAL": 50, "FATAL": 50, "ERROR": 40, "WARN": 30, "WARNING": 30, "INFO": 20, "DEBUG": 10, "NOTSET": 0}
+                            for _name, _lvl in _STD_LEVELS.items():
+                                logging.addLevelName(_lvl, _name)
                         except ImportError as err:
                             raise RuntimeError("RKNN runtime not available (rknnlite missing or load failed)") from err
                         else:
@@ -635,8 +666,131 @@ class DualBucketGeneratorRunner:
 
         return accumulated, generator_ms, istft_ms
 
+    def run_windowed_stream(
+        self,
+        x: np.ndarray,
+        s: np.ndarray,
+        har: np.ndarray,
+        cancel_check: Any = None,
+        valid_samples: int | None = None,
+    ) -> Iterator[np.ndarray]:
+        """Execute generator using fixed T50 sliding windows and yield audio chunks as each window finishes.
+
+        Args:
+            x: Acoustic frame tensor (1, 512, T).
+            s: Style embedding tensor (1, 128).
+            har: Harmonic context tensor (1, 22, F).
+            cancel_check: Optional cancellation check callable.
+            valid_samples: Optional maximum number of valid samples to emit (e.g. 600 * d_out_valid).
+
+        Yields:
+            1D float32 waveform chunks.
+        """
+        x_arr = np.asarray(x, dtype=np.float32)
+        s_arr = np.asarray(s, dtype=np.float32)
+        har_arr = np.asarray(har, dtype=np.float32)
+
+        if x_arr.ndim != 3 or x_arr.shape[0] != 1 or x_arr.shape[1] != 512:
+            raise ValueError(f"x shape mismatch: expected (1, 512, T), got {x_arr.shape}")
+        if s_arr.shape != (1, 128):
+            raise ValueError(f"s shape mismatch: expected (1, 128), got {s_arr.shape}")
+        if har_arr.ndim != 3 or har_arr.shape[0] != 1 or har_arr.shape[1] != 22:
+            raise ValueError(f"har shape mismatch: expected (1, 22, F), got {har_arr.shape}")
+
+        T_total = x_arr.shape[2]
+        if T_total < 1:
+            raise ValueError("x must have at least 1 frame")
+        F_total = har_arr.shape[2]
+        if F_total < 60 * T_total + 1:
+            raise ValueError(f"har length {F_total} insufficient for T={T_total} (requires {60 * T_total + 1})")
+
+        num_windows = 1 if T_total <= T_FIX else int(math.ceil((T_total - T_FIX) / STEP)) + 1
+        target_limit = None if valid_samples is None else max(0, int(valid_samples))
+        emitted_samples = 0
+        accumulated = np.empty((0,), dtype=np.float32)
+        cursor = 0
+
+        def emit(arr: np.ndarray) -> Iterator[np.ndarray]:
+            nonlocal emitted_samples
+            if arr.size == 0:
+                return
+            if target_limit is not None:
+                remaining = target_limit - emitted_samples
+                if remaining <= 0:
+                    return
+                if arr.size > remaining:
+                    arr = arr[:remaining]
+            if arr.size > 0:
+                emitted_samples += arr.size
+                yield arr
+
+        for k in range(num_windows):
+            if target_limit is not None and emitted_samples >= target_limit:
+                break
+
+            if cancel_check is not None and callable(cancel_check):
+                cancel_check()
+
+            t_start = k * STEP
+            t_end = t_start + T_FIX
+
+            if t_end <= T_total:
+                x_slice = x_arr[:, :, t_start:t_end]
+            else:
+                avail = max(0, T_total - t_start)
+                x_part = x_arr[:, :, t_start:T_total] if avail > 0 else np.zeros((1, 512, 0), dtype=np.float32)
+                n_pad = T_FIX - avail
+                x_slice = np.pad(x_part, ((0, 0), (0, 0), (0, n_pad)), mode="constant")
+
+            p_start = t_start * 60
+            p_end = p_start + (60 * T_FIX + 1)
+            if p_end <= F_total:
+                har_slice = har_arr[:, :, p_start:p_end]
+            else:
+                avail_p = max(0, F_total - p_start)
+                har_part = har_arr[:, :, p_start:F_total] if avail_p > 0 else np.zeros((1, 22, 0), dtype=np.float32)
+                n_pad_p = (60 * T_FIX + 1) - avail_p
+                har_slice = np.pad(har_part, ((0, 0), (0, 0), (0, n_pad_p)), mode="constant")
+
+            conv_post_slice = self.run_slice("T50", x_slice, s_arr, har_slice)
+
+            if cancel_check is not None and callable(cancel_check):
+                cancel_check()
+
+            w_slice = conv_post_to_waveform(conv_post_slice)[0]
+
+            if num_windows == 1:
+                yield from emit(w_slice)
+            else:
+                # Mirror run_windowed Overlap-Add accumulation exactly:
+                if k == 0:
+                    chunk = w_slice[:14640]
+                    accumulated = chunk
+                elif k < num_windows - 1:
+                    chunk = w_slice[360:14640]
+                    accumulated = depop_append(accumulated, chunk, CROSSFADE_SAMPLES)
+                else:
+                    chunk = w_slice[360:]
+                    accumulated = depop_append(accumulated, chunk, CROSSFADE_SAMPLES)
+
+                # Incremental streaming emit:
+                # For intermediate windows (k < num_windows - 1), reserve the final CROSSFADE_SAMPLES
+                # because they will be blended with the next window in depop_append().
+                # All samples prior to (accumulated.size - CROSSFADE_SAMPLES) are fully mature and immutable.
+                if k < num_windows - 1:
+                    safe_len = max(0, accumulated.size - CROSSFADE_SAMPLES)
+                    if safe_len > cursor:
+                        yield from emit(accumulated[cursor:safe_len])
+                        cursor = safe_len
+                else:
+                    # Final window: emit all remaining samples up to the end.
+                    if accumulated.size > cursor:
+                        yield from emit(accumulated[cursor:])
+                        cursor = accumulated.size
+
     def preload(self):
         """Warm up and eagerly initialize sessions."""
+        set_big_core_affinity()
         with self._lock:
             if "T50" in self.models:
                 self._get_session("T50")
@@ -688,6 +842,7 @@ class KokoroConvOnlyBackend(TTSBackend):
         return self._ready and not self._closed
 
     def preload(self) -> None:
+        set_big_core_affinity()
         with self._lock:
             if self._closed:
                 raise RuntimeError("backend is closed")
@@ -1018,12 +1173,244 @@ class KokoroConvOnlyBackend(TTSBackend):
 
     def synthesize_stream(self, text: str, speaker_id: int = 0, speed: float | None = None,
                           pitch_shift: float | None = None, **kwargs) -> Iterator[tuple[np.ndarray, dict]]:
+        set_big_core_affinity()
         request = self._request(text, speaker_id, speed, pitch_shift, kwargs)
+        language, route, voice, speed, cancel = request
+
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("backend is closed")
+            self._cancel(cancel, "request")
+            self.preload()
+            self._cancel(cancel, "preload")
+
+        raw_sentences = re.findall(r".+?(?:[。！？；;]+\s*|[.!?]+(?:\s+|$)|$)", text, flags=re.S)
+        if "".join(raw_sentences) != text:
+            raise RuntimeError("source sentence coverage invariant failed")
+
+        sentence_plan = []
+        offset = 0
+        for s_idx, s_raw in enumerate(raw_sentences):
+            if _has_pronouncing_tokens(s_raw):
+                sentence_plan.append((s_idx, s_raw, offset))
+            offset += len(s_raw)
+
+        if not sentence_plan:
+            raise NoPhoneticTokensError("text must contain valid phonetic tokens")
+
+        stream_cancel_event = threading.Event()
+        effective_cancel = cancel + (stream_cancel_event,)
+
+        def _prepare_and_render_sentence(s_raw: str, s_offset: int, s_idx: int) -> list[dict]:
+            set_big_core_affinity()
+            self._cancel(effective_cancel, "prepare")
+            with self._lock:
+                if self._closed:
+                    raise RuntimeError("backend is closed")
+            segments = []
+            for start, end, prepared, decision in self._iter_planned_segments(s_raw, language, speed, effective_cancel):
+                self._cancel(effective_cancel, "render")
+                target_D = decision["target_D"]
+                branch = decision["branch"]
+                if branch == "padding":
+                    durations = apply_silence_padding(prepared.natural_durations, target_D)
+                elif branch == "snap":
+                    durations = snap_durations(prepared.natural_durations, target_D)
+                else:
+                    durations = prepared.natural_durations if target_D == prepared.natural_D else snap_durations(prepared.natural_durations, target_D)
+
+                t0 = time.perf_counter()
+                rendered = self.frontend.render(prepared, target_D=target_D, durations=durations)
+                frontend_ms = (time.perf_counter() - t0) * 1000
+
+                segments.append({
+                    "prepared": prepared,
+                    "decision": decision,
+                    "rendered": rendered,
+                    "frontend_ms": frontend_ms,
+                    "source_start": s_offset + start,
+                    "source_end": s_offset + end,
+                    "sentence_text": s_raw[start:end],
+                    "sentence_index": s_idx,
+                })
+            return segments
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        curr_future: concurrent.futures.Future | None = None
         yielded = False
-        for wav_bytes, meta in self._iter_audio(text, request, sentence_mode=True):
-            for chunk in self._stream_wav(wav_bytes, meta, meta["sentence_text"], meta["sentence_index"], request[-1]):
-                yielded = True
-                yield chunk
+        segment_counter = 0
+
+        try:
+            for i in range(len(sentence_plan)):
+                with self._lock:
+                    if self._closed:
+                        raise RuntimeError("backend is closed")
+
+                # If first sentence, evaluate immediately; otherwise wait for pipelined future
+                if curr_future is None:
+                    self._cancel(effective_cancel, "prepare")
+                    s_cur_idx, s_cur_raw, s_cur_offset = sentence_plan[i]
+                    segments = _prepare_and_render_sentence(s_cur_raw, s_cur_offset, s_cur_idx)
+                else:
+                    try:
+                        segments = curr_future.result()
+                    finally:
+                        curr_future = None
+
+                next_submitted = False
+                def _trigger_next_pipeline():
+                    nonlocal curr_future, next_submitted
+                    if not next_submitted and i + 1 < len(sentence_plan):
+                        self._cancel(effective_cancel, "pipeline")
+                        s_next_idx, s_next_raw, s_next_offset = sentence_plan[i + 1]
+                        curr_future = executor.submit(_prepare_and_render_sentence, s_next_raw, s_next_offset, s_next_idx)
+                        next_submitted = True
+
+                for seg in segments:
+                    with self._lock:
+                        if self._closed:
+                            raise RuntimeError("backend is closed")
+
+                    if segment_counter >= MAX_SEGMENTS:
+                        raise ValueError(f"input exceeds maximum of {MAX_SEGMENTS} segments")
+
+                    prepared = seg["prepared"]
+                    decision = seg["decision"]
+                    rendered = seg["rendered"]
+                    target_D = decision["target_D"]
+                    branch = decision["branch"]
+                    d_out_valid = decision["D_out_valid"]
+                    bucket = decision["bucket"]
+                    valid_samples = 600 * d_out_valid
+                    use_t50 = (self.generator is not None and self.generator.has_t50) or bucket == "T50"
+
+                    base_meta = {
+                        "backend": self.name,
+                        "platform": self.config.platform,
+                        "manifest_sha256": self.config.manifest_sha256,
+                        "full_source_sha256": FULL_MODEL_SHA256,
+                        "generator_source_sha256": GENERATOR_SOURCE_SHA256,
+                        "route": route,
+                        "language": ROUTES[route],
+                        "voice": voice,
+                        "speed": speed,
+                        "selected_bucket": "T50" if use_t50 else bucket,
+                        "branch": branch,
+                        "T": decision["T"],
+                        "target_D": target_D,
+                        "D_out_valid": d_out_valid,
+                        "natural_D": prepared.natural_D,
+                        "source_start": seg["source_start"],
+                        "source_end": seg["source_end"],
+                        "audio_s": valid_samples / SAMPLE_RATE,
+                        "sample_rate": SAMPLE_RATE,
+                        "frontend_ms": seg["frontend_ms"],
+                        "streaming_mode": "sentence",
+                        "model_incremental": False,
+                        "supports_streaming": True,
+                        "sentence_text": seg["sentence_text"],
+                        "sentence_index": seg["sentence_index"],
+                        "segment_index": segment_counter,
+                        "cancelled": False,
+                        "finite": True,
+                    }
+
+                    chunk_size = int(SAMPLE_RATE * 0.04)  # 960 samples = 40ms
+                    chunk_idx = 0
+                    pending_chunk: np.ndarray | None = None
+
+                    def _yield_pending(data: np.ndarray, complete: bool) -> tuple[np.ndarray, dict]:
+                        _trigger_next_pipeline()
+                        m = dict(base_meta)
+                        m.update({
+                            "chunk_index": chunk_idx,
+                            "segment_complete": complete,
+                            "peak": float(np.max(np.abs(data))) if data.size > 0 else 0.0,
+                        })
+                        return data, m
+
+                    if use_t50:
+                        leftover = np.empty((0,), dtype=np.float32)
+                        for w_chunk in self.generator.run_windowed_stream(
+                            rendered["x"],
+                            rendered["s"],
+                            rendered["har"],
+                            cancel_check=lambda: self._cancel(cancel, "generator"),
+                            valid_samples=valid_samples,
+                        ):
+                            self._cancel(cancel, "stream")
+                            with self._lock:
+                                if self._closed:
+                                    raise RuntimeError("backend is closed")
+                            if w_chunk.size == 0:
+                                continue
+                            leftover = np.concatenate([leftover, w_chunk])
+                            while leftover.size >= chunk_size:
+                                self._cancel(cancel, "chunk")
+                                pcm_slice = leftover[:chunk_size]
+                                leftover = leftover[chunk_size:]
+                                if pending_chunk is not None:
+                                    out_chunk, out_meta = _yield_pending(pending_chunk, False)
+                                    chunk_idx += 1
+                                    yielded = True
+                                    yield out_chunk, out_meta
+                                pending_chunk = pcm_slice
+
+                        if leftover.size > 0:
+                            self._cancel(cancel, "chunk")
+                            if pending_chunk is not None:
+                                out_chunk, out_meta = _yield_pending(pending_chunk, False)
+                                chunk_idx += 1
+                                yielded = True
+                                yield out_chunk, out_meta
+                            pending_chunk = leftover
+
+                        if pending_chunk is not None:
+                            self._cancel(cancel, "chunk")
+                            out_chunk, out_meta = _yield_pending(pending_chunk, True)
+                            chunk_idx += 1
+                            yielded = True
+                            yield out_chunk, out_meta
+                            pending_chunk = None
+
+                    else:
+                        conv_post = self.generator.run(bucket, rendered["x"], rendered["s"], rendered["har"])
+                        self._cancel(cancel, "generator")
+                        waveform = conv_post_to_waveform(conv_post)[0][:valid_samples]
+                        self._cancel(cancel, "istft")
+
+                        for c_start in range(0, waveform.size, chunk_size):
+                            self._cancel(cancel, "chunk")
+                            with self._lock:
+                                if self._closed:
+                                    raise RuntimeError("backend is closed")
+                            pcm_slice = waveform[c_start:c_start + chunk_size]
+                            if pending_chunk is not None:
+                                out_chunk, out_meta = _yield_pending(pending_chunk, False)
+                                chunk_idx += 1
+                                yielded = True
+                                yield out_chunk, out_meta
+                            pending_chunk = pcm_slice
+
+                        if pending_chunk is not None:
+                            self._cancel(cancel, "chunk")
+                            out_chunk, out_meta = _yield_pending(pending_chunk, True)
+                            chunk_idx += 1
+                            yielded = True
+                            yield out_chunk, out_meta
+                            pending_chunk = None
+
+                    segment_counter += 1
+
+        finally:
+            stream_cancel_event.set()
+            executor.shutdown(wait=True, cancel_futures=True)
+            if curr_future is not None:
+                try:
+                    curr_future.result(timeout=0.01)
+                except Exception:
+                    pass
+
         if not yielded:
             raise NoPhoneticTokensError("text must contain valid phonetic tokens")
 
