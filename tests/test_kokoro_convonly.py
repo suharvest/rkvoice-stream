@@ -956,3 +956,125 @@ def test_clause_streaming_split(monkeypatch):
     list(backend.synthesize_stream(text_en, language="en"))
     assert calls == ["First clause, ", "second clause. ", "Third sentence."]
 
+
+def test_convonly_warmup_interface_and_safety(tmp_path, models, caplog):
+    """Verify KokoroConvOnlyBackend warmup interface, in-flight counters, and closed backend behavior."""
+    import concurrent.futures
+    import logging
+    import threading
+    import time
+    backend = M.KokoroConvOnlyBackend(_bundle(tmp_path))
+    backend.preload()
+
+    # In-flight warmup tracking and warning on close()
+    release_event = threading.Event()
+    inflight_observed = []
+    def slow_warmup(route_or_voice, timeout=5.0):
+        inflight_observed.append(backend._inflight_warmups)
+        release_event.wait(timeout=2.0)
+        return {"voice_load_ms": 1.0, "dry_run_ms": 2.0, "total_ms": 3.0}
+
+    backend.frontend.warmup_voice = slow_warmup
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        f = ex.submit(backend.warmup, "af_heart")
+        while not inflight_observed:
+            time.sleep(0.01)
+        assert inflight_observed[0] == 1
+        assert backend._inflight_warmups == 1
+
+        close_fut = ex.submit(backend.close)
+        while not backend._closed:
+            time.sleep(0.01)
+        assert close_fut.running() is True
+        assert backend.frontend is not None
+
+        release_event.set()
+        res = f.result(timeout=2.0)
+        assert res["total_ms"] == 3.0
+        close_fut.result(timeout=2.0)
+        assert backend._inflight_warmups == 0
+        assert backend.frontend is None
+
+    # Calling warmup on closed backend raises RuntimeError
+    with pytest.raises(RuntimeError, match=f"{backend.name} is closed"):
+        backend.warmup("af_heart")
+
+
+def test_convonly_close_waits_for_inflight_warmup(tmp_path, models):
+    """Verify close() cleanly waits for in-flight warmup to complete before releasing resources."""
+    import concurrent.futures
+    import threading
+    import time
+
+    backend = M.KokoroConvOnlyBackend(_bundle(tmp_path))
+    backend.preload()
+
+    warmup_started = threading.Event()
+    warmup_release = threading.Event()
+    warmup_finished = threading.Event()
+
+    def slow_warmup(route_or_voice, timeout=5.0):
+        warmup_started.set()
+        warmup_release.wait(timeout=2.0)
+        warmup_finished.set()
+        return {"voice_load_ms": 1.5, "dry_run_ms": 2.5, "total_ms": 4.0}
+
+    backend.frontend.warmup_voice = slow_warmup
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        warmup_fut = ex.submit(backend.warmup, "af_heart")
+        assert warmup_started.wait(timeout=2.0) is True
+        assert backend._inflight_warmups == 1
+
+        close_fut = ex.submit(backend.close, timeout=5.0)
+
+        # Give close a moment to enter wait_for; backend._closed should be True
+        while not backend._closed:
+            time.sleep(0.01)
+
+        # close() is still blocked waiting for warmup to finish
+        assert close_fut.running() is True
+        assert warmup_finished.is_set() is False
+        # Resources must not be released while warmup is in flight
+        assert backend.frontend is not None
+        assert backend.prefix_runtime is not None
+
+        # Allow warmup to complete
+        warmup_release.set()
+
+        # Both should complete cleanly
+        res = warmup_fut.result(timeout=2.0)
+        assert res["total_ms"] == 4.0
+        assert warmup_finished.is_set() is True
+
+        close_fut.result(timeout=2.0)
+        assert backend._inflight_warmups == 0
+        assert backend.frontend is None
+        assert backend.prefix_runtime is None
+        assert backend.is_ready() is False
+
+    # Also verify timeout: if a warmup hangs, close(timeout=...) times out and releases resources
+    backend2 = M.KokoroConvOnlyBackend(_bundle(tmp_path / "timeout"))
+    backend2.preload()
+
+    hang_started = threading.Event()
+    hang_blocker = threading.Event()
+    def hanging_warmup(route_or_voice, timeout=5.0):
+        hang_started.set()
+        hang_blocker.wait(timeout=5.0)
+        return {}
+
+    backend2.frontend.warmup_voice = hanging_warmup
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        hang_fut = ex.submit(backend2.warmup, "af_heart")
+        assert hang_started.wait(timeout=2.0) is True
+        # close with a short timeout should not hang indefinitely
+        t0 = time.monotonic()
+        backend2.close(timeout=0.05)
+        dt = time.monotonic() - t0
+        assert dt < 1.0
+        assert backend2._closed is True
+        assert backend2.frontend is None
+        # Clean up hanging worker
+        hang_blocker.set()
+        hang_fut.result(timeout=2.0)

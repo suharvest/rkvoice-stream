@@ -31,6 +31,7 @@ from rkvoice_stream.backends.tts.kokoro_convonly import ConvOnlyCancelled
 from rkvoice_stream.backends.tts.kokoro_long32_frontend import (
     KokoroLong32Frontend, PhonemeLengthError, NoPhoneticTokensError, snap_durations,
     FULL_MODEL_SHA256, GENERATOR_SOURCE_SHA256, VOICES, ROUTES,
+    VoiceWarmupState, VOICE_SHAPE,
 )
 from rkvoice_stream.engine.tts import TTSBackend, create_backend
 
@@ -1858,5 +1859,425 @@ def test_clause_streaming_split_and_pipeline(tmp_path, monkeypatch):
     backend.close()
 
 
+# =========================================================================
+# Scheme A: Concurrency-Safe Dynamic Speaker Warm-up & Cache Tests
+# =========================================================================
+
+def _create_mock_frontend_dir(root: Path, voice_fill: dict[str, float] | None = None) -> Path:
+    frontend_dir = root / "frontend"
+    frontend_dir.mkdir(parents=True, exist_ok=True)
+    (frontend_dir / "tokens.json").write_text(json.dumps({" ": 0, "a": 1}))
+    fill_map = voice_fill or {}
+    for r, v in VOICES.items():
+        val = fill_map.get(r, 0.0)
+        data = np.full(VOICE_SHAPE, val, dtype="<f4").tobytes()
+        (frontend_dir / f"{v}.bin").write_bytes(data)
+    for name in ("frontend_stem.onnx", "duration_head.onnx", "target_tail.onnx"):
+        (frontend_dir / name).write_bytes(b"mock-onnx")
+    return frontend_dir
 
 
+class _MockStemSession:
+    def __init__(self, delay: float = 0.0, on_run=None):
+        self.delay = delay
+        self.on_run = on_run
+        self.call_count = 0
+        self._lock = threading.Lock()
+
+    def run(self, out_names, feeds):
+        with self._lock:
+            self.call_count += 1
+            if self.on_run:
+                self.on_run()
+        if self.delay > 0:
+            import time
+            time.sleep(self.delay)
+        tok = feeds["input_ids"]
+        n = tok.shape[1]
+        return [np.zeros((1, n, 640), dtype=np.float32), np.zeros((1, 128), dtype=np.float32)]
+
+
+class _MockDurationSession:
+    def run(self, out_names, feeds):
+        for val in feeds.values():
+            if hasattr(val, "ndim") and val.ndim == 3:
+                n = val.shape[1]
+                return [np.ones((1, n), dtype=np.int64) * 2]
+        return [np.ones((1, 3), dtype=np.int64) * 2]
+
+
+class _MockTargetTailSession:
+    def run(self, out_names, feeds):
+        target_durations = feeds["target_durations"]
+        target_D = int(target_durations.sum())
+        t = 2 * target_D
+        return [
+            np.zeros((1, 512, t), dtype=np.float32),
+            np.zeros((1, 128), dtype=np.float32),
+            np.zeros((1, 22, 60 * t + 1), dtype=np.float32),
+        ]
+
+
+def _make_mock_frontend(frontend_dir: Path, stem=None, dur=None, target=None, g2p_fn=None):
+    stem = stem or _MockStemSession()
+    dur = dur or _MockDurationSession()
+    target = target or _MockTargetTailSession()
+    g2p = (lambda route: (lambda text: "a")) if g2p_fn is None else g2p_fn
+    return KokoroLong32Frontend(
+        frontend_dir,
+        stem_session=stem,
+        duration_session=dur,
+        target_tail_session=target,
+        g2p_factory=g2p,
+        verify_manifest=False,
+    )
+
+
+def test_scheme_a_warmup_voice_contract_and_caching(tmp_path):
+    """Verify warmup_voice returns expected timing dict and caches result."""
+    fe_dir = _create_mock_frontend_dir(tmp_path)
+    stem = _MockStemSession()
+    fe = _make_mock_frontend(fe_dir, stem=stem)
+
+    # Initial warmup for af_heart
+    timings = fe.warmup_voice("af_heart")
+    assert isinstance(timings, dict)
+    assert set(timings.keys()) == {"voice_load_ms", "dry_run_ms", "total_ms"}
+    assert all(isinstance(v, float) and v >= 0.0 for v in timings.values())
+    assert timings["total_ms"] >= timings["dry_run_ms"]
+    assert fe._voice_states["a"] == VoiceWarmupState.READY
+    assert "a" in fe._voice_cache
+    assert stem.call_count == 1
+
+    # Second call for the same voice (using route 'a') returns cached timings without re-running dry-run
+    timings_cached = fe.warmup_voice("a")
+    assert timings_cached == timings
+    assert stem.call_count == 1
+
+    # Third call using language alias 'en' also returns cached timings
+    timings_en = fe.warmup_voice("en")
+    assert timings_en == timings
+    assert stem.call_count == 1
+
+    # Warmup another voice: zf_xiaobei (route 'z')
+    timings_z = fe.warmup_voice("zf_xiaobei")
+    assert isinstance(timings_z, dict)
+    assert fe._voice_states["z"] == VoiceWarmupState.READY
+    assert "z" in fe._voice_cache
+    assert stem.call_count == 2
+
+
+def test_scheme_a_concurrent_warmup_single_flight(tmp_path):
+    """Verify concurrent warmup from 8 threads triggers exactly ONE dry-run."""
+    import concurrent.futures
+    fe_dir = _create_mock_frontend_dir(tmp_path)
+    stem = _MockStemSession(delay=0.03)  # Small delay to ensure concurrency overlap
+    fe = _make_mock_frontend(fe_dir, stem=stem)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(fe.warmup_voice, "af_heart") for _ in range(8)]
+        results = [f.result(timeout=5.0) for f in futures]
+
+    assert len(results) == 8
+    # Stem run must have been called exactly once (single flight warmup)
+    assert stem.call_count == 1
+    assert fe._voice_states["a"] == VoiceWarmupState.READY
+    for r in results:
+        assert set(r.keys()) == {"voice_load_ms", "dry_run_ms", "total_ms"}
+        assert all(isinstance(v, float) and v >= 0.0 for v in r.values())
+
+
+def test_scheme_a_dynamic_speaker_switching_isolation(tmp_path):
+    """Verify alternating requests between voices works seamlessly with style immutability."""
+    import concurrent.futures
+    # Voice 'a' filled with 1.0, voice 'z' filled with 2.0
+    fe_dir = _create_mock_frontend_dir(tmp_path, voice_fill={"a": 1.0, "z": 2.0})
+    fe = _make_mock_frontend(fe_dir)
+
+    # Pre-warm both voices
+    fe.warmup_voice("af_heart")
+    fe.warmup_voice("zf_xiaobei")
+
+    # Sequential alternating requests
+    p_a1 = fe.prepare("a", language="en-US")
+    p_z1 = fe.prepare("a", language="zh")
+    p_a2 = fe.prepare("a", language="en-US")
+    p_z2 = fe.prepare("a", language="zh")
+
+    assert p_a1.route == "a" and p_a1.language == "en-US"
+    assert np.all(p_a1.style == 1.0)
+    assert p_z1.route == "z" and p_z1.language == "zh"
+    assert np.all(p_z1.style == 2.0)
+    assert p_a2.route == "a" and np.all(p_a2.style == 1.0)
+    assert p_z2.route == "z" and np.all(p_z2.style == 2.0)
+
+    # Verify style array immutability (write=False)
+    assert p_a1.style.flags.writeable is False
+    assert p_z1.style.flags.writeable is False
+    with pytest.raises(ValueError, match="read-only"):
+        p_a1.style[0, 0] = 999.0
+
+    # Concurrent 16-thread stress test alternating voices
+    def worker(i: int):
+        if i % 2 == 0:
+            prep = fe.prepare("a", language="en-US")
+            assert prep.route == "a"
+            assert np.all(prep.style == 1.0)
+            assert prep.style.flags.writeable is False
+        else:
+            prep = fe.prepare("a", language="zh")
+            assert prep.route == "z"
+            assert np.all(prep.style == 2.0)
+            assert prep.style.flags.writeable is False
+        return True
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+        futures = [executor.submit(worker, i) for i in range(16)]
+        for f in concurrent.futures.as_completed(futures):
+            assert f.result() is True
+
+
+def test_scheme_a_invalid_voice_names(tmp_path):
+    """Verify invalid voice specifications raise ValueError."""
+    fe_dir = _create_mock_frontend_dir(tmp_path)
+    fe = _make_mock_frontend(fe_dir)
+
+    for invalid in ("invalid_speaker", "", "   ", None, 12345, "unknown_lang_xyz"):
+        with pytest.raises(ValueError):
+            fe.warmup_voice(invalid)
+
+    # Invalid timeout
+    for bad_timeout in (-1, 0, -0.5, "five", False, True, float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="timeout must be a finite positive number"):
+            fe.warmup_voice("af_heart", timeout=bad_timeout)
+
+
+def test_scheme_a_backend_warmup_interface(tmp_path, monkeypatch, caplog):
+    """Verify KokoroDualBucketBackend warmup() method delegates correctly and enforces safety."""
+    monkeypatch.setattr(KokoroLong32Frontend, "preload_sessions", lambda self: {})
+    cfg = _create_mock_dualbucket_bundle(tmp_path)
+    backend = DB.KokoroDualBucketBackend(cfg, runtime_cls=MockGeneratorSession)
+    backend.preload()
+
+    # Stub frontend warmup_voice
+    warmed = []
+    def mock_warmup_voice(route_or_voice, timeout=5.0):
+        route = KokoroLong32Frontend.resolve_route(route_or_voice)
+        warmed.append((route_or_voice, route, timeout))
+        return {"voice_load_ms": 1.0, "dry_run_ms": 2.0, "total_ms": 3.0}
+
+    backend.frontend.warmup_voice = mock_warmup_voice
+
+    # Default voice warmup (voice=None) -> warms af_heart
+    t_def = backend.warmup()
+    assert set(t_def.keys()) == {"voice_load_ms", "dry_run_ms", "total_ms"}
+    assert warmed[-1] == ("af_heart", "a", 5.0)
+
+    # Explicit voice warmup with custom timeout
+    t_zh = backend.warmup("zf_xiaobei", timeout=10.0)
+    assert set(t_zh.keys()) == {"voice_load_ms", "dry_run_ms", "total_ms"}
+    assert warmed[-1] == ("zf_xiaobei", "z", 10.0)
+
+    # Invalid voice raises ValueError
+    def real_or_strict_warmup_voice(route_or_voice, timeout=5.0):
+        return backend.frontend.__class__.warmup_voice(backend.frontend, route_or_voice, timeout=timeout)
+    backend.frontend.warmup_voice = real_or_strict_warmup_voice
+
+    with pytest.raises(ValueError):
+        backend.warmup("unknown_speaker_xyz")
+
+    # Invalid timeout via backend.warmup
+    for bad_t in (float("nan"), float("inf"), float("-inf"), -1.0, 0):
+        with pytest.raises(ValueError, match="timeout must be a finite positive number"):
+            backend.warmup("af_heart", timeout=bad_t)
+
+    # In-flight warmup tracking and warning on close()
+    release_event = threading.Event()
+    inflight_observed = []
+    def slow_warmup(route_or_voice, timeout=5.0):
+        inflight_observed.append(backend._inflight_warmups)
+        release_event.wait(timeout=2.0)
+        return {"voice_load_ms": 1.0, "dry_run_ms": 2.0, "total_ms": 3.0}
+
+    backend.frontend.warmup_voice = slow_warmup
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        f = ex.submit(backend.warmup, "af_heart")
+        while not inflight_observed:
+            time.sleep(0.01)
+        assert inflight_observed[0] == 1
+        assert backend._inflight_warmups == 1
+
+        close_fut = ex.submit(backend.close)
+        while not backend._closed:
+            time.sleep(0.01)
+        assert close_fut.running() is True
+        assert backend.frontend is not None
+
+        release_event.set()
+        res = f.result(timeout=2.0)
+        assert res["total_ms"] == 3.0
+        close_fut.result(timeout=2.0)
+        assert backend._inflight_warmups == 0
+        assert backend.frontend is None
+
+    # Calling warmup on closed backend (after preload and close) raises RuntimeError
+    with pytest.raises(RuntimeError, match=f"{backend.name} is closed"):
+        backend.warmup("af_heart")
+
+    # Calling warmup on closed backend (before preload and close) raises RuntimeError
+    cfg_unloaded = _create_mock_dualbucket_bundle(tmp_path / "closed_unloaded")
+    backend_unloaded = DB.KokoroDualBucketBackend(cfg_unloaded, runtime_cls=MockGeneratorSession)
+    backend_unloaded.close()
+    with pytest.raises(RuntimeError, match=f"{backend_unloaded.name} is closed"):
+        backend_unloaded.warmup("af_heart")
+
+
+def test_scheme_a_warmup_failure_and_retry(tmp_path):
+    """Verify failure broadcasts exception to waiters, and subsequent calls can retry."""
+    import concurrent.futures
+    fe_dir = _create_mock_frontend_dir(tmp_path)
+    fail_event = threading.Event()
+    should_fail = True
+
+    class FailingStemSession(_MockStemSession):
+        def run(self, out_names, feeds):
+            if should_fail:
+                fail_event.set()
+                import time
+                time.sleep(0.02)
+                raise RuntimeError("simulated ORT dry-run failure")
+            return super().run(out_names, feeds)
+
+    stem = FailingStemSession()
+    fe = _make_mock_frontend(fe_dir, stem=stem)
+
+    # 3 concurrent threads during failure
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(fe.warmup_voice, "af_heart") for _ in range(3)]
+        for f in futures:
+            with pytest.raises(RuntimeError, match="simulated ORT dry-run failure"):
+                f.result(timeout=5.0)
+
+    assert fe._voice_states["a"] == VoiceWarmupState.FAILED
+
+    # Subsequent retry after fixing the issue
+    should_fail = False
+    timings = fe.warmup_voice("af_heart")
+    assert isinstance(timings, dict)
+    assert fe._voice_states["a"] == VoiceWarmupState.READY
+
+
+def test_scheme_a_initiating_warmup_timeout(tmp_path):
+    """Verify that if the initiating thread exceeds timeout, TimeoutError is raised,
+    state transitions to FAILED, and concurrent waiters receive TimeoutError."""
+    import concurrent.futures
+    fe_dir = _create_mock_frontend_dir(tmp_path)
+
+    # Stem session with delay exceeding warmup timeout
+    stem = _MockStemSession(delay=0.08)
+    fe = _make_mock_frontend(fe_dir, stem=stem)
+
+    # 1. Initiating thread timeout
+    with pytest.raises(TimeoutError, match="voice warmup timed out after 0.02s: af_heart"):
+        fe.warmup_voice("af_heart", timeout=0.02)
+
+    assert fe._voice_states["a"] == VoiceWarmupState.FAILED
+
+    # 2. Concurrent waiters also get TimeoutError when initiating thread times out
+    fe2 = _make_mock_frontend(fe_dir, stem=stem)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(fe2.warmup_voice, "af_heart", timeout=0.02) for _ in range(3)]
+        for f in futures:
+            with pytest.raises(TimeoutError, match="timed out"):
+                f.result(timeout=5.0)
+
+    assert fe2._voice_states["a"] == VoiceWarmupState.FAILED
+
+    # 3. Subsequent retry with adequate timeout succeeds
+    stem.delay = 0.0
+    timings = fe2.warmup_voice("af_heart", timeout=5.0)
+    assert isinstance(timings, dict)
+    assert fe2._voice_states["a"] == VoiceWarmupState.READY
+
+
+def test_dualbucket_close_waits_for_inflight_warmup(tmp_path, monkeypatch):
+    """Verify close() cleanly waits for in-flight warmup to complete before releasing resources."""
+    import concurrent.futures
+    import threading
+    import time
+
+    monkeypatch.setattr(KokoroLong32Frontend, "preload_sessions", lambda self: {})
+    cfg = _create_mock_dualbucket_bundle(tmp_path)
+    backend = DB.KokoroDualBucketBackend(cfg, runtime_cls=MockGeneratorSession)
+    backend.preload()
+
+    warmup_started = threading.Event()
+    warmup_release = threading.Event()
+    warmup_finished = threading.Event()
+
+    def slow_warmup(route_or_voice, timeout=5.0):
+        warmup_started.set()
+        warmup_release.wait(timeout=2.0)
+        warmup_finished.set()
+        return {"voice_load_ms": 1.5, "dry_run_ms": 2.5, "total_ms": 4.0}
+
+    backend.frontend.warmup_voice = slow_warmup
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        warmup_fut = ex.submit(backend.warmup, "af_heart")
+        assert warmup_started.wait(timeout=2.0) is True
+        assert backend._inflight_warmups == 1
+
+        close_fut = ex.submit(backend.close, timeout=5.0)
+
+        # Give close a moment to enter wait_for; backend._closed should be True
+        while not backend._closed:
+            time.sleep(0.01)
+
+        # close() is still blocked waiting for warmup to finish
+        assert close_fut.running() is True
+        assert warmup_finished.is_set() is False
+        # Resources must not be released while warmup is in flight
+        assert backend.frontend is not None
+        assert backend.generator is not None
+
+        # Allow warmup to complete
+        warmup_release.set()
+
+        # Both should complete cleanly
+        res = warmup_fut.result(timeout=2.0)
+        assert res["total_ms"] == 4.0
+        assert warmup_finished.is_set() is True
+
+        close_fut.result(timeout=2.0)
+        assert backend._inflight_warmups == 0
+        assert backend.frontend is None
+        assert backend.generator is None
+        assert backend.is_ready() is False
+
+    # Also verify timeout: if a warmup hangs, close(timeout=...) times out and releases resources
+    backend2 = DB.KokoroDualBucketBackend(_create_mock_dualbucket_bundle(tmp_path / "timeout"), runtime_cls=MockGeneratorSession)
+    backend2.preload()
+
+    hang_started = threading.Event()
+    hang_blocker = threading.Event()
+    def hanging_warmup(route_or_voice, timeout=5.0):
+        hang_started.set()
+        hang_blocker.wait(timeout=5.0)
+        return {}
+
+    backend2.frontend.warmup_voice = hanging_warmup
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        hang_fut = ex.submit(backend2.warmup, "af_heart")
+        assert hang_started.wait(timeout=2.0) is True
+        # close with a short timeout should not hang indefinitely
+        t0 = time.monotonic()
+        backend2.close(timeout=0.05)
+        dt = time.monotonic() - t0
+        assert dt < 1.0
+        assert backend2._closed is True
+        assert backend2.frontend is None
+        # Clean up hanging worker
+        hang_blocker.set()
+        hang_fut.result(timeout=2.0)

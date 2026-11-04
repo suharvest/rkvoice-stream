@@ -6,9 +6,11 @@ iSTFT; those decisions belong to the production generator runtime.
 """
 from __future__ import annotations
 
+import enum
 import importlib
 import hashlib
 import json
+import math
 import os
 import re
 import threading
@@ -26,6 +28,13 @@ VOICES = {"a": "af_heart", "b": "bf_emma", "e": "ef_dora", "f": "ff_siwis", "h":
 VOICE_SHAPE = (510, 1, 256)
 FULL_MODEL_SHA256 = "8fbea51ea711f2af382e88c833d9e288c6dc82ce5e98421ea61c058ce21a34cb"
 GENERATOR_SOURCE_SHA256 = "301fc9d3fa7db258028ce895230b6f1782662bd0bdc8bd7dcdf5a9808bcf193c"
+
+
+class VoiceWarmupState(str, enum.Enum):
+    COLD = "COLD"
+    WARMING = "WARMING"
+    READY = "READY"
+    FAILED = "FAILED"
 
 
 class PhonemeLengthError(ValueError):
@@ -141,6 +150,12 @@ class KokoroLong32Frontend:
         self._g2p_call_locks: dict[str, threading.Lock] = {}
         self._g2p_cache: dict[str, Callable[[str], str]] = {}
         self._voice_cache: dict[str, np.ndarray] = {}
+        self._voice_lock = threading.Lock()
+        self._voice_cond = threading.Condition(self._voice_lock)
+        self._voice_states: dict[str, VoiceWarmupState] = {}
+        self._voice_generations: dict[str, int] = {}
+        self._voice_errors: dict[str, BaseException] = {}
+        self._voice_timings: dict[str, dict[str, float]] = {}
         self._session_options = self._session_options_factory(intra_op_num_threads, inter_op_num_threads)
         legacy_any = any(x is not None for x in (probe_session, target_session))
         split_any = any(x is not None for x in (stem_session, duration_session, target_tail_session))
@@ -333,24 +348,146 @@ class KokoroLong32Frontend:
             return out
         return call
 
+    def _ensure_voice_state(self) -> None:
+        if not hasattr(self, "_voice_lock"):
+            self._voice_lock = threading.Lock()
+            self._voice_cond = threading.Condition(self._voice_lock)
+            self._voice_states = {}
+            self._voice_generations = {}
+            self._voice_errors = {}
+            self._voice_timings = {}
+        if not hasattr(self, "_voice_cache"):
+            self._voice_cache = {}
+        if not hasattr(self, "_init_lock"):
+            self._init_lock = threading.Lock()
+
+    @classmethod
+    def resolve_route(cls, route_or_voice: str) -> str:
+        if not isinstance(route_or_voice, str) or not route_or_voice.strip():
+            raise ValueError(f"invalid voice/route specification: {route_or_voice!r}")
+        raw = route_or_voice.strip().lower()
+        if raw.endswith(".bin"):
+            raw = raw[:-4]
+        for r, v in VOICES.items():
+            if v.lower() == raw:
+                return r
+        if raw in LANG_ALIASES:
+            return LANG_ALIASES[raw]
+        raise ValueError(f"unknown Kokoro route or voice: {route_or_voice!r}")
+
     def _route(self, language: str) -> str:
         key = str(language).strip().lower()
         if key not in LANG_ALIASES: raise ValueError(f"unknown Kokoro language/route: {language}")
         return LANG_ALIASES[key]
 
-    def _voice(self, route: str, n: int) -> np.ndarray:
+    def _load_voice_blob(self, route: str) -> np.ndarray:
+        self._ensure_voice_state()
+        cached = self._voice_cache.get(route)
+        if cached is not None:
+            return cached
         with self._init_lock:
             cached = self._voice_cache.get(route)
-            if cached is None:
-                p = self.model_dir / (VOICES[route] + ".bin")
-                if not p.is_file() or p.stat().st_size != int(np.prod(VOICE_SHAPE)) * 4: raise ValueError(f"invalid/missing voice blob: {p}")
-                voice = np.fromfile(p, dtype="<f4").reshape(VOICE_SHAPE)
-                if not np.isfinite(voice).all(): raise ValueError("voice ABI/finite gate failed")
-                voice = np.array(voice, dtype=np.float32, copy=True); voice.setflags(write=False)
-                self._voice_cache[route] = voice
-                cached = voice
-        if not 0 <= n < 510: raise ValueError("voice ABI/finite gate failed")
-        return cached[n]
+            if cached is not None:
+                return cached
+            p = self.model_dir / (VOICES[route] + ".bin")
+            if not p.is_file() or p.stat().st_size != int(np.prod(VOICE_SHAPE)) * 4:
+                raise ValueError(f"invalid/missing voice blob: {p}")
+            voice = np.fromfile(p, dtype="<f4").reshape(VOICE_SHAPE)
+            if not np.isfinite(voice).all():
+                raise ValueError("voice ABI/finite gate failed")
+            voice = np.array(voice, dtype=np.float32, copy=True)
+            voice.setflags(write=False)
+            self._voice_cache[route] = voice
+            return voice
+
+    def _voice(self, route: str, n: int) -> np.ndarray:
+        self._ensure_voice_state()
+        cached = self._voice_cache.get(route)
+        if cached is None:
+            cached = self._load_voice_blob(route)
+        if not 0 <= n < 510:
+            raise ValueError("voice ABI/finite gate failed")
+        view = cached[n]
+        if view.flags.writeable:
+            view.setflags(write=False)
+        return view
+
+    def warmup_voice(self, route_or_voice: str, timeout: float = 5.0) -> dict[str, float]:
+        """Concurrency-safe voice pre-warmup.
+
+        Guarantees voice blob loaded and dry-run forward executed.
+        Returns: {"voice_load_ms": float, "dry_run_ms": float, "total_ms": float}
+        """
+        route = self.resolve_route(route_or_voice)
+        self._ensure_voice_state()
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("timeout must be a finite positive number")
+
+        deadline = time.monotonic() + timeout
+
+        with self._voice_cond:
+            while True:
+                state = self._voice_states.get(route, VoiceWarmupState.COLD)
+                if state == VoiceWarmupState.READY:
+                    return dict(self._voice_timings[route])
+                if state == VoiceWarmupState.WARMING:
+                    current_gen = self._voice_generations.get(route, 0)
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError(f"voice warmup timed out after {timeout}s: {route_or_voice}")
+                    self._voice_cond.wait(timeout=remaining)
+                    new_state = self._voice_states.get(route, VoiceWarmupState.COLD)
+                    if new_state == VoiceWarmupState.READY:
+                        return dict(self._voice_timings[route])
+                    if new_state == VoiceWarmupState.FAILED and self._voice_generations.get(route) == current_gen:
+                        err = self._voice_errors.get(route)
+                        if err is not None:
+                            raise err
+                        raise RuntimeError(f"voice warmup failed: {route_or_voice}")
+                    continue
+                # state is COLD or FAILED (retry)
+                gen = self._voice_generations.get(route, 0) + 1
+                self._voice_generations[route] = gen
+                self._voice_states[route] = VoiceWarmupState.WARMING
+                self._voice_errors.pop(route, None)
+                break
+
+        t_start = time.perf_counter()
+        try:
+            t0_load = time.perf_counter()
+            self._load_voice_blob(route)
+            voice_load_ms = (time.perf_counter() - t0_load) * 1000.0
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"voice warmup timed out after {timeout}s: {route_or_voice}")
+
+            t0_dry = time.perf_counter()
+            prep = self.prepare(text="a", language=ROUTES[route], speed=1.0)
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"voice warmup timed out after {timeout}s: {route_or_voice}")
+            self.render(prep, target_D=prep.natural_D)
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"voice warmup timed out after {timeout}s: {route_or_voice}")
+            dry_run_ms = (time.perf_counter() - t0_dry) * 1000.0
+
+            total_ms = (time.perf_counter() - t_start) * 1000.0
+            timings = {
+                "voice_load_ms": float(voice_load_ms),
+                "dry_run_ms": float(dry_run_ms),
+                "total_ms": float(total_ms),
+            }
+
+            with self._voice_cond:
+                self._voice_states[route] = VoiceWarmupState.READY
+                self._voice_timings[route] = timings
+                self._voice_cond.notify_all()
+
+            return dict(timings)
+        except BaseException as exc:
+            with self._voice_cond:
+                self._voice_states[route] = VoiceWarmupState.FAILED
+                self._voice_errors[route] = exc
+                self._voice_cond.notify_all()
+            raise
 
     def _g2p(self, route: str) -> tuple[Callable[[str], str], threading.Lock]:
         with self._g2p_lock:

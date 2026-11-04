@@ -11,6 +11,8 @@ import io
 import json
 import logging
 import math
+
+logger = logging.getLogger(__name__)
 import os
 import re
 import stat
@@ -828,9 +830,11 @@ class KokoroConvOnlyBackend(TTSBackend):
             raise TypeError("config must be KokoroDualBucketConfig")
         self.runtime_cls = runtime_cls
         self._lock = threading.RLock()
+        self._warmup_cond = threading.Condition(self._lock)
         self._ready = False
         self._closed = False
         self._close_errors: tuple[str, ...] = ()
+        self._inflight_warmups = 0
         self.frontend: KokoroLong32Frontend | None = None
         self.generator: DualBucketGeneratorRunner | None = None
         self._bundle: dict[str, Any] | None = None
@@ -881,6 +885,29 @@ class KokoroConvOnlyBackend(TTSBackend):
                     raise RuntimeError(f"preload failed: {exc}; cleanup errors: {'; '.join(errors)}") from exc
                 raise
 
+    def warmup(self, voice: str | None = None, timeout: float = 5.0) -> dict[str, float]:
+        """Concurrency-safe dynamic speaker warmup and cache."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError(f"{self.name} is closed")
+        if not self.is_ready():
+            self.preload()
+        with self._lock:
+            if self._closed:
+                raise RuntimeError(f"{self.name} is closed")
+            if self.frontend is None:
+                raise RuntimeError("frontend is not initialized")
+            frontend = self.frontend
+            self._inflight_warmups = getattr(self, "_inflight_warmups", 0) + 1
+        voice_name = voice if voice is not None else VOICES[LANG_ALIASES["en"]]
+        try:
+            return frontend.warmup_voice(voice_name, timeout=timeout)
+        finally:
+            with self._lock:
+                self._inflight_warmups -= 1
+                if self._inflight_warmups == 0:
+                    self._warmup_cond.notify_all()
+
     def _release_all(self) -> list[str]:
         self._ready = False
         errors = []
@@ -898,10 +925,12 @@ class KokoroConvOnlyBackend(TTSBackend):
         self._bundle = None
         return errors
 
-    def close(self) -> None:
+    def close(self, timeout: float = 5.0) -> None:
         with self._lock:
             if not self._closed:
                 self._closed = True
+                if getattr(self, "_inflight_warmups", 0) > 0:
+                    self._warmup_cond.wait_for(lambda: self._inflight_warmups == 0, timeout=timeout)
                 self._close_errors = tuple(self._release_all())
             if self._close_errors:
                 raise RuntimeError("dual-bucket cleanup errors: " + "; ".join(self._close_errors))
@@ -969,10 +998,31 @@ class KokoroConvOnlyBackend(TTSBackend):
         unknown = set(kwargs) - {"language", "voice", "speaker", "cancel_event", "cancel_token"}
         if unknown:
             raise ValueError("unsupported synthesis options: " + ", ".join(sorted(unknown)))
-        language = kwargs.get("language", "en")
-        if not isinstance(language, str) or language.strip().lower() not in LANG_ALIASES:
-            raise ValueError("unsupported language")
-        route = LANG_ALIASES[language.strip().lower()]
+        language = kwargs.get("language")
+        specified_voice = kwargs.get("voice") if kwargs.get("voice") is not None else kwargs.get("speaker")
+        if language is None:
+            if specified_voice is not None:
+                voice_str = str(specified_voice).strip().lower()
+                if voice_str.endswith(".bin"):
+                    voice_str = voice_str[:-4]
+                matching_route = None
+                for r, v in VOICES.items():
+                    if v.lower() == voice_str or r.lower() == voice_str:
+                        matching_route = r
+                        break
+                if matching_route is not None:
+                    route = matching_route
+                    language = ROUTES[route]
+                else:
+                    language = "en"
+                    route = LANG_ALIASES[language]
+            else:
+                language = "en"
+                route = LANG_ALIASES[language]
+        else:
+            if not isinstance(language, str) or language.strip().lower() not in LANG_ALIASES:
+                raise ValueError("unsupported language")
+            route = LANG_ALIASES[language.strip().lower()]
         voice = VOICES[route]
         if kwargs.get("voice") not in (None, voice) or kwargs.get("speaker") not in (None, voice):
             raise ValueError(f"voice for route {route} must be {voice}")
