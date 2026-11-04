@@ -358,7 +358,12 @@ def test_manifest_valid_bundle_passes(tmp_path):
 class MockGeneratorSession:
     def __init__(self, model_path: str):
         self.path = model_path
-        self.bucket = "T240" if "T240" in model_path else "T480"
+        if "T50" in model_path:
+            self.bucket = "T50"
+        elif "T240" in model_path:
+            self.bucket = "T240"
+        else:
+            self.bucket = "T480"
 
     def run(self, x, s, har):
         # Returns conv_post of shape (1, 22, 60*T + 1)
@@ -971,4 +976,428 @@ def test_all_segments_non_pronouncing_raises_no_phonetic_tokens(tmp_path, monkey
         list(backend.synthesize_stream("Some text.", language="en-US", voice="af_heart"))
 
     backend.close()
+
+
+# =========================================================================
+# 9. T50 Windowed Generator & Overlap-Add Crossfade (Decoder Windowing)
+# =========================================================================
+
+def test_depop_append_crossfade_properties():
+    """Verify depop_append properties: linear symmetry, exact length, edge clamping."""
+    # 1. Linear symmetry: weights sum to 1.0 everywhere
+    overlap = 480
+    fade_in = (np.arange(overlap, dtype=np.float32) + 0.5) / float(overlap)
+    fade_out = 1.0 - fade_in
+    assert np.allclose(fade_in + fade_out, 1.0)
+    assert np.isclose(fade_in[0], 0.5 / 480)
+    assert np.isclose(fade_in[-1], 1.0 - 0.5 / 480)
+
+    # 2. Perfect continuous ramp blending
+    a = np.arange(1000, dtype=np.float32)
+    b = np.arange(1000 - overlap, 2000 - overlap, dtype=np.float32)
+    stitched = DB.depop_append(a, b, crossfade_samples=overlap)
+    assert stitched.shape == (2000 - overlap,)
+    expected = np.arange(2000 - overlap, dtype=np.float32)
+    assert np.allclose(stitched, expected, atol=1e-4)
+
+    # 3. Edge cases
+    empty = np.empty((0,), dtype=np.float32)
+    chunk = np.ones(500, dtype=np.float32)
+    assert np.array_equal(DB.depop_append(empty, chunk), chunk)
+    assert np.array_equal(DB.depop_append(chunk, empty), chunk)
+
+    # Small chunks smaller than 480
+    small_a = np.full(50, 1.0, dtype=np.float32)
+    small_b = np.full(50, 2.0, dtype=np.float32)
+    res = DB.depop_append(small_a, small_b, crossfade_samples=480)
+    assert res.shape == (50,)  # overlap clamped to min(480, 50, 50) = 50
+
+
+def test_generator_t50_windowed_slicing_and_padding(tmp_path):
+    """Verify DualBucketGeneratorRunner.run_windowed handles sequences from T=5 to T=500."""
+    models = {"T50": tmp_path / "generator_T50.rknn"}
+    models_info = {
+        "T50": {
+            "path": "generator_T50.rknn",
+            "T": 50,
+            "inputs": [[1, 512, 50], [1, 128], [1, 22, 3001]],
+            "outputs": [[1, 22, 3001]],
+        }
+    }
+    models["T50"].write_bytes(b"dummy")
+
+    class WindowMockSession:
+        def __init__(self, path):
+            self.calls = []
+
+        def run(self, x, s, har):
+            assert x.shape == (1, 512, 50)
+            assert s.shape == (1, 128)
+            assert har.shape == (1, 22, 3001)
+            self.calls.append((x.shape, har.shape))
+            out = np.zeros((1, 22, 3001), dtype=np.float32)
+            out[:, 0, :] = 0.05
+            return out
+
+    runner = DB.DualBucketGeneratorRunner(
+        models=models,
+        models_info=models_info,
+        platform="rk3588",
+        runtime_cls=WindowMockSession,
+    )
+    assert runner.has_t50 is True
+
+    # 1. Short sequence: T = 20 (< 50) -> 1 window
+    x_short = np.zeros((1, 512, 20), dtype=np.float32)
+    har_short = np.zeros((1, 22, 60 * 20 + 1), dtype=np.float32)
+    s = np.zeros((1, 128), dtype=np.float32)
+    wav, gen_ms, istft_ms = runner.run_windowed(x_short, s, har_short)
+    assert wav.shape == (15000,)
+    assert gen_ms >= 0 and istft_ms >= 0
+
+    # 2. Exact sequence: T = 50 -> 1 window
+    x_50 = np.zeros((1, 512, 50), dtype=np.float32)
+    har_50 = np.zeros((1, 22, 3001), dtype=np.float32)
+    wav, _, _ = runner.run_windowed(x_50, s, har_50)
+    assert wav.shape == (15000,)
+
+    # 3. Two-window sequence: T = 70 -> 2 windows (acc_size = 28800)
+    x_70 = np.zeros((1, 512, 70), dtype=np.float32)
+    har_70 = np.zeros((1, 22, 60 * 70 + 1), dtype=np.float32)
+    wav, _, _ = runner.run_windowed(x_70, s, har_70)
+    assert wav.shape == (28800,)
+
+    # 4. Long sequence: T = 480 -> 11 windows (acc_size = 153000)
+    x_480 = np.zeros((1, 512, 480), dtype=np.float32)
+    har_480 = np.zeros((1, 22, 60 * 480 + 1), dtype=np.float32)
+    wav, _, _ = runner.run_windowed(x_480, s, har_480)
+    assert wav.shape == (153000,)
+
+
+def _create_mock_t50_bundle(root: Path, platform: str = "rk3588", include_dual: bool = False) -> DB.KokoroDualBucketConfig:
+    frontend_dir = root / "frontend"
+    frontend_dir.mkdir(parents=True, exist_ok=True)
+    models_dir = root / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+
+    (frontend_dir / "tokens.json").write_text(json.dumps({" ": 0, "a": 1}))
+    for v in VOICES.values():
+        (frontend_dir / f"{v}.bin").write_bytes(b"mock-voice")
+    for name in ("frontend_stem.onnx", "duration_head.onnx", "target_tail.onnx"):
+        (frontend_dir / name).write_bytes(b"mock-frontend-onnx")
+
+    export_manifest = {
+        "schema": "kokoro-v10-generator-export-1",
+        "status": "PASS",
+        "target": platform,
+        "full_model_sha256": FULL_MODEL_SHA256,
+        "output_sha256": GENERATOR_SOURCE_SHA256,
+    }
+    (frontend_dir / "generator-export.manifest.json").write_text(json.dumps(export_manifest))
+    export_sha = DB._sha(frontend_dir / "generator-export.manifest.json")
+
+    fm = {
+        "schema": "kokoro-v10-long32-frontend-3",
+        "status": "PASS",
+        "official": True,
+        "routes": ROUTES,
+        "voices": VOICES,
+        "full_source_sha256": FULL_MODEL_SHA256,
+        "generator_source_sha256": GENERATOR_SOURCE_SHA256,
+        "generator_export_manifest_sha256": export_sha,
+        "generator_export_manifest": {
+            "path": "generator-export.manifest.json",
+            "schema": export_manifest["schema"],
+            "status": "PASS",
+            "sha256": export_sha,
+        },
+        "stem_model": "frontend_stem.onnx",
+        "duration_model": "duration_head.onnx",
+        "target_model": "target_tail.onnx",
+        "stem_sha256": DB._sha(frontend_dir / "frontend_stem.onnx"),
+        "duration_sha256": DB._sha(frontend_dir / "duration_head.onnx"),
+        "target_sha256": DB._sha(frontend_dir / "target_tail.onnx"),
+        "assets": {p.name: {"bytes": p.stat().st_size, "sha256": DB._sha(p)} for p in frontend_dir.iterdir() if p.suffix != ".onnx"},
+    }
+    (frontend_dir / "frontend.manifest.json").write_text(json.dumps(fm))
+
+    (models_dir / "generator_T50.rknn").write_bytes(b"mock-generator-T50-rknn")
+    models_info = {
+        "T50": {
+            "path": "models/generator_T50.rknn",
+            "sha256": DB._sha(models_dir / "generator_T50.rknn"),
+            "size": (models_dir / "generator_T50.rknn").stat().st_size,
+            "T": 50,
+            "D_target": 25,
+            "platform": platform,
+            "toolkit": "2.3.2",
+            "inputs": [[1, 512, 50], [1, 128], [1, 22, 3001]],
+            "outputs": [[1, 22, 3001]],
+        }
+    }
+    if include_dual:
+        (models_dir / "generator_T240.rknn").write_bytes(b"mock-generator-T240-rknn")
+        (models_dir / "generator_T480.rknn").write_bytes(b"mock-generator-T480-rknn")
+        models_info["T240"] = {
+            "path": "models/generator_T240.rknn",
+            "sha256": DB._sha(models_dir / "generator_T240.rknn"),
+            "size": (models_dir / "generator_T240.rknn").stat().st_size,
+            "T": 240,
+            "D_target": 120,
+            "platform": platform,
+            "toolkit": "2.3.2",
+            "inputs": [[1, 512, 240], [1, 128], [1, 22, 14401]],
+            "outputs": [[1, 22, 14401]],
+        }
+        models_info["T480"] = {
+            "path": "models/generator_T480.rknn",
+            "sha256": DB._sha(models_dir / "generator_T480.rknn"),
+            "size": (models_dir / "generator_T480.rknn").stat().st_size,
+            "T": 480,
+            "D_target": 240,
+            "platform": platform,
+            "toolkit": "2.3.2",
+            "inputs": [[1, 512, 480], [1, 128], [1, 22, 28801]],
+            "outputs": [[1, 22, 28801]],
+        }
+
+    manifest_path = root / DB.MANIFEST_NAME
+    files_inv = [
+        {"path": p.relative_to(root).as_posix(), "sha256": DB._sha(p), "size": p.stat().st_size}
+        for p in sorted(root.rglob("*")) if p.is_file() and p != manifest_path
+    ]
+
+    manifest = {
+        "schema": "kokoro.dualbucket.bundle.v1",
+        "platform": platform,
+        "precision": "FP16",
+        "toolkit": "2.3.2",
+        "full_source_sha256": FULL_MODEL_SHA256,
+        "generator_source_sha256": GENERATOR_SOURCE_SHA256,
+        "frontend": "frontend",
+        "models": models_info,
+        "files": files_inv,
+    }
+    manifest_path.write_text(json.dumps(manifest))
+    manifest_sha = DB._sha(manifest_path)
+    return DB.KokoroDualBucketConfig(platform, root, manifest_sha)
+
+
+def test_t50_manifest_validation(tmp_path):
+    """Verify validation of bundles with T50 model and rejects invalid configurations."""
+    cfg = _create_mock_t50_bundle(tmp_path)
+    bundle = DB._validate_dualbucket_bundle(cfg)
+    assert "T50" in bundle["models"]
+    assert bundle["manifest"]["schema"] == "kokoro.dualbucket.bundle.v1"
+
+
+def test_t50_end_to_end_synthesis_short_medium_long(tmp_path, monkeypatch):
+    """Full end-to-end synthesis with T50 windowed generator across short, medium and long sentences."""
+    monkeypatch.setattr(KokoroLong32Frontend, "preload_sessions", lambda self: {})
+    cfg = _create_mock_t50_bundle(tmp_path)
+    backend = DB.KokoroConvOnlyBackend(cfg, runtime_cls=MockGeneratorSession)
+    backend.preload()
+    assert backend.is_ready() is True
+    assert backend.generator.has_t50 is True
+
+    test_state = SimpleNamespace(natural_D=20, n_tokens=5)
+
+    def fake_prepare(text, language="en-US", speed=1.0, cancel_check=None):
+        toks = np.zeros((1, test_state.n_tokens), dtype=np.int64)
+        nat_d = np.ones(test_state.n_tokens, dtype=np.int64)
+        nat_d[-1] = test_state.natural_D - (test_state.n_tokens - 1)
+        return SimpleNamespace(
+            route="a",
+            language="en-US",
+            text=text,
+            input_ids=toks,
+            natural_durations=nat_d,
+            natural_D=test_state.natural_D,
+            style=np.zeros((1, 128), dtype=np.float32),
+            speed=np.array([1.0], dtype=np.float32),
+            stem_text=None,
+            stem_style=None,
+            timings={},
+        )
+
+    def fake_render(prepared, target_D, durations):
+        t = 2 * target_D
+        return {
+            "x": np.zeros((1, 512, t), dtype=np.float32),
+            "s": np.zeros((1, 128), dtype=np.float32),
+            "har": np.zeros((1, 22, 60 * t + 1), dtype=np.float32),
+            "T": t,
+            "F": 60 * t + 1,
+            "route": "a",
+            "language": "en-US",
+            "frontend_detail": {},
+        }
+
+    backend.frontend.prepare = fake_prepare
+    backend.frontend.render = fake_render
+
+    # 1. Short sentence: D_nat = 20 -> valid_samples = 600 * 20 = 12000
+    test_state.natural_D = 20
+    test_state.n_tokens = 5
+    wav_bytes, meta = backend.synthesize("Hi.", language="en-US", voice="af_heart")
+    assert meta["selected_bucket"] == "T50"
+    assert meta["branch"] == "windowed"
+    assert meta["D_out_valid"] == 20
+    with wave.open(io.BytesIO(wav_bytes), "rb") as w:
+        assert w.getnframes() == 600 * 20 == 12000
+
+    # 2. Medium sentence: D_nat = 80 -> valid_samples = 600 * 80 = 48000
+    test_state.natural_D = 80
+    test_state.n_tokens = 20
+    wav_bytes, meta = backend.synthesize("Speech synthesis on RKNN NPU.", language="en-US", voice="af_heart")
+    assert meta["selected_bucket"] == "T50"
+    assert meta["D_out_valid"] == 80
+    with wave.open(io.BytesIO(wav_bytes), "rb") as w:
+        assert w.getnframes() == 600 * 80 == 48000
+
+    # 3. Long sentence: D_nat = 240 -> valid_samples = 600 * 240 = 144000
+    test_state.natural_D = 240
+    test_state.n_tokens = 60
+    wav_bytes, meta = backend.synthesize("Extremely long utterance across many T50 slices.", language="en-US", voice="af_heart")
+    assert meta["selected_bucket"] == "T50"
+    assert meta["D_out_valid"] == 240
+    with wave.open(io.BytesIO(wav_bytes), "rb") as w:
+        assert w.getnframes() == 600 * 240 == 144000
+
+    # 4. Super-long sentence: D_nat = 350 -> valid_samples = 600 * 350 = 210000 (rendered in 1 piece via T50 windowing!)
+    test_state.natural_D = 350
+    test_state.n_tokens = 90
+    wav_bytes, meta = backend.synthesize("Super long clause that would exceed dual-bucket limit without splitting.", language="en-US", voice="af_heart")
+    assert meta["selected_bucket"] == "T50"
+    assert meta["D_out_valid"] == 350
+    with wave.open(io.BytesIO(wav_bytes), "rb") as w:
+        assert w.getnframes() == 600 * 350 == 210000
+
+    backend.close()
+
+
+def test_t50_cooperative_cancellation_during_windowing(tmp_path, monkeypatch):
+    """Verify cooperative cancellation stops multi-slice windowing immediately."""
+    monkeypatch.setattr(KokoroLong32Frontend, "preload_sessions", lambda self: {})
+    cfg = _create_mock_t50_bundle(tmp_path)
+    cancel_evt = threading.Event()
+
+    class CancelTriggerSession(MockGeneratorSession):
+        def __init__(self, path):
+            super().__init__(path)
+            self.count = 0
+
+        def run(self, x, s, har):
+            self.count += 1
+            if self.count >= 2:
+                cancel_evt.set()
+            return super().run(x, s, har)
+
+    backend = DB.KokoroConvOnlyBackend(cfg, runtime_cls=CancelTriggerSession)
+    backend.preload()
+
+    def fake_prepare(text, language="en-US", speed=1.0, cancel_check=None):
+        return SimpleNamespace(
+            route="a",
+            language="en-US",
+            text=text,
+            input_ids=np.zeros((1, 10), dtype=np.int64),
+            natural_durations=np.full(10, 20, dtype=np.int64),
+            natural_D=200,
+            style=np.zeros((1, 128), dtype=np.float32),
+            speed=np.array([1.0], dtype=np.float32),
+            stem_text=None,
+            stem_style=None,
+            timings={},
+        )
+
+    def fake_render(prepared, target_D, durations):
+        t = 2 * target_D
+        return {
+            "x": np.zeros((1, 512, t), dtype=np.float32),
+            "s": np.zeros((1, 128), dtype=np.float32),
+            "har": np.zeros((1, 22, 60 * t + 1), dtype=np.float32),
+            "T": t,
+            "F": 60 * t + 1,
+            "route": "a",
+            "language": "en-US",
+            "frontend_detail": {},
+        }
+
+    backend.frontend.prepare = fake_prepare
+    backend.frontend.render = fake_render
+
+    with pytest.raises(ConvOnlyCancelled) as exc_info:
+        backend.synthesize("Long sentence to cancel.", language="en-US", voice="af_heart", cancel_event=cancel_evt)
+
+    assert exc_info.value.stage == "generator"
+    backend.close()
+
+
+def test_t50_streaming_synthesis(tmp_path, monkeypatch):
+    """Verify streaming synthesis with T50 windowed generator yields expected chunks."""
+    monkeypatch.setattr(KokoroLong32Frontend, "preload_sessions", lambda self: {})
+    cfg = _create_mock_t50_bundle(tmp_path)
+    backend = DB.KokoroConvOnlyBackend(cfg, runtime_cls=MockGeneratorSession)
+    backend.preload()
+
+    def fake_prepare(text, language="en-US", speed=1.0, cancel_check=None):
+        return SimpleNamespace(
+            route="a",
+            language="en-US",
+            text=text,
+            input_ids=np.zeros((1, 5), dtype=np.int64),
+            natural_durations=np.full(5, 10, dtype=np.int64),
+            natural_D=50,
+            style=np.zeros((1, 128), dtype=np.float32),
+            speed=np.array([1.0], dtype=np.float32),
+            stem_text=None,
+            stem_style=None,
+            timings={},
+        )
+
+    def fake_render(prepared, target_D, durations):
+        t = 2 * target_D
+        return {
+            "x": np.zeros((1, 512, t), dtype=np.float32),
+            "s": np.zeros((1, 128), dtype=np.float32),
+            "har": np.zeros((1, 22, 60 * t + 1), dtype=np.float32),
+            "T": t,
+            "F": 60 * t + 1,
+            "route": "a",
+            "language": "en-US",
+            "frontend_detail": {},
+        }
+
+    backend.frontend.prepare = fake_prepare
+    backend.frontend.render = fake_render
+
+    chunks = list(backend.synthesize_stream("Hello streaming world.", language="en-US", voice="af_heart"))
+    assert len(chunks) > 0
+    total_samples = sum(c[0].shape[0] for c in chunks)
+    assert total_samples == 600 * 50 == 30000
+    assert chunks[0][1]["selected_bucket"] == "T50"
+    backend.close()
+
+
+def test_t50_depop_spectral_continuity():
+    """Verify 480-sample symmetric crossfade eliminates pops and achieves continuous harmonic synthesis."""
+    sr = 24000
+    freq = 440.0
+    t0 = np.arange(15000) / sr
+    w0 = np.sin(2 * np.pi * freq * t0).astype(np.float32)
+
+    t1 = (np.arange(15000) + 13800) / sr
+    w1 = np.sin(2 * np.pi * freq * t1).astype(np.float32)
+
+    chunk0 = w0[:14640]
+    chunk1 = w1[360:]
+    stitched = DB.depop_append(chunk0, chunk1, crossfade_samples=480)
+
+    t_full = np.arange(stitched.size) / sr
+    ideal = np.sin(2 * np.pi * freq * t_full).astype(np.float32)
+
+    max_err = np.max(np.abs(stitched - ideal))
+    assert max_err < 1e-4
+
 

@@ -36,7 +36,14 @@ MAX_INPUT_CHARS = 10000
 MAX_SEGMENTS = 256
 PLATFORMS = ("rk3588", "rk3576")
 
+T_FIX = 50
+CTX = 2
+STEP = T_FIX - 2 * CTX  # 46 frames
+CROSSFADE_SAMPLES = 480  # 20 ms at 24000 Hz
+SAMPLES_PER_FRAME = 300
+
 BUCKET_CONFIGS = {
+    "T50": {"T": 50, "D_target": 25, "F": 3001},
     "T240": {"T": 240, "D_target": 120, "F": 14401},
     "T480": {"T": 480, "D_target": 240, "F": 28801},
 }
@@ -119,6 +126,28 @@ def _has_pronouncing_tokens(text: str) -> bool:
     return False
 
 
+def depop_append(accumulated: np.ndarray, chunk: np.ndarray, crossfade_samples: int = CROSSFADE_SAMPLES) -> np.ndarray:
+    """Linearly symmetric crossfade Overlap-Add append to eliminate boundary clicks/pops.
+
+    Args:
+        accumulated: Existing 1D float32 waveform buffer.
+        chunk: New 1D float32 slice waveform chunk to append.
+        crossfade_samples: Number of samples in symmetric linear blend (default 480).
+
+    Returns:
+        Concatenated 1D float32 waveform with smooth crossfade.
+    """
+    if accumulated.size == 0:
+        return chunk.astype(np.float32, copy=True)
+    overlap = min(crossfade_samples, accumulated.size, chunk.size)
+    if overlap <= 0:
+        return np.concatenate([accumulated, chunk]).astype(np.float32)
+    fade_in = (np.arange(overlap, dtype=np.float32) + 0.5) / float(overlap)
+    fade_out = 1.0 - fade_in
+    blended = accumulated[-overlap:] * fade_out + chunk[:overlap] * fade_in
+    return np.concatenate([accumulated[:-overlap], blended, chunk[overlap:]]).astype(np.float32)
+
+
 def apply_silence_padding(natural_durations: np.ndarray | Sequence[int], target_D: int) -> np.ndarray:
     """Pad token durations so speech tokens keep 100% natural duration
     and the trailing EOS token absorbs Delta D = target_D - D_nat.
@@ -136,23 +165,37 @@ def apply_silence_padding(natural_durations: np.ndarray | Sequence[int], target_
     return out
 
 
-def route_dualbucket(natural_D: int, n_dur: int) -> dict[str, Any]:
-    """Deterministic routing state machine for dual bucket (T240, T480).
+def route_dualbucket(natural_D: int, n_dur: int, has_t50: bool = False) -> dict[str, Any]:
+    """Deterministic routing state machine for dual bucket (T240, T480) or windowed T50.
 
     Args:
         natural_D: Sum of natural token durations D_nat >= n_dur.
         n_dur: Length of token duration vector N_dur = N_ph + 2.
+        has_t50: If True, route to T50 windowed generator preserving natural durations.
 
     Returns:
         Dict with routing decision:
           action: "render" or "split"
-          bucket: "T240" or "T480"
-          T: 240 or 480
-          target_D: 120 or 240
-          branch: "padding" or "snap"
+          bucket: "T50", "T240" or "T480"
+          T: frame dimension (2 * target_D)
+          target_D: target frame duration
+          branch: "windowed", "padding" or "snap"
           D_out_valid: effective valid frame count
           valid_samples: 600 * D_out_valid
     """
+    if has_t50:
+        if n_dur > 240:
+            return {"action": "split"}
+        return {
+            "action": "render",
+            "bucket": "T50",
+            "T": 2 * natural_D,
+            "target_D": natural_D,
+            "branch": "windowed",
+            "D_out_valid": natural_D,
+            "valid_samples": 600 * natural_D,
+        }
+
     if n_dur > 240 or natural_D > 282:
         return {"action": "split"}
 
@@ -244,6 +287,10 @@ class KokoroDualBucketConfig:
 
 
 EXPECTED_TENSOR_DIMS = {
+    "T50": {
+        "inputs": [[1, 512, 50], [1, 128], [1, 22, 3001]],
+        "outputs": [[1, 22, 3001]],
+    },
     "T240": {
         "inputs": [[1, 512, 240], [1, 128], [1, 22, 14401]],
         "outputs": [[1, 22, 14401]],
@@ -285,7 +332,7 @@ def _validate_dualbucket_bundle(config: KokoroDualBucketConfig) -> dict[str, Any
 
     manifest = _json(raw)
     schema = manifest.get("schema")
-    if schema != "kokoro.dualbucket.bundle.v1":
+    if schema not in ("kokoro.dualbucket.bundle.v1", "kokoro.windowed.bundle.v1"):
         raise ValueError(f"unexpected dual-bucket manifest schema: {schema!r}")
 
     if manifest.get("platform") != config.platform:
@@ -326,13 +373,19 @@ def _validate_dualbucket_bundle(config: KokoroDualBucketConfig) -> dict[str, Any
     if fm.get("schema") != "kokoro-v10-long32-frontend-3":
         raise ValueError("dual-bucket requires schema-3 frontend")
 
-    # Models validation (T240, T480) with platform, compiler, and tensor dimension contracts
+    # Models validation (T50 windowed, or dual-bucket T240/T480) with platform, compiler, and tensor dimension contracts
     models_dict = manifest.get("models")
-    if not isinstance(models_dict, dict) or "T240" not in models_dict or "T480" not in models_dict:
-        raise ValueError("dual-bucket manifest must specify models for T240 and T480")
+    if not isinstance(models_dict, dict) or not models_dict:
+        raise ValueError("bundle models inventory is required")
+    has_t50 = "T50" in models_dict
+    has_dual = "T240" in models_dict and "T480" in models_dict
+    if not (has_t50 or has_dual):
+        raise ValueError("manifest must specify models for T50 or (T240 and T480)")
 
     model_paths = {}
-    for bucket_key in ("T240", "T480"):
+    for bucket_key in ("T50", "T240", "T480"):
+        if bucket_key not in models_dict:
+            continue
         info = models_dict[bucket_key]
         if not isinstance(info, dict):
             raise ValueError(f"invalid model info record for {bucket_key}")
@@ -387,7 +440,7 @@ def _validate_dualbucket_bundle(config: KokoroDualBucketConfig) -> dict[str, Any
 
 
 class DualBucketGeneratorRunner:
-    """Orchestrates RKNN / ONNX generator execution across T240 and T480."""
+    """Orchestrates RKNN / ONNX generator execution across T50 windowing and T240/T480."""
 
     def __init__(
         self,
@@ -407,6 +460,10 @@ class DualBucketGeneratorRunner:
         self._sessions = {}
         self._lock = threading.RLock()
 
+    @property
+    def has_t50(self) -> bool:
+        return "T50" in self.models
+
     @staticmethod
     def _release_instance(inst: Any) -> None:
         if inst is None:
@@ -421,6 +478,12 @@ class DualBucketGeneratorRunner:
     def _get_session(self, bucket: str):
         with self._lock:
             if bucket not in self._sessions:
+                # Embedded NPU optimization: evict inactive session to avoid IOMMU domain switching
+                # contention in RKNPU kernel driver (driver 0.9.8 hangs when multiple active contexts coexist).
+                if self.runtime_cls is None and (self.cpu_generator is None or not self.allow_cpu_generator):
+                    for old_b in list(self._sessions.keys()):
+                        self._release_instance(self._sessions.pop(old_b, None))
+
                 path = self.models[bucket]
                 session = None
                 try:
@@ -431,22 +494,21 @@ class DualBucketGeneratorRunner:
                             ret = init_hook()
                             if ret not in (None, 0):
                                 raise RuntimeError(f"runtime_cls init failed with code {ret}")
+                    elif self.allow_cpu_generator and self.cpu_generator is not None:
+                        import onnxruntime as ort
+                        session = ort.InferenceSession(str(self.cpu_generator), providers=["CPUExecutionProvider"])
                     else:
                         try:
                             from rknnlite.api import RKNNLite
                         except ImportError as err:
-                            # Strict fail-closed: do NOT silently fallback to CPU generator unless explicitly allowed
-                            if self.allow_cpu_generator and self.cpu_generator is not None:
-                                import onnxruntime as ort
-                                session = ort.InferenceSession(str(self.cpu_generator), providers=["CPUExecutionProvider"])
-                            else:
-                                raise RuntimeError("RKNN runtime not available (rknnlite missing or load failed)") from err
+                            raise RuntimeError("RKNN runtime not available (rknnlite missing or load failed)") from err
                         else:
                             session = RKNNLite(verbose=False)
                             ret = session.load_rknn(str(path))
                             if ret != 0:
                                 raise RuntimeError(f"load_rknn failed with code {ret}")
-                            ret = session.init_runtime()
+                            core_mask = getattr(RKNNLite, "NPU_CORE_0_1", 3) if self.platform == "rk3576" else getattr(RKNNLite, "NPU_CORE_AUTO", 0)
+                            ret = session.init_runtime(core_mask=core_mask)
                             if ret != 0:
                                 raise RuntimeError(f"init_runtime failed with code {ret}")
                     self._sessions[bucket] = session
@@ -456,7 +518,7 @@ class DualBucketGeneratorRunner:
                     raise
             return self._sessions[bucket]
 
-    def run(self, bucket: str, x: np.ndarray, s: np.ndarray, har: np.ndarray) -> np.ndarray:
+    def run_slice(self, bucket: str, x: np.ndarray, s: np.ndarray, har: np.ndarray) -> np.ndarray:
         with self._lock:
             session = self._get_session(bucket)
             if hasattr(session, "inference"):
@@ -484,11 +546,109 @@ class DualBucketGeneratorRunner:
                 )
             return conv_post
 
+    def run(self, bucket: str, x: np.ndarray, s: np.ndarray, har: np.ndarray) -> np.ndarray:
+        return self.run_slice(bucket, x, s, har)
+
+    def run_windowed(
+        self,
+        x: np.ndarray,
+        s: np.ndarray,
+        har: np.ndarray,
+        cancel_check: Any = None,
+    ) -> tuple[np.ndarray, float, float]:
+        """Execute generator using fixed T50 sliding windows and 480-sample Overlap-Add crossfade.
+
+        Returns:
+            (waveform, generator_ms, istft_ms)
+        """
+        x_arr = np.asarray(x, dtype=np.float32)
+        s_arr = np.asarray(s, dtype=np.float32)
+        har_arr = np.asarray(har, dtype=np.float32)
+
+        if x_arr.ndim != 3 or x_arr.shape[0] != 1 or x_arr.shape[1] != 512:
+            raise ValueError(f"x shape mismatch: expected (1, 512, T), got {x_arr.shape}")
+        if s_arr.shape != (1, 128):
+            raise ValueError(f"s shape mismatch: expected (1, 128), got {s_arr.shape}")
+        if har_arr.ndim != 3 or har_arr.shape[0] != 1 or har_arr.shape[1] != 22:
+            raise ValueError(f"har shape mismatch: expected (1, 22, F), got {har_arr.shape}")
+
+        T_total = x_arr.shape[2]
+        if T_total < 1:
+            raise ValueError("x must have at least 1 frame")
+        F_total = har_arr.shape[2]
+        if F_total < 60 * T_total + 1:
+            raise ValueError(f"har length {F_total} insufficient for T={T_total} (requires {60 * T_total + 1})")
+
+        num_windows = 1 if T_total <= T_FIX else int(math.ceil((T_total - T_FIX) / STEP)) + 1
+        accumulated = np.empty((0,), dtype=np.float32)
+        generator_ms = 0.0
+        istft_ms = 0.0
+
+        for k in range(num_windows):
+            if cancel_check is not None and callable(cancel_check):
+                cancel_check()
+
+            t_start = k * STEP
+            t_end = t_start + T_FIX
+
+            if t_end <= T_total:
+                x_slice = x_arr[:, :, t_start:t_end]
+            else:
+                avail = max(0, T_total - t_start)
+                x_part = x_arr[:, :, t_start:T_total] if avail > 0 else np.zeros((1, 512, 0), dtype=np.float32)
+                n_pad = T_FIX - avail
+                x_slice = np.pad(x_part, ((0, 0), (0, 0), (0, n_pad)), mode="constant")
+
+            p_start = t_start * 60
+            p_end = p_start + (60 * T_FIX + 1)
+            if p_end <= F_total:
+                har_slice = har_arr[:, :, p_start:p_end]
+            else:
+                avail_p = max(0, F_total - p_start)
+                har_part = har_arr[:, :, p_start:F_total] if avail_p > 0 else np.zeros((1, 22, 0), dtype=np.float32)
+                n_pad_p = (60 * T_FIX + 1) - avail_p
+                har_slice = np.pad(har_part, ((0, 0), (0, 0), (0, n_pad_p)), mode="constant")
+
+            t0 = time.perf_counter()
+            conv_post_slice = self.run_slice("T50", x_slice, s_arr, har_slice)
+            generator_ms += (time.perf_counter() - t0) * 1000
+
+            if cancel_check is not None and callable(cancel_check):
+                cancel_check()
+
+            t0 = time.perf_counter()
+            w_slice = conv_post_to_waveform(conv_post_slice)[0]
+            istft_ms += (time.perf_counter() - t0) * 1000
+
+            if num_windows == 1:
+                accumulated = w_slice
+            else:
+                if k == 0:
+                    chunk = w_slice[:14640]
+                    accumulated = chunk
+                elif k < num_windows - 1:
+                    chunk = w_slice[360:14640]
+                    accumulated = depop_append(accumulated, chunk, CROSSFADE_SAMPLES)
+                else:
+                    chunk = w_slice[360:]
+                    accumulated = depop_append(accumulated, chunk, CROSSFADE_SAMPLES)
+
+        return accumulated, generator_ms, istft_ms
+
     def preload(self):
-        """Warm up and eagerly initialize both T240 and T480 sessions."""
+        """Warm up and eagerly initialize sessions."""
         with self._lock:
+            if "T50" in self.models:
+                self._get_session("T50")
             for bucket in ("T240", "T480"):
-                self._get_session(bucket)
+                if bucket in self.models:
+                    self._get_session(bucket)
+            # If on RKNN hardware, release inactive and keep primary session warm to avoid dual-session IOMMU conflict
+            if self.runtime_cls is None and (self.cpu_generator is None or not self.allow_cpu_generator):
+                if "T50" in self.models:
+                    self._get_session("T50")
+                elif "T240" in self.models:
+                    self._get_session("T240")
 
     def close(self):
         with self._lock:
@@ -520,6 +680,8 @@ class KokoroConvOnlyBackend(TTSBackend):
 
     @property
     def name(self) -> str:
+        if os.environ.get("TTS_BACKEND") == "kokoro_dualbucket":
+            return "kokoro_dualbucket"
         return "kokoro_convonly"
 
     def is_ready(self) -> bool:
@@ -602,7 +764,10 @@ class KokoroConvOnlyBackend(TTSBackend):
         self._cancel(cancel, "prepare")
         if not prepared.input_ids.size or prepared.input_ids.shape[-1] <= 2:
             raise NoPhoneticTokensError("text must contain valid phonetic tokens")
-        decision = route_dualbucket(prepared.natural_D, len(prepared.natural_durations))
+        has_t50 = (self.generator is not None and self.generator.has_t50) or (
+            self._bundle is not None and "T50" in self._bundle.get("models", {})
+        )
+        decision = route_dualbucket(prepared.natural_D, len(prepared.natural_durations), has_t50=has_t50)
         return prepared, decision
 
     def _iter_planned_segments(self, text: str, language: str, speed: float, cancel: tuple[Any, ...]):
@@ -676,21 +841,33 @@ class KokoroConvOnlyBackend(TTSBackend):
             start = time.perf_counter()
             if branch == "padding":
                 durations = apply_silence_padding(prepared.natural_durations, target_D)
-            else:
+            elif branch == "snap":
                 durations = snap_durations(prepared.natural_durations, target_D)
+            else:
+                durations = prepared.natural_durations if target_D == prepared.natural_D else snap_durations(prepared.natural_durations, target_D)
             rendered = self.frontend.render(prepared, target_D=target_D, durations=durations)
             frontend_ms = (time.perf_counter() - start) * 1000
             self._cancel(cancel, "render")
 
-            start = time.perf_counter()
-            conv_post = self.generator.run(bucket, rendered["x"], rendered["s"], rendered["har"])
-            generator_ms = (time.perf_counter() - start) * 1000
-            self._cancel(cancel, "generator")
+            use_t50 = (self.generator is not None and self.generator.has_t50) or bucket == "T50"
+            if use_t50:
+                waveform, generator_ms, istft_ms = self.generator.run_windowed(
+                    rendered["x"],
+                    rendered["s"],
+                    rendered["har"],
+                    cancel_check=lambda: self._cancel(cancel, "generator"),
+                )
+                self._cancel(cancel, "istft")
+            else:
+                start = time.perf_counter()
+                conv_post = self.generator.run(bucket, rendered["x"], rendered["s"], rendered["har"])
+                generator_ms = (time.perf_counter() - start) * 1000
+                self._cancel(cancel, "generator")
 
-            start = time.perf_counter()
-            waveform = conv_post_to_waveform(conv_post)[0]
-            istft_ms = (time.perf_counter() - start) * 1000
-            self._cancel(cancel, "istft")
+                start = time.perf_counter()
+                waveform = conv_post_to_waveform(conv_post)[0]
+                istft_ms = (time.perf_counter() - start) * 1000
+                self._cancel(cancel, "istft")
 
             # Waveform truncation to valid samples
             valid_samples = 600 * d_out_valid
@@ -721,7 +898,7 @@ class KokoroConvOnlyBackend(TTSBackend):
                 "language": ROUTES[route],
                 "voice": voice,
                 "speed": speed,
-                "selected_bucket": bucket,
+                "selected_bucket": "T50" if use_t50 else bucket,
                 "branch": branch,
                 "T": decision["T"],
                 "target_D": target_D,
@@ -885,6 +1062,7 @@ class KokoroConvOnlyBackend(TTSBackend):
 
     def runtime_info(self) -> dict:
         with self._lock:
+            models_list = list(self.generator.models.keys()) if self.generator else list(BUCKET_CONFIGS.keys())
             return {
                 "backend": self.name,
                 "platform": self.config.platform,
@@ -893,7 +1071,7 @@ class KokoroConvOnlyBackend(TTSBackend):
                 "supports_streaming": True,
                 "streaming_mode": "sentence",
                 "manifest_sha256": self.config.manifest_sha256,
-                "dual_buckets": list(BUCKET_CONFIGS.keys()),
+                "dual_buckets": models_list,
                 "cleanup_errors": list(self._close_errors),
             }
 
