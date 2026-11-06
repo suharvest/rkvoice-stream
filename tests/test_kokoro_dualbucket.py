@@ -2281,3 +2281,125 @@ def test_dualbucket_close_waits_for_inflight_warmup(tmp_path, monkeypatch):
         # Clean up hanging worker
         hang_blocker.set()
         hang_fut.result(timeout=2.0)
+
+
+# =========================================================================
+# English Streaming Clause Optimization & Word Chunking Tests
+# =========================================================================
+
+def test_chunk_by_words_basic_and_invariants(monkeypatch):
+    """Test chunk_by_words helper: empty, single word, max_words, invariants."""
+    # 1. Empty string
+    assert DB.chunk_by_words("") == []
+    assert "".join(DB.chunk_by_words("")) == ""
+
+    # 2. Spaces only
+    assert DB.chunk_by_words("   ") == ["   "]
+    assert "".join(DB.chunk_by_words("   ")) == "   "
+
+    # 3. Text without spaces (English single word, Chinese text)
+    assert DB.chunk_by_words("Supercalifragilistic") == ["Supercalifragilistic"]
+    zh_text = "今天天气真好，阳光明媚。"
+    assert DB.chunk_by_words(zh_text) == [zh_text]
+
+    # 4. Words <= max_words
+    assert DB.chunk_by_words("hello world", 6) == ["hello world"]
+    assert DB.chunk_by_words("1 2 3 4 5 6", 6) == ["1 2 3 4 5 6"]
+
+    # 5. Words > max_words
+    c7 = DB.chunk_by_words("1 2 3 4 5 6 7", 6)
+    assert c7 == ["1 2 3 4 5 6 ", "7"]
+    assert "".join(c7) == "1 2 3 4 5 6 7"
+
+    # 6. Long sentence (13 words)
+    long_text = "The quick brown fox jumps over the lazy dog and runs away into the forest"
+    c_long = DB.chunk_by_words(long_text, 6)
+    assert len(c_long) == 3
+    assert c_long[0] == "The quick brown fox jumps over "
+    assert c_long[1] == "the lazy dog and runs away "
+    assert c_long[2] == "into the forest"
+    assert "".join(c_long) == long_text
+
+    # 7. Custom max_words
+    c_custom = DB.chunk_by_words("one two three four five six seven", max_words=3)
+    assert c_custom == ["one two three ", "four five six ", "seven"]
+    assert "".join(c_custom) == "one two three four five six seven"
+
+    # 8. Environment variable KOKORO_STREAM_MAX_WORDS
+    monkeypatch.setenv("KOKORO_STREAM_MAX_WORDS", "4")
+    c_env = DB.chunk_by_words("one two three four five six seven")
+    assert c_env == ["one two three four ", "five six seven"]
+    assert "".join(c_env) == "one two three four five six seven"
+
+    # 9. Invalid env variable falls back to default 6
+    monkeypatch.setenv("KOKORO_STREAM_MAX_WORDS", "invalid_value")
+    c_inv = DB.chunk_by_words("1 2 3 4 5 6 7")
+    assert c_inv == ["1 2 3 4 5 6 ", "7"]
+
+
+def test_synthesize_stream_english_clause_word_chunking(tmp_path, monkeypatch):
+    """Verify synthesize_stream splits long English clauses into sub-clauses when clause_split=True."""
+    monkeypatch.setattr(KokoroLong32Frontend, "preload_sessions", lambda self: {})
+    cfg = _create_mock_t50_bundle(tmp_path)
+    backend = DB.KokoroDualBucketBackend(cfg, runtime_cls=MockGeneratorSession)
+    backend.preload()
+
+    def fake_prepare(text, language="en-US", speed=1.0, cancel_check=None):
+        route = ROUTES.get(language, "a")
+        return SimpleNamespace(
+            route=route,
+            language=language,
+            text=text,
+            input_ids=np.zeros((1, 5), dtype=np.int64),
+            natural_durations=np.full(5, 4, dtype=np.int64),
+            natural_D=20,
+            style=np.zeros((1, 128), dtype=np.float32),
+            speed=np.array([1.0], dtype=np.float32),
+            stem_text=None,
+            stem_style=None,
+            timings={},
+        )
+
+    def fake_render(prepared, target_D, durations):
+        t = 2 * target_D
+        return {
+            "x": np.zeros((1, 512, t), dtype=np.float32),
+            "s": np.zeros((1, 128), dtype=np.float32),
+            "har": np.zeros((1, 22, 60 * t + 1), dtype=np.float32),
+            "T": t,
+            "F": 60 * t + 1,
+            "route": prepared.route,
+            "language": prepared.language,
+            "frontend_detail": {},
+        }
+
+    backend.frontend.prepare = fake_prepare
+    backend.frontend.render = fake_render
+
+    long_en = "The quick brown fox jumps over the lazy dog and runs away into the forest"
+
+    # With clause_split=True (default), 13 words without punctuation get split into 3 sub-clauses
+    chunks_c = list(backend.synthesize_stream(long_en, language="en-US", voice="af_heart", clause_split=True))
+    assert len(chunks_c) > 0
+
+    indices_c = sorted(set(m["sentence_index"] for _, m in chunks_c))
+    assert indices_c == [0, 1, 2]
+
+    sub_clauses = {}
+    for _, meta in chunks_c:
+        sub_clauses[meta["sentence_index"]] = meta["sentence_text"]
+
+    assert sub_clauses[0] == "The quick brown fox jumps over "
+    assert sub_clauses[1] == "the lazy dog and runs away "
+    assert sub_clauses[2] == "into the forest"
+    assert "".join(sub_clauses[i] for i in sorted(sub_clauses)) == long_en
+
+    # With clause_split=False, no clause splitting: 1 sentence index
+    chunks_s = list(backend.synthesize_stream(long_en, language="en-US", voice="af_heart", clause_split=False))
+    assert len(chunks_s) > 0
+    indices_s = sorted(set(m["sentence_index"] for _, m in chunks_s))
+    assert indices_s == [0]
+    for _, meta in chunks_s:
+        assert meta["sentence_text"] == long_en
+
+    backend.close()

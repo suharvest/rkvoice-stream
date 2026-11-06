@@ -300,6 +300,78 @@ def test_decoder_precompute_prefix_kv_saves_the_prompt_cache(monkeypatch, tmp_pa
     assert infer.max_new_tokens == 0 and not infer.sampling_params
 
 
+def test_detect_rkllm_abi_version(tmp_path, monkeypatch):
+    from rkvoice_stream.backends.asr.qwen3.decoder import detect_rkllm_abi_version
+
+    # Default without file or hints is 1.3.0
+    assert detect_rkllm_abi_version("librkllmrt.so") == "1.3.0"
+
+    # Auto-detect from file bytes containing "version: 1.2."
+    f12 = tmp_path / "lib12.so"
+    f12.write_bytes(b"some ELF data with version: 1.2.3 embedded")
+    assert detect_rkllm_abi_version(str(f12)) == "1.2.3"
+
+    # Auto-detect from file bytes containing "1.2.3"
+    f12_tag = tmp_path / "lib12_tag.so"
+    f12_tag.write_bytes(b"RKLLM SDK (version: 1.2.3 | target: Linux)")
+    assert detect_rkllm_abi_version(str(f12_tag)) == "1.2.3"
+
+    # Auto-detect 1.3.0 from file bytes
+    f13 = tmp_path / "lib13.so"
+    f13.write_bytes(b"RKLLM SDK (version: 1.3.0 | target: Linux)")
+    assert detect_rkllm_abi_version(str(f13)) == "1.3.0"
+
+    # Path string containing 1.2.3
+    assert detect_rkllm_abi_version("/path/to/librkllmrt_1.2.3.so") == "1.2.3"
+
+    # lib_obj attribute
+    class DummyLib:
+        abi_version = "1.2.3"
+    assert detect_rkllm_abi_version(lib_obj=DummyLib()) == "1.2.3"
+
+    # env var fallback
+    monkeypatch.setenv("RKLLM_ABI_VERSION", "1.2.3")
+    assert detect_rkllm_abi_version() == "1.2.3"
+
+
+def test_decoder_uses_1_2_3_param_struct_and_func_ptr_callback(monkeypatch, tmp_path):
+    from rkvoice_stream.backends.asr.qwen3 import decoder as dec
+
+    fake_so = tmp_path / "librkllmrt.so"
+    fake_so.write_bytes(b"ELF... RKLLM SDK (version: 1.2.3 | target: Linux) ...")
+
+    lib = _FakeLib()
+    captured_param = None
+    captured_cb = None
+
+    def init(handle, param, cb):
+        nonlocal captured_param, captured_cb
+        captured_param = _byref_target(param)
+        captured_cb = cb
+        return 0
+
+    lib.fn("rkllm_init", init)
+    monkeypatch.setattr(dec.ctypes, "CDLL", lambda *a, **k: lib)
+
+    decoder = dec.RKLLMDecoder(model_path="m.rkllm", lib_path=str(fake_so))
+
+    assert decoder.abi_version == "1.2.3"
+    assert lib.rkllm_init.argtypes[1] is ctypes.POINTER(dec.RKLLMParam12x)
+    assert lib.rkllm_init.argtypes[2] is dec.RKLLM_CALLBACK
+
+    # Struct used is 1.2.x layout with img_* fields
+    assert isinstance(captured_param, dec.RKLLMParam12x)
+    assert captured_param.img_start == b""
+    assert captured_param.img_end == b""
+    assert captured_param.img_content == b""
+    assert captured_param.extend_param.base_domain_id == 1
+
+    # Callback passed is function pointer callback, not an RKLLMCallback struct
+    assert captured_cb is decoder._cb
+    assert callable(captured_cb)
+    assert not isinstance(captured_cb, abi.RKLLMCallback)
+
+
 # ---------------------------------------------------------------------------
 # RKLLMTalker (Qwen3-TTS)
 # ---------------------------------------------------------------------------

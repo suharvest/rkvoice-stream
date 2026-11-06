@@ -56,6 +56,41 @@ SPLIT_SENTENCE_PATTERN = r".+?(?:[。！？；;]+\s*|[.!?]+(?:\s+|$)|$)"
 SPLIT_CLAUSE_PATTERN = r".+?(?:[。！？；;，、：—]+\s*|\.{2,}|[.!?]+(?:\s+|$)|[,:;]+(?:\s+|$)|$)"
 
 
+def chunk_by_words(text: str, max_words: int = 6) -> list[str]:
+    """Split text containing spaces into chunks of at most max_words.
+
+    max_words defaults to env KOKORO_STREAM_MAX_WORDS (default 6).
+    Preserves strict invariant ''.join(chunks) == text.
+    """
+    if "KOKORO_STREAM_MAX_WORDS" in os.environ and max_words == 6:
+        try:
+            max_words = int(os.environ["KOKORO_STREAM_MAX_WORDS"])
+        except (ValueError, TypeError):
+            max_words = 6
+    if max_words <= 0:
+        max_words = 6
+
+    if not text:
+        return []
+
+    if " " not in text:
+        return [text]
+
+    matches = list(re.finditer(r"\S+", text))
+    if len(matches) <= max_words:
+        return [text]
+
+    chunks = []
+    current_start = 0
+    for i in range(max_words, len(matches), max_words):
+        cut_point = matches[i].start()
+        chunks.append(text[current_start:cut_point])
+        current_start = cut_point
+    if current_start < len(text):
+        chunks.append(text[current_start:])
+    return chunks
+
+
 def _digest(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
@@ -1251,6 +1286,14 @@ class KokoroConvOnlyBackend(TTSBackend):
         raw_sentences = re.findall(split_pattern, text, flags=re.S)
         if "".join(raw_sentences) != text:
             raise RuntimeError("source sentence coverage invariant failed")
+
+        if clause_split:
+            refined_sentences = []
+            for clause in raw_sentences:
+                refined_sentences.extend(chunk_by_words(clause))
+            raw_sentences = refined_sentences
+            if "".join(raw_sentences) != text:
+                raise RuntimeError("source sentence coverage invariant failed")
 
         sentence_plan = []
         offset = 0

@@ -13,6 +13,9 @@ the 1.2.x C ABI is not supported.  The ctypes structs live in
 ``rkvoice_stream.runtime.rkllm_abi``.
 """
 
+import os
+from pathlib import Path
+from typing import Any
 import threading
 import ctypes
 import logging
@@ -28,6 +31,7 @@ from rkvoice_stream.runtime.rkllm_abi import (
     RKLLM_Handle_t,
     RKLLMCallback,
     RKLLMEmbedInput,
+    RKLLMExtendParam,
     RKLLMInferParam,
     RKLLMInput,
     RKLLMParam,
@@ -41,6 +45,70 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_STOP_PUNCTUATION = "。！？.!?"
+
+
+class RKLLMParam12x(ctypes.Structure):
+    """1.2.x ABI layout for RKLLMParam (includes img_start, img_end, img_content)."""
+    _fields_ = [
+        ("model_path", ctypes.c_char_p),
+        ("max_context_len", ctypes.c_int32),
+        ("max_new_tokens", ctypes.c_int32),
+        ("top_k", ctypes.c_int32),
+        ("n_keep", ctypes.c_int32),
+        ("top_p", ctypes.c_float),
+        ("temperature", ctypes.c_float),
+        ("repeat_penalty", ctypes.c_float),
+        ("frequency_penalty", ctypes.c_float),
+        ("presence_penalty", ctypes.c_float),
+        ("mirostat", ctypes.c_int32),
+        ("mirostat_tau", ctypes.c_float),
+        ("mirostat_eta", ctypes.c_float),
+        ("skip_special_token", ctypes.c_bool),
+        ("is_async", ctypes.c_bool),
+        ("img_start", ctypes.c_char_p),
+        ("img_end", ctypes.c_char_p),
+        ("img_content", ctypes.c_char_p),
+        ("extend_param", RKLLMExtendParam),
+    ]
+
+
+def detect_rkllm_abi_version(lib_path: str | Path | None = None, lib_obj: Any = None) -> str:
+    """Auto-detect librkllmrt.so ABI version (1.2.3 vs 1.3.0).
+
+    When librkllmrt.so is 1.2.3 (e.g. contains b"version: 1.2." or b"1.2.3"), returns "1.2.3".
+    Otherwise returns "1.3.0".
+    """
+    if lib_obj is not None:
+        v = getattr(lib_obj, "abi_version", getattr(lib_obj, "_abi_version", getattr(lib_obj, "version", None)))
+        if v:
+            v_str = str(v)
+            if "1.2" in v_str:
+                return "1.2.3"
+            if "1.3" in v_str:
+                return "1.3.0"
+
+    if lib_path is not None:
+        p = Path(lib_path)
+        if p.is_file():
+            try:
+                data = p.read_bytes()
+                if b"version: 1.2." in data or b"1.2.3" in data:
+                    return "1.2.3"
+                if b"version: 1.3." in data or b"1.3.0" in data:
+                    return "1.3.0"
+            except Exception:
+                pass
+        p_str = str(lib_path)
+        if "1.2.3" in p_str or "1.2." in p_str or "1.2" in p_str:
+            return "1.2.3"
+
+    env_v = os.environ.get("RKLLM_ABI_VERSION", "")
+    if "1.2" in env_v:
+        return "1.2.3"
+    if "1.3" in env_v:
+        return "1.3.0"
+
+    return "1.3.0"
 
 
 def should_stop_after_punctuation(
@@ -130,6 +198,7 @@ class RKLLMDecoder:
             callback_fn: Optional callback(text, is_finish) for streaming output
         """
         self.lib = ctypes.CDLL(str(lib_path))
+        self.abi_version = detect_rkllm_abi_version(lib_path=lib_path, lib_obj=self.lib)
         self.user_callback = callback_fn
         self._output_chunks = []
         self._perf = {}
@@ -209,36 +278,58 @@ class RKLLMDecoder:
             return 0
 
         self._cb = _cb
-        # rkllm_init() takes an RKLLMCallback*; keep it (and self._cb) alive
-        # for the lifetime of the handle.
-        self._cb_struct = make_callback_struct(self._cb)
 
         # Build parameters
-        param = RKLLMParam()
-        param.model_path = str(model_path).encode()
-        param.max_context_len = max_context_len
-        param.max_new_tokens = max_new_tokens
-        param.top_k = top_k
-        param.n_keep = n_keep
-        param.top_p = top_p
-        param.temperature = temperature
-        param.repeat_penalty = repeat_penalty
-        param.frequency_penalty = frequency_penalty
-        param.presence_penalty = presence_penalty
-        param.mirostat = 0
-        param.mirostat_tau = 5.0
-        param.mirostat_eta = 0.1
-        param.skip_special_token = True
-        param.ignore_eos_token = False
-        param.is_async = self._async_mode
-
-        # CPU affinity
         if enabled_cpus not in CPU_MASKS:
             raise ValueError(
                 f"Unsupported enabled_cpus={enabled_cpus}; "
                 f"supported values are {sorted(CPU_MASKS)}"
             )
         cpu_mask = CPU_MASKS[enabled_cpus]
+
+        if self.abi_version == "1.2.3":
+            self._cb_struct = None
+            param = RKLLMParam12x()
+            param.model_path = str(model_path).encode()
+            param.max_context_len = max_context_len
+            param.max_new_tokens = max_new_tokens
+            param.top_k = top_k
+            param.n_keep = n_keep
+            param.top_p = top_p
+            param.temperature = temperature
+            param.repeat_penalty = repeat_penalty
+            param.frequency_penalty = frequency_penalty
+            param.presence_penalty = presence_penalty
+            param.mirostat = 0
+            param.mirostat_tau = 5.0
+            param.mirostat_eta = 0.1
+            param.skip_special_token = True
+            param.is_async = self._async_mode
+            param.img_start = b""
+            param.img_end = b""
+            param.img_content = b""
+        else:
+            # rkllm_init() takes an RKLLMCallback*; keep it (and self._cb) alive
+            # for the lifetime of the handle.
+            self._cb_struct = make_callback_struct(self._cb)
+            param = RKLLMParam()
+            param.model_path = str(model_path).encode()
+            param.max_context_len = max_context_len
+            param.max_new_tokens = max_new_tokens
+            param.top_k = top_k
+            param.n_keep = n_keep
+            param.top_p = top_p
+            param.temperature = temperature
+            param.repeat_penalty = repeat_penalty
+            param.frequency_penalty = frequency_penalty
+            param.presence_penalty = presence_penalty
+            param.mirostat = 0
+            param.mirostat_tau = 5.0
+            param.mirostat_eta = 0.1
+            param.skip_special_token = True
+            param.ignore_eos_token = False
+            param.is_async = self._async_mode
+
         param.extend_param.base_domain_id = 1  # Domain 1 to coexist with RKNN models (domain 0)
         param.extend_param.embed_flash = embed_flash
         param.extend_param.enabled_cpus_num = enabled_cpus
@@ -257,10 +348,16 @@ class RKLLMDecoder:
         }
 
         # Setup function signatures
-        self.lib.rkllm_init.argtypes = [
-            ctypes.POINTER(RKLLM_Handle_t),
-            ctypes.POINTER(RKLLMParam), ctypes.POINTER(RKLLMCallback)
-        ]
+        if self.abi_version == "1.2.3":
+            self.lib.rkllm_init.argtypes = [
+                ctypes.POINTER(RKLLM_Handle_t),
+                ctypes.POINTER(RKLLMParam12x), RKLLM_CALLBACK
+            ]
+        else:
+            self.lib.rkllm_init.argtypes = [
+                ctypes.POINTER(RKLLM_Handle_t),
+                ctypes.POINTER(RKLLMParam), ctypes.POINTER(RKLLMCallback)
+            ]
         self.lib.rkllm_init.restype = ctypes.c_int
 
         self.lib.rkllm_run.argtypes = [
@@ -307,10 +404,15 @@ class RKLLMDecoder:
 
         # Initialize
         self.handle = RKLLM_Handle_t()
-        ret = self.lib.rkllm_init(
-            ctypes.byref(self.handle), ctypes.byref(param),
-            ctypes.byref(self._cb_struct)
-        )
+        if self.abi_version == "1.2.3":
+            ret = self.lib.rkllm_init(
+                ctypes.byref(self.handle), ctypes.byref(param), self._cb
+            )
+        else:
+            ret = self.lib.rkllm_init(
+                ctypes.byref(self.handle), ctypes.byref(param),
+                ctypes.byref(self._cb_struct)
+            )
         assert ret == 0, f"rkllm_init failed: {ret}"
 
         # CRITICAL: Set empty chat template to disable built-in prompt wrapping
